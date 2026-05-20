@@ -1,8 +1,8 @@
 import logging
 import sqlite3
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (Application, CommandHandler, ContextTypes,
-                           CallbackQueryHandler)
+                           MessageHandler, filters, ConversationHandler)
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -11,8 +11,10 @@ logger = logging.getLogger(__name__)
 TOKEN = os.getenv('BOT_TOKEN')
 DB_PATH = 'agency.db'
 
+TASK_TITLE, TASK_USER, TASK_DEADLINE = range(3)
 
-# ─── База данных ──────────────────────────────────────────────────────────────
+
+# ─── База данных ──────────────────────────────────────────────
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -23,37 +25,36 @@ def init_db():
     conn = get_db()
     conn.executescript('''
         CREATE TABLE IF NOT EXISTS projects (
-            group_id INTEGER PRIMARY KEY,
-            name     TEXT NOT NULL,
+            group_id   INTEGER PRIMARY KEY,
+            name       TEXT NOT NULL,
             created_at TEXT DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS tasks (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            group_id         INTEGER NOT NULL,
-            title            TEXT NOT NULL,
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id          INTEGER NOT NULL,
+            title             TEXT NOT NULL,
             assigned_username TEXT,
-            deadline         TEXT,
-            status           TEXT DEFAULT 'active',
-            created_by       TEXT,
-            created_at       TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS kpi (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            username    TEXT NOT NULL,
-            group_id    INTEGER,
-            month       TEXT NOT NULL,
-            retention   INTEGER DEFAULT 0,
-            csat        REAL    DEFAULT 0,
-            deadlines_ok INTEGER DEFAULT 0,
-            deadlines_total INTEGER DEFAULT 0,
-            initiatives  INTEGER DEFAULT 0
+            deadline          TEXT,
+            status            TEXT DEFAULT 'active',
+            created_by        TEXT,
+            created_at        TEXT DEFAULT (datetime('now'))
         );
     ''')
     conn.commit()
     conn.close()
 
 
-# ─── /start ───────────────────────────────────────────────────────────────────
+# ─── Клавиатура ───────────────────────────────────────────────
+
+def main_keyboard():
+    buttons = [
+        [KeyboardButton("📝 Новая задача"), KeyboardButton("📋 Задачи")],
+        [KeyboardButton("📊 Статус"),        KeyboardButton("📈 KPI")],
+    ]
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+
+
+# ─── /start ───────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -68,60 +69,72 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (chat.id, chat.title)
             )
             conn.commit()
-            await update.message.reply_text(
-                f"✅ Группа *{chat.title}* зарегистрирована!\n\n"
-                f"Команды:\n"
-                f"/задача — создать задачу\n"
-                f"/задачи — список задач\n"
-                f"/готово — отметить выполненной\n"
-                f"/статус — обзор проекта\n"
-                f"/кпи — KPI команды",
-                parse_mode='Markdown'
+            text = (
+                f"✅ *{chat.title}* подключена!\n\n"
+                f"Используй кнопки внизу экрана 👇"
             )
         else:
-            await update.message.reply_text(
-                f"👋 Группа *{chat.title}* уже подключена!", parse_mode='Markdown'
-            )
+            text = f"👋 Группа *{chat.title}* уже подключена!"
         conn.close()
+        await update.message.reply_text(
+            text, parse_mode='Markdown', reply_markup=main_keyboard()
+        )
     else:
         await update.message.reply_text(
-            "👋 Привет! Я бот WHYNOT Agency.\n"
-            "Добавь меня в группу клиента и напиши /start"
+            "👋 Привет! Добавь меня в группу клиента и напиши /start"
         )
 
 
-# ─── /задача ──────────────────────────────────────────────────────────────────
+# ─── Создание задачи (разговор) ───────────────────────────────
 
-async def new_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def new_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']:
+        await update.message.reply_text("Добавь меня в группу клиента!")
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "📝 *Новая задача*\n\nОпиши задачу:",
+        parse_mode='Markdown',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return TASK_TITLE
+
+async def task_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['task_title'] = update.message.text
+    await update.message.reply_text(
+        "👤 Кому назначить?\nНапиши @username или нажми /skip"
+    )
+    return TASK_USER
+
+async def task_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    context.user_data['task_user'] = text.lstrip('@') if text.startswith('@') else text
+    await update.message.reply_text(
+        "📅 Дедлайн? (например: 25.05)\nИли нажми /skip"
+    )
+    return TASK_DEADLINE
+
+async def task_deadline(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['task_deadline'] = update.message.text
+    return await save_task(update, context)
+
+async def task_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    state = context.user_data.get('_conv_state', TASK_USER)
+    if state == TASK_USER:
+        context.user_data['task_user'] = None
+        await update.message.reply_text("📅 Дедлайн? (например: 25.05)\nИли /skip")
+        context.user_data['_conv_state'] = TASK_DEADLINE
+        return TASK_DEADLINE
+    else:
+        context.user_data['task_deadline'] = None
+        return await save_task(update, context)
+
+async def save_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
-
-    if chat.type not in ['group', 'supergroup']:
-        await update.message.reply_text("Команда работает только в группах клиентов")
-        return
-
-    if not context.args:
-        await update.message.reply_text(
-            "📝 Формат: `/задача Описание @username дедлайн`\n\n"
-            "Пример:\n`/задача Сделать 3 поста для инсты @bekmotion 25.01`",
-            parse_mode='Markdown'
-        )
-        return
-
-    text = ' '.join(context.args)
-    assigned = None
-    deadline = None
-    title_words = []
-
-    for word in text.split():
-        if word.startswith('@'):
-            assigned = word[1:]
-        elif len(word) >= 4 and '.' in word and word.replace('.', '').isdigit():
-            deadline = word
-        else:
-            title_words.append(word)
-
-    title = ' '.join(title_words)
+    title    = context.user_data.get('task_title', '—')
+    assigned = context.user_data.get('task_user')
+    deadline = context.user_data.get('task_deadline')
 
     conn = get_db()
     conn.execute(
@@ -143,16 +156,26 @@ async def new_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if deadline:
         msg += f"\n📅 {deadline}"
 
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    context.user_data.clear()
+    await update.message.reply_text(
+        msg, parse_mode='Markdown', reply_markup=main_keyboard()
+    )
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text(
+        "❌ Отменено", reply_markup=main_keyboard()
+    )
+    return ConversationHandler.END
 
 
-# ─── /задачи ──────────────────────────────────────────────────────────────────
+# ─── Список задач ─────────────────────────────────────────────
 
 async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
-
     if chat.type not in ['group', 'supergroup']:
-        await update.message.reply_text("Команда работает только в группах клиентов")
+        await update.message.reply_text("Добавь меня в группу клиента!")
         return
 
     conn = get_db()
@@ -163,7 +186,9 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not tasks:
-        await update.message.reply_text("🎉 Активных задач нет!")
+        await update.message.reply_text(
+            "🎉 Активных задач нет!", reply_markup=main_keyboard()
+        )
         return
 
     msg = f"📋 *Задачи — {chat.title}*\n\n"
@@ -172,42 +197,45 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if t['assigned_username']:
             msg += f" → @{t['assigned_username']}"
         if t['deadline']:
-            msg += f" 📅 {t['deadline']}"
+            msg += f" 📅{t['deadline']}"
         msg += "\n"
 
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    msg += "\nЧтобы закрыть задачу: `/done 5`"
+    await update.message.reply_text(
+        msg, parse_mode='Markdown', reply_markup=main_keyboard()
+    )
 
 
-# ─── /готово ──────────────────────────────────────────────────────────────────
+# ─── /done ────────────────────────────────────────────────────
 
 async def done_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "Укажи номер задачи: `/готово 5`", parse_mode='Markdown'
+            "Укажи номер: `/done 5`", parse_mode='Markdown'
         )
         return
-
     task_id = context.args[0]
     conn = get_db()
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-
     if task:
         conn.execute('UPDATE tasks SET status = "done" WHERE id = ?', (task_id,))
         conn.commit()
         await update.message.reply_text(
             f"✅ Задача #{task_id} выполнена!\n_{task['title']}_",
-            parse_mode='Markdown'
+            parse_mode='Markdown', reply_markup=main_keyboard()
         )
     else:
         await update.message.reply_text(f"❌ Задача #{task_id} не найдена")
-
     conn.close()
 
 
-# ─── /статус ─────────────────────────────────────────────────────────────────
+# ─── Статус ───────────────────────────────────────────────────
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']:
+        await update.message.reply_text("Добавь меня в группу клиента!")
+        return
 
     conn = get_db()
     active = conn.execute(
@@ -227,7 +255,6 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"📊 *{chat.title}*\n\n"
     msg += f"🔄 Активных: {active}\n"
     msg += f"✅ Выполнено: {done}\n"
-
     if deadline_tasks:
         msg += f"\n⏰ *С дедлайном:*\n"
         for t in deadline_tasks:
@@ -236,19 +263,20 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += f" @{t['assigned_username']}"
             msg += f" — {t['deadline']}\n"
 
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    await update.message.reply_text(
+        msg, parse_mode='Markdown', reply_markup=main_keyboard()
+    )
 
 
-# ─── /кпи ────────────────────────────────────────────────────────────────────
+# ─── KPI ──────────────────────────────────────────────────────
 
 async def kpi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']:
+        await update.message.reply_text("Добавь меня в группу клиента!")
+        return
 
     conn = get_db()
-    from datetime import datetime
-    month = datetime.now().strftime('%Y-%m')
-
-    # Считаем задачи по исполнителям в этой группе
     stats = conn.execute(
         '''SELECT assigned_username,
                   COUNT(*) as total,
@@ -261,32 +289,70 @@ async def kpi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not stats:
-        await update.message.reply_text("📈 Пока нет данных по KPI")
+        await update.message.reply_text(
+            "📈 Пока нет данных по KPI", reply_markup=main_keyboard()
+        )
         return
 
     msg = f"📈 *KPI — {chat.title}*\n\n"
     for s in stats:
-        total = s['total']
+        total    = s['total']
         done_cnt = s['done_cnt'] or 0
-        pct = int(done_cnt / total * 100) if total > 0 else 0
-        bar = "🟢" if pct >= 80 else "🟡" if pct >= 50 else "🔴"
-        msg += f"{bar} @{s['assigned_username']}: {done_cnt}/{total} задач ({pct}%)\n"
+        pct      = int(done_cnt / total * 100) if total > 0 else 0
+        bar      = "🟢" if pct >= 80 else "🟡" if pct >= 50 else "🔴"
+        msg += f"{bar} @{s['assigned_username']}: {done_cnt}/{total} ({pct}%)\n"
 
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    await update.message.reply_text(
+        msg, parse_mode='Markdown', reply_markup=main_keyboard()
+    )
 
 
-# ─── Запуск ───────────────────────────────────────────────────────────────────
+# ─── Обработчик кнопок ────────────────────────────────────────
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "📋 Задачи":
+        await list_tasks(update, context)
+    elif text == "📊 Статус":
+        await status(update, context)
+    elif text == "📈 KPI":
+        await kpi(update, context)
+
+
+# ─── Запуск ───────────────────────────────────────────────────
 
 def main():
     init_db()
     app = Application.builder().token(TOKEN).build()
 
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("task", new_task_start),
+            MessageHandler(filters.Regex("^📝 Новая задача$"), new_task_start),
+        ],
+        states={
+            TASK_TITLE:    [MessageHandler(filters.TEXT & ~filters.COMMAND, task_title)],
+            TASK_USER:     [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, task_user),
+                CommandHandler("skip", task_skip),
+            ],
+            TASK_DEADLINE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, task_deadline),
+                CommandHandler("skip", task_skip),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
     app.add_handler(CommandHandler("start",  start))
-    app.add_handler(CommandHandler("task",   new_task))
+    app.add_handler(conv_handler)
     app.add_handler(CommandHandler("tasks",  list_tasks))
     app.add_handler(CommandHandler("done",   done_task))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("kpi",    kpi))
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND, button_handler
+    ))
 
     logger.info("✅ Бот запущен!")
     app.run_polling(drop_pending_updates=True)
