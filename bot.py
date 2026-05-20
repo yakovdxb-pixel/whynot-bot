@@ -281,7 +281,7 @@ def main():
     init_db()
     app = Application.builder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start",  start))
+    app.add_handler(CommandHandler("start",  start))
     app.add_handler(CommandHandler("task",   new_task))
     app.add_handler(CommandHandler("tasks",  list_tasks))
     app.add_handler(CommandHandler("done",   done_task))
