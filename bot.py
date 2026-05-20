@@ -281,12 +281,12 @@ def main():
     init_db()
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start",   start))
-    app.add_handler(CommandHandler(["задача",  "task"],   new_task))
-    app.add_handler(CommandHandler(["задачи",  "tasks"],  list_tasks))
-    app.add_handler(CommandHandler(["готово",  "done"],   done_task))
-    app.add_handler(CommandHandler(["статус",  "status"], status))
-    app.add_handler(CommandHandler(["кпи",     "kpi"],    kpi))
+app.add_handler(CommandHandler("start",  start))
+    app.add_handler(CommandHandler("task",   new_task))
+    app.add_handler(CommandHandler("tasks",  list_tasks))
+    app.add_handler(CommandHandler("done",   done_task))
+    app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("kpi",    kpi))
 
     logger.info("✅ Бот запущен!")
     app.run_polling(drop_pending_updates=True)
