@@ -521,37 +521,102 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Content plan ─────────────────────────────────────────────────
 
+def _cp_is_manager(conn, group_id: int, username: str) -> bool:
+    """Может ли пользователь редактировать контент-план (АМ или Директор)."""
+    m = conn.execute(
+        'SELECT role FROM members WHERE group_id=? AND username=?', (group_id, username)
+    ).fetchone()
+    return m and m['role'] in ('director', 'am')
+
 async def content_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if chat.type not in ['group', 'supergroup']:
         await update.message.reply_text("Только в группах!"); return
-    tid = get_thread(update)
+    tid      = get_thread(update)
+    username = get_uname(update)
     conn = get_db()
     rows = conn.execute(
-        'SELECT * FROM content_plan WHERE group_id=? AND thread_id=? ORDER BY plan_date, id LIMIT 15',
+        'SELECT * FROM content_plan WHERE group_id=? AND thread_id=? ORDER BY plan_date, id LIMIT 30',
         (chat.id, tid)
     ).fetchall()
+    is_mgr = _cp_is_manager(conn, chat.id, username)
     conn.close()
+
     DOT = {'planned': '⚪', 'in_progress': '🟡', 'done': '🟢', 'published': '✅'}
     if not rows:
         msg = "📅 *Контент-план*\n\nПока пусто."
-        kb  = InlineKeyboardMarkup([[InlineKeyboardButton("➕ Добавить запись", callback_data="cp_add")]])
     else:
         msg = "📅 *Контент-план*\n\n"
-        buttons = []
         for r in rows:
-            dot   = DOT.get(r['status'], '⚪')
-            ref_s = " 🔗" if r['refs'] else ""
-            msg  += f"{dot} *#{r['id']}* {r['content_type']} — {r['plan_date'] or '—'}\n"
-            msg  += f"   {r['description']}{ref_s}\n\n"
-            buttons.append([
-                InlineKeyboardButton(f"✏️ #{r['id']}",  callback_data=f"cpEdit_{r['id']}"),
-                InlineKeyboardButton(f"📌 #{r['id']}",  callback_data=f"cpTask_{r['id']}"),
-                InlineKeyboardButton(f"🗑 #{r['id']}",  callback_data=f"cpDel_{r['id']}"),
-            ])
-        buttons.append([InlineKeyboardButton("➕ Добавить запись", callback_data="cp_add")])
-        kb = InlineKeyboardMarkup(buttons)
+            dot = DOT.get(r['status'], '⚪')
+            if r['refs'] and r['refs'].startswith("photo:"):
+                ref_s = " 🖼"
+            elif r['refs']:
+                ref_s = " 🔗"
+            else:
+                ref_s = ""
+            msg += f"{dot} *#{r['id']}* {r['content_type']} — {r['plan_date'] or '—'}\n"
+            msg += f"   {r['description']}{ref_s}\n\n"
+
+    # Кнопки: АМ/Директор видят управление, все видят "добавить"
+    bottom = []
+    if is_mgr:
+        bottom.append(InlineKeyboardButton("➕ Добавить",    callback_data="cp_add"))
+        bottom.append(InlineKeyboardButton("⚙️ Управление", callback_data="cp_manage_0"))
+    else:
+        msg += "_Редактирование доступно АМ и Директору_"
+    kb = InlineKeyboardMarkup([bottom]) if bottom else None
     await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=kb)
+
+
+async def cp_manage_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Режим управления — 5 записей с кнопками, пагинация."""
+    q = update.callback_query; await q.answer()
+    offset   = int(q.data.replace("cp_manage_", ""))
+    chat     = q.message.chat
+    username = q.from_user.username or str(q.from_user.id)
+    conn = get_db()
+    if not _cp_is_manager(conn, chat.id, username):
+        conn.close()
+        await q.answer("⛔ Только АМ и Директор", show_alert=True); return
+    tid = q.message.message_thread_id or 0
+    rows = conn.execute(
+        'SELECT * FROM content_plan WHERE group_id=? AND thread_id=? ORDER BY plan_date, id LIMIT 5 OFFSET ?',
+        (chat.id, tid, offset)
+    ).fetchall()
+    total = conn.execute(
+        'SELECT COUNT(*) FROM content_plan WHERE group_id=? AND thread_id=?', (chat.id, tid)
+    ).fetchone()[0]
+    conn.close()
+
+    if not rows:
+        await q.edit_message_text("Записей нет"); return
+
+    DOT = {'planned': '⚪', 'in_progress': '🟡', 'done': '🟢', 'published': '✅'}
+    msg = f"⚙️ *Управление контент-планом* ({offset+1}–{min(offset+5, total)} из {total})\n\n"
+    buttons = []
+    for r in rows:
+        dot = DOT.get(r['status'], '⚪')
+        msg += f"{dot} *#{r['id']}* {r['content_type']} — {r['plan_date'] or '—'}\n   {r['description']}\n\n"
+        buttons.append([
+            InlineKeyboardButton(f"✏️",          callback_data=f"cpEdit_{r['id']}"),
+            InlineKeyboardButton(f"📌 В задачи", callback_data=f"cpTask_{r['id']}"),
+            InlineKeyboardButton(f"🗑",           callback_data=f"cpDel_{r['id']}"),
+        ])
+
+    nav = []
+    if offset > 0:
+        nav.append(InlineKeyboardButton("◀️ Назад", callback_data=f"cp_manage_{offset-5}"))
+    if offset + 5 < total:
+        nav.append(InlineKeyboardButton("Вперёд ▶️", callback_data=f"cp_manage_{offset+5}"))
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton("✖️ Закрыть", callback_data="cp_manage_close")])
+    await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(buttons))
+
+async def cp_manage_close_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query; await q.answer()
+    await q.edit_message_text("📅 Контент-план закрыт. Нажми 📅 Контент чтобы открыть снова.")
 
 
 # ── Content plan creation conversation ───────────────────────────
@@ -575,12 +640,20 @@ async def cp_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cp_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['cp_desc'] = update.message.text
     await update.message.reply_text(
-        "🔗 Референсы? (ссылка или описание)\nИли нажми /skip",
+        "🖼 Референсы?\nПришли *фото*, ссылку или текст\nИли нажми /skip",
+        parse_mode='Markdown'
     )
     return CP_REFS_S
 
 async def cp_refs_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['cp_refs'] = update.message.text
+    return await _cp_ask_date(update, context)
+
+async def cp_refs_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пользователь прислал фото как референс."""
+    file_id = update.message.photo[-1].file_id
+    context.user_data['cp_refs'] = f"photo:{file_id}"
+    await update.message.reply_text("🖼 Фото сохранено как референс")
     return await _cp_ask_date(update, context)
 
 async def cp_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -638,9 +711,13 @@ async def _save_cp(update, context, via_cb=False):
     msg = f"✅ *Добавлено в контент-план*\n\n{ct}"
     if plan_date: msg += f" — {plan_date}"
     msg += f"\n_{desc}_"
-    if refs: msg += f"\n🔗 {refs}"
     send = update.callback_query.message if via_cb else update.message
-    await send.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard())
+    if refs and refs.startswith("photo:"):
+        await send.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard())
+        await send.reply_photo(refs.replace("photo:", ""), caption="🖼 Референс")
+    else:
+        if refs: msg += f"\n🔗 {refs}"
+        await send.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard())
     return ConversationHandler.END
 
 
@@ -657,10 +734,13 @@ async def cp_edit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"✏️ *Редактирование #{cp_id}*\n{r['content_type']} — {r['plan_date'] or '—'}\n_{r['description']}_\n\nЧто изменить?"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📝 Описание", callback_data=f"cpEf_{cp_id}_desc"),
-         InlineKeyboardButton("🔗 Референс", callback_data=f"cpEf_{cp_id}_refs")],
+         InlineKeyboardButton("🖼 Референс", callback_data=f"cpEf_{cp_id}_refs")],
         [InlineKeyboardButton("📅 Дату",    callback_data=f"cpEf_{cp_id}_date"),
          InlineKeyboardButton("🏷 Тип",     callback_data=f"cpEf_{cp_id}_type")],
     ])
+    # Если есть фото-референс — отправляем его
+    if r['refs'] and r['refs'].startswith("photo:"):
+        await q.message.reply_photo(r['refs'].replace("photo:", ""), caption="🖼 Текущий референс")
     await q.message.reply_text(msg, parse_mode='Markdown', reply_markup=kb)
 
 async def cp_edit_field_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -697,26 +777,60 @@ async def cp_edit_type_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text(f"✅ Тип обновлён: {ct}")
 
 async def cp_task_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Шаг 1: показать выбор исполнителя перед созданием задачи."""
     q = update.callback_query; await q.answer()
     cp_id = int(q.data.replace("cpTask_", ""))
     conn  = get_db()
     r     = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
     if not r:
         conn.close(); return
-    by = q.from_user.username or str(q.from_user.id)
-    cur = conn.execute(
-        '''INSERT INTO tasks (group_id,thread_id,task_type,description,task_date,created_by)
-           VALUES (?,?,?,?,?,?)''',
-        (r['group_id'], r['thread_id'], 'publish', r['description'], r['plan_date'], by)
+    # Строим клавиатуру исполнителей с cp_id в callback
+    members = conn.execute(
+        'SELECT username, full_name, role FROM members WHERE group_id=? ORDER BY full_name',
+        (r['group_id'],)
+    ).fetchall()
+    conn.close()
+    re_map = {'director': '👑', 'am': '📋', 'executor': '✂️'}
+    buttons, row = [], []
+    for m in members:
+        label = f"{re_map.get(m['role'],'')} {m['full_name'] or m['username']}"
+        row.append(InlineKeyboardButton(label, callback_data=f"cpTaskAsgn_{cp_id}_{m['username']}"))
+        if len(row) == 2:
+            buttons.append(row); row = []
+    if row: buttons.append(row)
+    buttons.append([InlineKeyboardButton("📌 Без исполнителя", callback_data=f"cpTaskAsgn_{cp_id}_none")])
+    await q.message.reply_text(
+        f"👤 Кому назначить задачу?\n_{r['description']}_",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
-    task_id = cur.lastrowid; conn.commit(); conn.close()
+
+async def cp_task_assign_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Шаг 2: создать задачу с выбранным исполнителем."""
+    q = update.callback_query; await q.answer()
+    parts    = q.data.replace("cpTaskAsgn_", "").split("_", 1)
+    cp_id    = int(parts[0])
+    assignee = None if parts[1] == "none" else parts[1]
+    by = q.from_user.username or str(q.from_user.id)
+    conn = get_db()
+    r   = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
+    if not r:
+        conn.close(); return
+    cur = conn.execute(
+        '''INSERT INTO tasks (group_id,thread_id,task_type,description,task_date,assigned_username,created_by)
+           VALUES (?,?,?,?,?,?,?)''',
+        (r['group_id'], r['thread_id'], 'publish', r['description'], r['plan_date'], assignee, by)
+    )
+    task_id = cur.lastrowid
+    conn.execute('UPDATE content_plan SET status="in_progress" WHERE id=?', (cp_id,))
+    conn.commit(); conn.close()
     log_change(r['group_id'], r['thread_id'], 'task', task_id, 'создана из контент-плана',
                None, r['description'], by)
-    await q.message.reply_text(
-        f"✅ Задача *#{task_id}* создана из контент-плана!\n_{r['description']}_",
-        parse_mode='Markdown',
-        reply_markup=task_action_kb(task_id, 'active')
-    )
+    msg = f"✅ Задача *#{task_id}* создана!\n📢 Публикация: _{r['description']}_"
+    if assignee: msg += f"\n👤 @{assignee}"
+    if r['plan_date']: msg += f"\n📅 {r['plan_date']}"
+    await q.edit_message_text(msg, parse_mode='Markdown',
+                              reply_markup=task_action_kb(task_id, 'active'))
 
 async def cp_del_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
@@ -1045,6 +1159,7 @@ def main():
             CP_TYPE_S: [CallbackQueryHandler(cp_type_chosen, pattern="^cpt_")],
             CP_DESC_S: [MessageHandler(filters.TEXT & ~filters.COMMAND, cp_desc_received)],
             CP_REFS_S: [
+                MessageHandler(filters.PHOTO, cp_refs_photo),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, cp_refs_received),
                 CommandHandler("skip", cp_refs_skip),
             ],
@@ -1074,8 +1189,11 @@ def main():
     app.add_handler(CallbackQueryHandler(cp_edit_cb,       pattern="^cpEdit_"))
     app.add_handler(CallbackQueryHandler(cp_edit_field_cb, pattern="^cpEf_"))
     app.add_handler(CallbackQueryHandler(cp_edit_type_cb,  pattern="^cpt_"))
-    app.add_handler(CallbackQueryHandler(cp_task_cb,       pattern="^cpTask_"))
-    app.add_handler(CallbackQueryHandler(cp_del_cb,        pattern="^cpDel_"))
+    app.add_handler(CallbackQueryHandler(cp_manage_cb,       pattern="^cp_manage_\\d"))
+    app.add_handler(CallbackQueryHandler(cp_manage_close_cb, pattern="^cp_manage_close$"))
+    app.add_handler(CallbackQueryHandler(cp_task_cb,         pattern="^cpTask_"))
+    app.add_handler(CallbackQueryHandler(cp_task_assign_cb,  pattern="^cpTaskAsgn_"))
+    app.add_handler(CallbackQueryHandler(cp_del_cb,          pattern="^cpDel_"))
     app.add_handler(CallbackQueryHandler(cp_del_ok_cb,     pattern="^cpDelOk_"))
     app.add_handler(CallbackQueryHandler(cp_del_cancel_cb, pattern="^cpDelCancel$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
