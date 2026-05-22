@@ -20,10 +20,10 @@ TOKEN   = os.getenv('BOT_TOKEN')
 DB_PATH = 'agency.db'
 
 # ── Conversation states ─────────────────────────────────────────
-T_TYPE, T_DESC, T_DATE, T_ASSIGNEE = range(4)
-CP_TYPE_S, CP_DESC_S, CP_REFS_S, CP_DATE = range(4, 8)
-IDEA_TEXT, IDEA_PRIORITY = range(8, 10)
-KPI_METRIC, KPI_VALUE = range(10, 12)
+T_TYPE, T_DESC, T_REFS, T_DATE, T_ASSIGNEE = range(5)
+CP_TYPE_S, CP_DESC_S, CP_REFS_S, CP_DATE = range(5, 9)
+IDEA_TEXT, IDEA_PRIORITY = range(9, 11)
+KPI_METRIC, KPI_VALUE = range(11, 13)
 
 # ── Constants ───────────────────────────────────────────────────
 TASK_TYPES = {
@@ -34,11 +34,20 @@ TASK_TYPES = {
     'other':   ('📌', 'Другое'),
 }
 STATUSES = {
-    'active':    '🔄 В работе',
-    'submitted': '📨 Сдано на проверку',
-    'revision':  '🔁 На доработку',
-    'approved':  '✅ Принято',
-    'published': '🚀 Опубликовано',
+    'active':      '⏳ Ожидает',
+    'in_progress': '▶️ В процессе',
+    'submitted':   '📨 На проверке',
+    'revision':    '🔁 На доработку',
+    'approved':    '✅ Принято',
+    'published':   '🚀 Опубликовано',
+}
+STATUS_DOT = {
+    'active':      '⚪',
+    'in_progress': '🔵',
+    'submitted':   '🟡',
+    'revision':    '🔴',
+    'approved':    '🟢',
+    'published':   '✅',
 }
 ROLES = {'director': '👑 Директор', 'am': '📋 АМ', 'executor': '✂️ Исполнитель'}
 BRIEF_FIELDS = {
@@ -98,6 +107,7 @@ def init_db():
             thread_id         INTEGER DEFAULT 0,
             task_type         TEXT    DEFAULT 'other',
             description       TEXT    NOT NULL,
+            refs              TEXT,
             task_date         TEXT,
             assigned_username TEXT,
             status            TEXT    DEFAULT 'active',
@@ -148,7 +158,10 @@ def init_db():
         );
     ''')
     conn.commit()
-    for sql in ['ALTER TABLE content_plan ADD COLUMN refs TEXT']:
+    for sql in [
+        'ALTER TABLE content_plan ADD COLUMN refs TEXT',
+        'ALTER TABLE tasks ADD COLUMN refs TEXT',
+    ]:
         try: conn.execute(sql); conn.commit()
         except: pass
     conn.close()
@@ -183,23 +196,22 @@ def is_manager(conn, group_id: int, username: str) -> bool:
     return bool(m and m['role'] in ('director', 'am'))
 
 def is_url(text: str) -> bool:
-    return text and (text.startswith('http://') or text.startswith('https://'))
+    return bool(text and (text.startswith('http://') or text.startswith('https://')))
 
 def format_refs(refs: str) -> str:
-    """Форматирует референс для отображения в сообщении."""
     if not refs:
         return ''
     if refs.startswith('photo:'):
-        return ''  # фото отправляем отдельно
+        return ''
     if is_url(refs):
         return f'\n🔗 [Референс]({refs})'
     return f'\n🔗 {refs}'
 
 def main_keyboard():
     return ReplyKeyboardMarkup([
-        [KeyboardButton("➕ Задача"),   KeyboardButton("📋 Список")],
-        [KeyboardButton("📅 Контент"), KeyboardButton("💡 Идеи")],
-        [KeyboardButton("📁 Проект"),  KeyboardButton("📈 KPI")],
+        [KeyboardButton("➕ Задача"),   KeyboardButton("💡 Идеи")],
+        [KeyboardButton("📅 Контент"), KeyboardButton("📈 KPI")],
+        [KeyboardButton("📋 Список"),  KeyboardButton("📁 Проект")],
     ], resize_keyboard=True)
 
 def build_calendar(year: int, month: int, prefix: str) -> InlineKeyboardMarkup:
@@ -262,8 +274,14 @@ def cp_type_keyboard():
     ])
 
 def task_action_kb(task_id: int, status: str):
+    """Кнопки управления для отдельной карточки задачи."""
     if status == 'active':
-        rows = [[InlineKeyboardButton("📨 Сдать на проверку",
+        rows = [[
+            InlineKeyboardButton("▶️ Начать",       callback_data=f"st_{task_id}_in_progress"),
+            InlineKeyboardButton("📨 На одобрение", callback_data=f"st_{task_id}_submitted"),
+        ]]
+    elif status == 'in_progress':
+        rows = [[InlineKeyboardButton("📨 Отправить на одобрение",
                                       callback_data=f"st_{task_id}_submitted")]]
     elif status == 'submitted':
         rows = [[
@@ -271,14 +289,29 @@ def task_action_kb(task_id: int, status: str):
             InlineKeyboardButton("🔁 На доработку", callback_data=f"st_{task_id}_revision"),
         ]]
     elif status == 'revision':
-        rows = [[InlineKeyboardButton("📨 Сдать снова",
-                                      callback_data=f"st_{task_id}_submitted")]]
+        rows = [[
+            InlineKeyboardButton("▶️ Возобновить", callback_data=f"st_{task_id}_in_progress"),
+            InlineKeyboardButton("📨 Сдать снова",  callback_data=f"st_{task_id}_submitted"),
+        ]]
     elif status == 'approved':
         rows = [[InlineKeyboardButton("🚀 Опубликовано",
                                       callback_data=f"st_{task_id}_published")]]
     else:
         return None
     return InlineKeyboardMarkup(rows)
+
+def _do_status_update(task_id: int, new_status: str, by: str):
+    """Обновляет статус задачи в БД и пишет в лог."""
+    conn = get_db()
+    task = conn.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
+    if not task:
+        conn.close(); return
+    old_status = task['status']
+    done_at = datetime.now().isoformat() if new_status in ('approved', 'published') else None
+    conn.execute('UPDATE tasks SET status=?,done_at=? WHERE id=?', (new_status, done_at, task_id))
+    conn.commit(); conn.close()
+    log_change(task['group_id'], task['thread_id'], 'task', task_id, 'статус',
+               STATUSES.get(old_status), STATUSES.get(new_status, new_status), by)
 
 
 # ── /start & /join ───────────────────────────────────────────────
@@ -291,7 +324,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown', reply_markup=main_keyboard()
         )
     else:
-        await update.message.reply_text("👋 Добавь меня в группу и напиши /start\n/my — мои задачи")
+        await update.message.reply_text(
+            "👋 Добавь меня в группу и напиши /start\n/my — мои задачи"
+        )
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat; user = update.effective_user
@@ -332,14 +367,14 @@ async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (f'%{username}%',)
     ).fetchall()
     conn.close()
-    # filter precisely (handles comma-separated)
     rows = [t for t in rows if username in (t['assigned_username'] or '').split(',')]
     if not rows:
         await update.message.reply_text("🎉 Нет активных задач!"); return
     msg = f"📋 *Мои задачи — @{username}*\n\n"
     for t in rows:
         emoji = TASK_TYPES.get(t['task_type'], ('📌',))[0]
-        msg  += f"{emoji} *#{t['id']}* {t['description']}\n"
+        dot   = STATUS_DOT.get(t['status'], '⚪')
+        msg  += f"{dot} {emoji} *#{t['id']}* {t['description']}\n"
         msg  += f"   {STATUSES.get(t['status'], t['status'])}"
         if t['task_date']: msg += f" · 📅 {t['task_date']}"
         msg  += "\n\n"
@@ -352,6 +387,8 @@ async def new_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type not in ['group', 'supergroup']:
         await update.message.reply_text("Только в группах!"); return ConversationHandler.END
     context.user_data.clear()
+    context.user_data['t_gid'] = update.effective_chat.id
+    context.user_data['t_tid'] = get_thread(update)
     await update.message.reply_text(
         "➕ *Новая задача*\n\nВыбери тип:",
         parse_mode='Markdown', reply_markup=task_type_keyboard()
@@ -361,18 +398,51 @@ async def new_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def t_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     ttype = q.data.replace("tt_", "")
-    context.user_data.update({'t_type': ttype, 't_gid': q.message.chat.id,
-                              't_tid': q.message.message_thread_id or 0})
+    context.user_data['t_type'] = ttype
     emoji, name = TASK_TYPES[ttype]
     await q.edit_message_text(f"{emoji} *{name}*\n\nОпиши задачу:", parse_mode='Markdown')
     return T_DESC
 
 async def t_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['t_desc'] = update.message.text
+    gid = context.user_data['t_gid']
+    tid = context.user_data['t_tid']
+    await context.bot.send_message(
+        chat_id=gid,
+        message_thread_id=tid if tid else None,
+        text="🖼 *Референс?*\n\nПришли фото, вставь ссылку или напиши текст\n\n/skip — без референса",
+        parse_mode='Markdown'
+    )
+    return T_REFS
+
+async def t_refs_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['t_refs'] = update.message.text
+    return await _t_ask_date(update, context)
+
+async def t_refs_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    file_id = update.message.photo[-1].file_id
+    context.user_data['t_refs'] = f"photo:{file_id}"
+    gid = context.user_data['t_gid']
+    tid = context.user_data['t_tid']
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text="🖼 Фото сохранено"
+    )
+    return await _t_ask_date(update, context)
+
+async def t_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['t_refs'] = None
+    return await _t_ask_date(update, context)
+
+async def _t_ask_date(update, context):
+    gid = context.user_data['t_gid']
+    tid = context.user_data['t_tid']
     today = date.today()
     label = "📅 Дата съёмки:" if context.user_data.get('t_type') == 'shoot' else "📅 Дедлайн:"
-    await update.message.reply_text(label,
-        reply_markup=build_calendar(today.year, today.month, prefix="tc"))
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text=label, reply_markup=build_calendar(today.year, today.month, prefix="tc")
+    )
     return T_DATE
 
 async def t_cal_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -390,13 +460,20 @@ async def t_date_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, y, m, d = q.data.split("_")
     context.user_data['t_date'] = f"{d}.{m}.{y}"
     await q.edit_message_text(f"📅 {d}.{m}.{y}")
-    gid = context.user_data.get('t_gid')
+    gid = context.user_data['t_gid']
+    tid = context.user_data['t_tid']
     context.user_data['m_selected'] = set()
     kb = multi_assignee_keyboard(gid, set())
     if kb:
-        await q.message.reply_text("👤 Выбери исполнителей:", reply_markup=kb)
+        await context.bot.send_message(
+            chat_id=gid, message_thread_id=tid if tid else None,
+            text="👤 Выбери исполнителей:", reply_markup=kb
+        )
     else:
-        await q.message.reply_text("👤 Напиши @username _(или /skip)_", parse_mode='Markdown')
+        await context.bot.send_message(
+            chat_id=gid, message_thread_id=tid if tid else None,
+            text="👤 Напиши @username _(или /skip)_", parse_mode='Markdown'
+        )
     return T_ASSIGNEE
 
 async def t_toggle_assignee(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -417,25 +494,27 @@ async def t_confirm_assignees(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data['t_assignee'] = ','.join(sorted(selected)) if selected else None
     names = ' '.join(f"@{u}" for u in sorted(selected)) if selected else "Без исполнителя"
     await q.edit_message_text(f"👤 {names}")
-    return await _save_task(update, context, via_cb=True)
+    return await _save_task(update, context)
 
 async def t_assignee_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['t_assignee'] = update.message.text.strip().lstrip('@')
-    return await _save_task(update, context, via_cb=False)
+    return await _save_task(update, context)
 
-async def _save_task(update, context, via_cb=False):
+async def _save_task(update, context):
     gid       = context.user_data.get('t_gid', 0)
     tid       = context.user_data.get('t_tid', 0)
     ttype     = context.user_data.get('t_type', 'other')
     desc      = context.user_data.get('t_desc', '—')
+    refs      = context.user_data.get('t_refs')
     task_date = context.user_data.get('t_date')
     assignee  = context.user_data.get('t_assignee')
-    by = get_uname(update)
+    by        = get_uname(update)
     conn = get_db()
     cur = conn.execute(
-        '''INSERT INTO tasks (group_id,thread_id,task_type,description,task_date,assigned_username,created_by)
-           VALUES (?,?,?,?,?,?,?)''',
-        (gid, tid, ttype, desc, task_date, assignee, by)
+        '''INSERT INTO tasks
+           (group_id,thread_id,task_type,description,refs,task_date,assigned_username,created_by)
+           VALUES (?,?,?,?,?,?,?,?)''',
+        (gid, tid, ttype, desc, refs, task_date, assignee, by)
     )
     task_id = cur.lastrowid; conn.commit(); conn.close()
     log_change(gid, tid, 'task', task_id, 'создана', None,
@@ -446,11 +525,24 @@ async def _save_task(update, context, via_cb=False):
         names = ' '.join(f"@{u}" for u in assignee.split(','))
         msg += f"👤 {names}\n"
     if task_date: msg += f"📅 {task_date}\n"
+    if refs and not refs.startswith("photo:"):
+        msg += format_refs(refs)
     context.user_data.clear()
-    send = update.callback_query.message if via_cb else update.message
-    await send.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard())
-    kb = task_action_kb(task_id, 'active')
-    if kb: await send.reply_text("Управление:", reply_markup=kb)
+    await context.bot.send_message(
+        chat_id=gid,
+        message_thread_id=tid if tid else None,
+        text=msg,
+        parse_mode='Markdown',
+        reply_markup=task_action_kb(task_id, 'active'),
+        disable_web_page_preview=True
+    )
+    if refs and refs.startswith("photo:"):
+        await context.bot.send_photo(
+            chat_id=gid,
+            message_thread_id=tid if tid else None,
+            photo=refs.replace("photo:", ""),
+            caption="🖼 Референс к задаче"
+        )
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -459,24 +551,21 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# ── Status change ────────────────────────────────────────────────
+# ── Status change (standalone task cards) ────────────────────────
 
 async def status_change_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
-    _, task_id_s, new_status = q.data.split("_", 2)
-    task_id = int(task_id_s)
+    parts = q.data.split("_", 2)
+    task_id = int(parts[1]); new_status = parts[2]
     by = q.from_user.username or str(q.from_user.id)
+    _do_status_update(task_id, new_status, by)
     conn = get_db()
     task = conn.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
-    if not task: conn.close(); return
-    old_status = task['status']
-    done_at = datetime.now().isoformat() if new_status in ('approved', 'published') else None
-    conn.execute('UPDATE tasks SET status=?,done_at=? WHERE id=?', (new_status, done_at, task_id))
-    conn.commit(); conn.close()
-    log_change(task['group_id'], task['thread_id'], 'task', task_id, 'статус',
-               STATUSES.get(old_status), STATUSES.get(new_status, new_status), by)
+    conn.close()
+    if not task: return
     emoji = TASK_TYPES.get(task['task_type'], ('📌',))[0]
-    text  = f"{emoji} *#{task_id} {task['description']}*\n{STATUSES.get(new_status, new_status)}"
+    dot   = STATUS_DOT.get(new_status, '⚪')
+    text  = f"{dot} {emoji} *#{task_id} {task['description']}*\n{STATUSES.get(new_status, new_status)}"
     if task['assigned_username']:
         names = ' '.join(f"@{u}" for u in task['assigned_username'].split(','))
         text += f"\n👤 {names}"
@@ -491,40 +580,166 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if chat.type not in ['group', 'supergroup']:
         await update.message.reply_text("Только в группах!"); return
-    tid = get_thread(update); username = get_uname(update)
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📥 Мне назначены", callback_data="tlist_mine"),
+        InlineKeyboardButton("📤 Я назначил",    callback_data="tlist_given"),
+    ]])
+    await update.message.reply_text("📋 *Задачи*\n\nЧто показать?",
+                                    parse_mode='Markdown', reply_markup=kb)
+
+def _build_mine_view(chat_id: int, thread_id: int, username: str):
     conn = get_db()
-    rows = conn.execute(
-        '''SELECT * FROM tasks
-           WHERE group_id=? AND thread_id=? AND status NOT IN ('approved','published')
-           ORDER BY CASE status WHEN 'submitted' THEN 1 WHEN 'revision' THEN 2
-                                WHEN 'active' THEN 3 ELSE 4 END,
-                    task_date NULLS LAST''',
-        (chat.id, tid)
+    active = conn.execute(
+        '''SELECT * FROM tasks WHERE group_id=? AND thread_id=?
+           AND assigned_username LIKE ? AND status NOT IN ('approved','published')
+           ORDER BY CASE status WHEN 'revision' THEN 1 WHEN 'submitted' THEN 2
+                                WHEN 'in_progress' THEN 3 WHEN 'active' THEN 4 ELSE 5 END,
+                    task_date NULLS LAST LIMIT 20''',
+        (chat_id, thread_id, f'%{username}%')
+    ).fetchall()
+    done = conn.execute(
+        '''SELECT * FROM tasks WHERE group_id=? AND thread_id=?
+           AND assigned_username LIKE ? AND status IN ('approved','published')
+           ORDER BY done_at DESC LIMIT 5''',
+        (chat_id, thread_id, f'%{username}%')
     ).fetchall()
     conn.close()
-    if not rows:
-        await update.message.reply_text("🎉 Активных задач нет!", reply_markup=main_keyboard()); return
+    active = [t for t in active if username in (t['assigned_username'] or '').split(',')]
+    done   = [t for t in done   if username in (t['assigned_username'] or '').split(',')]
 
-    def fmt(t):
-        emoji  = TASK_TYPES.get(t['task_type'], ('📌',))[0]
-        status = STATUSES.get(t['status'], t['status'])
-        line   = f"{emoji} *#{t['id']}* {t['description']}\n   {status}"
-        if t['assigned_username']:
-            names = ' '.join(f"@{u}" for u in t['assigned_username'].split(','))
-            line += f" · {names}"
-        if t['task_date']: line += f" · 📅 {t['task_date']}"
-        return line + "\n\n"
+    msg = "📥 *Мне назначены*\n\n"
+    buttons = []
 
-    mine  = [t for t in rows if username in (t['assigned_username'] or '').split(',')]
-    given = [t for t in rows if t['created_by'] == username
-             and username not in (t['assigned_username'] or '').split(',')]
-    other = [t for t in rows if t not in mine and t not in given]
+    if not active and not done:
+        msg += "🎉 Задач нет!"
+    else:
+        for t in active:
+            emoji  = TASK_TYPES.get(t['task_type'], ('📌',))[0]
+            dot    = STATUS_DOT.get(t['status'], '⚪')
+            date_s = f" · 📅 {t['task_date']}" if t['task_date'] else ""
+            msg += f"{dot} {emoji} *#{t['id']}* {t['description'][:50]}{date_s}\n"
+            msg += f"   {STATUSES.get(t['status'], t['status'])}\n\n"
+            row = []
+            if t['status'] == 'active':
+                row = [
+                    InlineKeyboardButton("▶️ Начать",       callback_data=f"lmst_{t['id']}_in_progress"),
+                    InlineKeyboardButton("📨 На одобрение", callback_data=f"lmst_{t['id']}_submitted"),
+                ]
+            elif t['status'] == 'in_progress':
+                row = [InlineKeyboardButton("📨 Отправить на одобрение",
+                                            callback_data=f"lmst_{t['id']}_submitted")]
+            elif t['status'] == 'revision':
+                row = [
+                    InlineKeyboardButton("▶️ Возобновить", callback_data=f"lmst_{t['id']}_in_progress"),
+                    InlineKeyboardButton("📨 Сдать снова",  callback_data=f"lmst_{t['id']}_submitted"),
+                ]
+            elif t['status'] == 'approved':
+                row = [InlineKeyboardButton("🚀 Опубликовать",
+                                            callback_data=f"lmst_{t['id']}_published")]
+            # submitted — ждём ответа, без кнопок
+            if row:
+                buttons.append(row)
 
-    msg = "📋 *Задачи*\n\n"
-    if mine:  msg += "📥 *Мне назначены:*\n\n" + "".join(fmt(t) for t in mine)
-    if given: msg += "📤 *Я назначил:*\n\n"    + "".join(fmt(t) for t in given)
-    if other: msg += "📌 *Остальные:*\n\n"      + "".join(fmt(t) for t in other)
-    await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard())
+        if done:
+            msg += "─────────────────\n✅ *Выполненные:*\n"
+            for t in done:
+                emoji = TASK_TYPES.get(t['task_type'], ('📌',))[0]
+                msg += f"✅ {emoji} #{t['id']} {t['description'][:45]}\n"
+            msg += "\n"
+
+    buttons.append([InlineKeyboardButton("📤 Я назначил →", callback_data="tlist_given")])
+    return msg, InlineKeyboardMarkup(buttons)
+
+def _build_given_view(chat_id: int, thread_id: int, username: str):
+    conn = get_db()
+    active = conn.execute(
+        '''SELECT * FROM tasks WHERE group_id=? AND thread_id=? AND created_by=?
+           AND status NOT IN ('approved','published')
+           ORDER BY CASE status WHEN 'submitted' THEN 1 WHEN 'revision' THEN 2
+                                WHEN 'in_progress' THEN 3 WHEN 'active' THEN 4 ELSE 5 END,
+                    task_date NULLS LAST LIMIT 20''',
+        (chat_id, thread_id, username)
+    ).fetchall()
+    done = conn.execute(
+        '''SELECT * FROM tasks WHERE group_id=? AND thread_id=? AND created_by=?
+           AND status IN ('approved','published')
+           ORDER BY done_at DESC LIMIT 5''',
+        (chat_id, thread_id, username)
+    ).fetchall()
+    conn.close()
+
+    msg = "📤 *Я назначил*\n\n"
+    buttons = []
+
+    if not active and not done:
+        msg += "Нет назначенных задач."
+    else:
+        for t in active:
+            emoji    = TASK_TYPES.get(t['task_type'], ('📌',))[0]
+            dot      = STATUS_DOT.get(t['status'], '⚪')
+            assignee = ' '.join(f"@{u}" for u in (t['assigned_username'] or '').split(',') if u)
+            date_s   = f" · 📅 {t['task_date']}" if t['task_date'] else ""
+            msg += f"{dot} {emoji} *#{t['id']}* {t['description'][:45]}\n"
+            msg += f"   {assignee}{date_s} · {STATUSES.get(t['status'], t['status'])}\n\n"
+            row = []
+            if t['status'] == 'submitted':
+                row = [
+                    InlineKeyboardButton(f"✅ Принять #{t['id']}",   callback_data=f"lgst_{t['id']}_approved"),
+                    InlineKeyboardButton(f"🔁 Доработка #{t['id']}", callback_data=f"lgst_{t['id']}_revision"),
+                ]
+            elif t['status'] == 'approved':
+                row = [InlineKeyboardButton(f"🚀 Опубл. #{t['id']}",
+                                            callback_data=f"lgst_{t['id']}_published")]
+            if row:
+                buttons.append(row)
+
+        if done:
+            msg += "─────────────────\n✅ *Выполненные:*\n"
+            for t in done:
+                emoji = TASK_TYPES.get(t['task_type'], ('📌',))[0]
+                msg += f"✅ {emoji} #{t['id']} {t['description'][:45]}\n"
+            msg += "\n"
+
+    buttons.append([InlineKeyboardButton("← 📥 Мне назначены", callback_data="tlist_mine")])
+    return msg, InlineKeyboardMarkup(buttons)
+
+async def tlist_mine_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query; await q.answer()
+    username = q.from_user.username or str(q.from_user.id)
+    tid = q.message.message_thread_id or 0
+    msg, kb = _build_mine_view(q.message.chat.id, tid, username)
+    await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=kb)
+
+async def tlist_given_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query; await q.answer()
+    username = q.from_user.username or str(q.from_user.id)
+    tid = q.message.message_thread_id or 0
+    msg, kb = _build_given_view(q.message.chat.id, tid, username)
+    await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=kb)
+
+async def lmine_action_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Смена статуса из списка 'Мне назначены' — обновляет список."""
+    q = update.callback_query; await q.answer()
+    parts = q.data.split("_", 2)
+    task_id = int(parts[1]); new_status = parts[2]
+    by = q.from_user.username or str(q.from_user.id)
+    _do_status_update(task_id, new_status, by)
+    username = q.from_user.username or str(q.from_user.id)
+    tid = q.message.message_thread_id or 0
+    msg, kb = _build_mine_view(q.message.chat.id, tid, username)
+    await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=kb)
+
+async def lgiven_action_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Смена статуса из списка 'Я назначил' — обновляет список."""
+    q = update.callback_query; await q.answer()
+    parts = q.data.split("_", 2)
+    task_id = int(parts[1]); new_status = parts[2]
+    by = q.from_user.username or str(q.from_user.id)
+    _do_status_update(task_id, new_status, by)
+    username = q.from_user.username or str(q.from_user.id)
+    tid = q.message.message_thread_id or 0
+    msg, kb = _build_given_view(q.message.chat.id, tid, username)
+    await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=kb)
 
 
 # ── Content plan ─────────────────────────────────────────────────
@@ -582,19 +797,17 @@ async def cp_manage_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"⚙️ *Управление* ({offset+1}–{min(offset+5, total)} из {total})\n\n"
     buttons = []
     for r in rows:
-        dot = DOT.get(r['status'], '⚪')
-        # Строка с описанием записи (не кликабельна)
+        dot   = DOT.get(r['status'], '⚪')
         label = f"{dot} #{r['id']} {r['content_type']} {r['plan_date'] or ''}"
         buttons.append([InlineKeyboardButton(label, callback_data="cp_noop")])
-        # Строка с кнопками управления
         buttons.append([
-            InlineKeyboardButton("✏️ Изменить",  callback_data=f"cpEdit_{r['id']}"),
-            InlineKeyboardButton("📌 В задачи",  callback_data=f"cpTask_{r['id']}"),
-            InlineKeyboardButton("🗑 Удалить",   callback_data=f"cpDel_{r['id']}"),
+            InlineKeyboardButton("✏️ Изменить", callback_data=f"cpEdit_{r['id']}"),
+            InlineKeyboardButton("📌 В задачи", callback_data=f"cpTask_{r['id']}"),
+            InlineKeyboardButton("🗑 Удалить",  callback_data=f"cpDel_{r['id']}"),
         ])
     nav = []
-    if offset > 0:       nav.append(InlineKeyboardButton("◀️", callback_data=f"cp_manage_{offset-5}"))
-    if offset + 5 < total: nav.append(InlineKeyboardButton("▶️", callback_data=f"cp_manage_{offset+5}"))
+    if offset > 0:          nav.append(InlineKeyboardButton("◀️", callback_data=f"cp_manage_{offset-5}"))
+    if offset + 5 < total:  nav.append(InlineKeyboardButton("▶️", callback_data=f"cp_manage_{offset+5}"))
     if nav: buttons.append(nav)
     buttons.append([InlineKeyboardButton("✖️ Закрыть", callback_data="cp_manage_close")])
     await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(buttons))
@@ -613,8 +826,12 @@ async def cp_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     context.user_data['cp_gid'] = q.message.chat.id
     context.user_data['cp_tid'] = q.message.message_thread_id or 0
-    await q.message.reply_text("📅 *Новая запись*\n\nТип контента:",
-                               parse_mode='Markdown', reply_markup=cp_type_keyboard())
+    await context.bot.send_message(
+        chat_id=q.message.chat.id,
+        message_thread_id=q.message.message_thread_id or None,
+        text="📅 *Новая запись*\n\nТип контента:",
+        parse_mode='Markdown', reply_markup=cp_type_keyboard()
+    )
     return CP_TYPE_S
 
 async def cp_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -622,13 +839,21 @@ async def cp_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ct = CP_TYPE_MAP.get(q.data, q.data)
     context.user_data['cp_type'] = ct
     await q.edit_message_text(f"Тип: {ct}")
-    await q.message.reply_text("✏️ Что должно быть в публикации?")
+    gid = context.user_data.get('cp_gid', q.message.chat.id)
+    tid = context.user_data.get('cp_tid', 0)
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text="✏️ Что должно быть в публикации?"
+    )
     return CP_DESC_S
 
 async def cp_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['cp_desc'] = update.message.text
-    await update.message.reply_text(
-        "🖼 Референс?\nПришли *фото*, вставь *ссылку* или напиши текст\n\nИли нажми /skip",
+    gid = context.user_data.get('cp_gid', update.effective_chat.id)
+    tid = context.user_data.get('cp_tid', 0)
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text="🖼 *Референс?*\n\nПришли фото, вставь ссылку или напиши текст\n\n/skip — без референса",
         parse_mode='Markdown'
     )
     return CP_REFS_S
@@ -640,7 +865,12 @@ async def cp_refs_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cp_refs_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_id = update.message.photo[-1].file_id
     context.user_data['cp_refs'] = f"photo:{file_id}"
-    await update.message.reply_text("🖼 Фото сохранено")
+    gid = context.user_data.get('cp_gid', update.effective_chat.id)
+    tid = context.user_data.get('cp_tid', 0)
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text="🖼 Фото сохранено"
+    )
     return await _cp_ask_date(update, context)
 
 async def cp_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -648,9 +878,12 @@ async def cp_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _cp_ask_date(update, context)
 
 async def _cp_ask_date(update, context):
+    gid = context.user_data.get('cp_gid', update.effective_chat.id)
+    tid = context.user_data.get('cp_tid', 0)
     today = date.today()
-    await update.message.reply_text(
-        "📅 Дата публикации:",
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text="📅 Дата публикации:",
         reply_markup=build_calendar(today.year, today.month, prefix="cp")
     )
     return CP_DATE
@@ -671,35 +904,36 @@ async def cp_date_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_str = f"{d}.{m}.{y}"
     context.user_data['cp_date'] = date_str
     await q.edit_message_text(f"📅 {date_str}")
-    return await _save_cp(update, context, via_cb=True)
+    return await _save_cp(update, context)
 
-async def _save_cp(update, context, via_cb=False):
-    gid = context.user_data.get('cp_gid', 0); tid = context.user_data.get('cp_tid', 0)
-    ct  = context.user_data.get('cp_type', '—'); desc = context.user_data.get('cp_desc', '—')
+async def _save_cp(update, context):
+    gid  = context.user_data.get('cp_gid', 0); tid  = context.user_data.get('cp_tid', 0)
+    ct   = context.user_data.get('cp_type', '—'); desc = context.user_data.get('cp_desc', '—')
     refs = context.user_data.get('cp_refs'); plan_date = context.user_data.get('cp_date')
-    by = get_uname(update)
+    by   = get_uname(update)
     conn = get_db()
-    cur = conn.execute(
+    cur  = conn.execute(
         'INSERT INTO content_plan (group_id,thread_id,content_type,description,refs,plan_date,created_by) VALUES (?,?,?,?,?,?,?)',
         (gid, tid, ct, desc, refs, plan_date, by)
     )
     cp_id = cur.lastrowid; conn.commit(); conn.close()
     log_change(gid, tid, 'content_plan', cp_id, 'создана', None, f"{ct} {plan_date}: {desc}", by)
-    for k in ('cp_gid','cp_tid','cp_type','cp_desc','cp_refs','cp_date'): context.user_data.pop(k, None)
+    for k in ('cp_gid','cp_tid','cp_type','cp_desc','cp_refs','cp_date'):
+        context.user_data.pop(k, None)
     msg = f"✅ *Добавлено в контент-план*\n\n{ct}"
     if plan_date: msg += f" — {plan_date}"
     msg += f"\n_{desc}_"
-    send = update.callback_query.message if via_cb else update.message
-    # Если ссылка — показываем кликабельно
     if refs and not refs.startswith("photo:"):
         msg += format_refs(refs)
-        await send.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard(),
-                              disable_web_page_preview=False)
-    elif refs and refs.startswith("photo:"):
-        await send.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard())
-        await send.reply_photo(refs.replace("photo:", ""), caption="🖼 Референс")
-    else:
-        await send.reply_text(msg, parse_mode='Markdown', reply_markup=main_keyboard())
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text=msg, parse_mode='Markdown', disable_web_page_preview=False
+    )
+    if refs and refs.startswith("photo:"):
+        await context.bot.send_photo(
+            chat_id=gid, message_thread_id=tid if tid else None,
+            photo=refs.replace("photo:", ""), caption="🖼 Референс"
+        )
     return ConversationHandler.END
 
 
@@ -708,10 +942,10 @@ async def _save_cp(update, context, via_cb=False):
 async def cp_edit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     cp_id = int(q.data.replace("cpEdit_", ""))
-    conn = get_db(); r = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone(); conn.close()
+    conn  = get_db(); r = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone(); conn.close()
     if not r: return
     msg = f"✏️ *#{cp_id}* {r['content_type']} — {r['plan_date'] or '—'}\n_{r['description']}_\n\nЧто изменить?"
-    kb = InlineKeyboardMarkup([
+    kb  = InlineKeyboardMarkup([
         [InlineKeyboardButton("📝 Описание", callback_data=f"cpEf_{cp_id}_desc"),
          InlineKeyboardButton("🖼 Референс", callback_data=f"cpEf_{cp_id}_refs")],
         [InlineKeyboardButton("📅 Дату",    callback_data=f"cpEf_{cp_id}_date"),
@@ -778,7 +1012,7 @@ async def cptask_toggle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     username = q.data.replace("cptoggle_", "")
     selected = context.user_data.setdefault('cptask_selected', set())
-    cp_id = context.user_data.get('cptask_id')
+    cp_id    = context.user_data.get('cptask_id')
     if username in selected: selected.discard(username)
     else: selected.add(username)
     conn = get_db()
@@ -793,7 +1027,7 @@ async def cptask_toggle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         check = "✅" if m['username'] in selected else "☐"
         label = f"{check} {re_map.get(m['role'],'')} {m['full_name'] or m['username']}"
         buttons.append([InlineKeyboardButton(label, callback_data=f"cptoggle_{m['username']}")])
-    count = len(selected)
+    count   = len(selected)
     confirm = f"✅ Назначить ({count})" if count else "✅ Назначить"
     buttons.append([InlineKeyboardButton(confirm, callback_data="cpconfirm")])
     buttons.append([InlineKeyboardButton("📌 Без исполнителя", callback_data="cpconfirm_none")])
@@ -801,10 +1035,10 @@ async def cptask_toggle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cptask_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
-    cp_id    = context.user_data.get('cptask_id')
-    selected = context.user_data.get('cptask_selected', set())
+    cp_id     = context.user_data.get('cptask_id')
+    selected  = context.user_data.get('cptask_selected', set())
     none_mode = q.data == "cpconfirm_none"
-    assignee = None if none_mode else (','.join(sorted(selected)) if selected else None)
+    assignee  = None if none_mode else (','.join(sorted(selected)) if selected else None)
     by = q.from_user.username or str(q.from_user.id)
     conn = get_db(); r = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
     if not r: conn.close(); return
@@ -822,23 +1056,25 @@ async def cptask_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"\n👤 {names}"
     if r['plan_date']: msg += f"\n📅 {r['plan_date']}"
     for k in ('cptask_id', 'cptask_selected'): context.user_data.pop(k, None)
-    await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=task_action_kb(task_id, 'active'))
+    await q.edit_message_text(msg, parse_mode='Markdown',
+                              reply_markup=task_action_kb(task_id, 'active'))
 
 async def cp_del_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     cp_id = int(q.data.replace("cpDel_", ""))
-    conn = get_db(); r = conn.execute('SELECT description FROM content_plan WHERE id=?', (cp_id,)).fetchone(); conn.close()
-    desc = r['description'][:30] if r else ''
+    conn  = get_db(); r = conn.execute('SELECT description FROM content_plan WHERE id=?', (cp_id,)).fetchone(); conn.close()
+    desc  = r['description'][:30] if r else ''
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Да, удалить", callback_data=f"cpDelOk_{cp_id}"),
         InlineKeyboardButton("❌ Отмена",      callback_data="cpDelCancel"),
     ]])
-    await q.message.reply_text(f"Удалить запись #{cp_id}?\n_{desc}_", parse_mode='Markdown', reply_markup=kb)
+    await q.message.reply_text(f"Удалить запись #{cp_id}?\n_{desc}_",
+                               parse_mode='Markdown', reply_markup=kb)
 
 async def cp_del_ok_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     cp_id = int(q.data.replace("cpDelOk_", "")); by = q.from_user.username or str(q.from_user.id)
-    conn = get_db(); r = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
+    conn  = get_db(); r = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
     if r:
         conn.execute('DELETE FROM content_plan WHERE id=?', (cp_id,))
         conn.commit()
@@ -863,16 +1099,21 @@ async def ideas_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
            ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
                     created_at DESC LIMIT 10''', (chat.id, tid)
     ).fetchall(); conn.close()
-    P = {'high': '🔴', 'normal': '🟡', 'low': '⚪'}
-    msg = "💡 *Идеи*\n\n" + ("".join(f"{P.get(i['priority'],'🟡')} *#{i['id']}* {i['text']}\n" for i in rows) if rows else "Пока пусто.\n")
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("➕ Добавить идею", callback_data="idea_add")]])
+    P   = {'high': '🔴', 'normal': '🟡', 'low': '⚪'}
+    msg = "💡 *Идеи*\n\n"
+    msg += "".join(f"{P.get(i['priority'],'🟡')} *#{i['id']}* {i['text']}\n" for i in rows) if rows else "Пока пусто.\n"
+    kb  = InlineKeyboardMarkup([[InlineKeyboardButton("➕ Добавить идею", callback_data="idea_add")]])
     await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=kb)
 
 async def idea_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     context.user_data['idea_gid'] = q.message.chat.id
     context.user_data['idea_tid'] = q.message.message_thread_id or 0
-    await q.message.reply_text("💡 Напиши идею:")
+    await context.bot.send_message(
+        chat_id=q.message.chat.id,
+        message_thread_id=q.message.message_thread_id or None,
+        text="💡 Напиши идею:"
+    )
     return IDEA_TEXT
 
 async def idea_text_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -882,7 +1123,12 @@ async def idea_text_received(update: Update, context: ContextTypes.DEFAULT_TYPE)
         InlineKeyboardButton("🟡 Обычный",  callback_data="iprio_normal"),
         InlineKeyboardButton("⚪ Низкий",   callback_data="iprio_low"),
     ]])
-    await update.message.reply_text("Приоритет?", reply_markup=kb)
+    gid = context.user_data.get('idea_gid', update.effective_chat.id)
+    tid = context.user_data.get('idea_tid', 0)
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text="Приоритет?", reply_markup=kb
+    )
     return IDEA_PRIORITY
 
 async def idea_priority_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -963,12 +1209,15 @@ async def kpi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Только в группах!"); return
     tid = get_thread(update); username = get_uname(update)
     conn = get_db()
-    goals = conn.execute('SELECT * FROM kpi_goals WHERE group_id=? AND thread_id=? ORDER BY metric', (chat.id, tid)).fetchall()
+    goals = conn.execute(
+        'SELECT * FROM kpi_goals WHERE group_id=? AND thread_id=? ORDER BY metric',
+        (chat.id, tid)
+    ).fetchall()
     stats = conn.execute(
         '''SELECT assigned_username, COUNT(*) as total,
                   SUM(CASE WHEN status IN ('approved','published') THEN 1 ELSE 0 END) as done_cnt,
                   SUM(CASE WHEN status='submitted' THEN 1 ELSE 0 END) as sub_cnt,
-                  SUM(CASE WHEN status IN ('active','revision') THEN 1 ELSE 0 END) as act_cnt
+                  SUM(CASE WHEN status IN ('active','in_progress','revision') THEN 1 ELSE 0 END) as act_cnt
            FROM tasks WHERE group_id=? AND thread_id=? AND assigned_username IS NOT NULL
            GROUP BY assigned_username ORDER BY done_cnt DESC''', (chat.id, tid)
     ).fetchall()
@@ -984,17 +1233,15 @@ async def kpi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "👥 *Команда:*\n\n"
         for s in stats:
             total = s['total']; done = s['done_cnt'] or 0
-            pct = int(done / total * 100) if total else 0
-            bar = "🟢" if pct >= 80 else "🟡" if pct >= 50 else "🔴"
-            msg += f"{bar} *@{s['assigned_username']}*\n"
-            msg += f"   ✅ {done} · 📨 {s['sub_cnt'] or 0} · 🔄 {s['act_cnt'] or 0} ({pct}%)\n\n"
+            pct   = int(done / total * 100) if total else 0
+            bar   = "🟢" if pct >= 80 else "🟡" if pct >= 50 else "🔴"
+            msg  += f"{bar} *@{s['assigned_username']}*\n"
+            msg  += f"   ✅ {done} · 📨 {s['sub_cnt'] or 0} · 🔄 {s['act_cnt'] or 0} ({pct}%)\n\n"
     buttons = []
     if mgr:
         buttons.append([InlineKeyboardButton("🎯 Установить цели", callback_data="kpi_set_start")])
-    await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=
-        InlineKeyboardMarkup(buttons) if buttons else None)
-
-# ── KPI goal setting conversation ────────────────────────────────
+    await update.message.reply_text(msg, parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(buttons) if buttons else None)
 
 async def kpi_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
@@ -1004,7 +1251,6 @@ async def kpi_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer("⛔ Только АМ и Директор", show_alert=True); return
     context.user_data['kpi_gid'] = q.message.chat.id
     context.user_data['kpi_tid'] = q.message.message_thread_id or 0
-    # Preset metrics + custom
     buttons = []
     row = []
     for preset in KPI_PRESETS:
@@ -1012,8 +1258,12 @@ async def kpi_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(row) == 3: buttons.append(row); row = []
     if row: buttons.append(row)
     buttons.append([InlineKeyboardButton("✍️ Своё название", callback_data="kpim_custom")])
-    await q.message.reply_text("🎯 *Установить цель*\n\nВыбери метрику:",
-                               parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(buttons))
+    await context.bot.send_message(
+        chat_id=q.message.chat.id,
+        message_thread_id=q.message.message_thread_id or None,
+        text="🎯 *Установить цель*\n\nВыбери метрику:",
+        parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(buttons)
+    )
     return KPI_METRIC
 
 async def kpi_metric_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1023,22 +1273,34 @@ async def kpi_metric_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return KPI_METRIC
     metric = q.data.replace("kpim_", "")
     context.user_data['kpi_metric'] = metric
-    await q.edit_message_text(f"🎯 Метрика: *{metric}*\n\nВыбери значение:",
-                              parse_mode='Markdown')
-    buttons = [[InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[:4]],
-               [InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[4:]],
-               [InlineKeyboardButton("✍️ Другое число", callback_data="kpiv_custom")]]
-    await q.message.reply_text("Значение:", reply_markup=InlineKeyboardMarkup(buttons))
+    await q.edit_message_text(f"🎯 Метрика: *{metric}*", parse_mode='Markdown')
+    buttons = [
+        [InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[:4]],
+        [InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[4:]],
+        [InlineKeyboardButton("✍️ Другое число", callback_data="kpiv_custom")],
+    ]
+    gid = context.user_data.get('kpi_gid', q.message.chat.id)
+    tid = context.user_data.get('kpi_tid', 0)
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text="Значение:", reply_markup=InlineKeyboardMarkup(buttons)
+    )
     return KPI_VALUE
 
 async def kpi_metric_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['kpi_metric'] = update.message.text
-    buttons = [[InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[:4]],
-               [InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[4:]],
-               [InlineKeyboardButton("✍️ Другое число", callback_data="kpiv_custom")]]
-    await update.message.reply_text(
-        f"🎯 Метрика: *{update.message.text}*\n\nЗначение:",
-        parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(buttons))
+    buttons = [
+        [InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[:4]],
+        [InlineKeyboardButton(v, callback_data=f"kpiv_{v}") for v in KPI_VALUES[4:]],
+        [InlineKeyboardButton("✍️ Другое число", callback_data="kpiv_custom")],
+    ]
+    gid = context.user_data.get('kpi_gid', update.effective_chat.id)
+    tid = context.user_data.get('kpi_tid', 0)
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text=f"🎯 *{update.message.text}*\n\nЗначение:",
+        parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(buttons)
+    )
     return KPI_VALUE
 
 async def kpi_value_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1048,19 +1310,21 @@ async def kpi_value_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return KPI_VALUE
     value = q.data.replace("kpiv_", "")
     await q.edit_message_text(f"Значение: *{value}*", parse_mode='Markdown')
-    return await _save_kpi_goal(update, context, value, via_cb=True)
+    return await _save_kpi_goal(update, context, value)
 
 async def kpi_value_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await _save_kpi_goal(update, context, update.message.text, via_cb=False)
+    return await _save_kpi_goal(update, context, update.message.text)
 
-async def _save_kpi_goal(update, context, value, via_cb=False):
+async def _save_kpi_goal(update, context, value):
     gid    = context.user_data.get('kpi_gid', 0)
     tid    = context.user_data.get('kpi_tid', 0)
     metric = context.user_data.get('kpi_metric', '—')
     by     = get_uname(update)
     conn   = get_db()
-    old = conn.execute('SELECT value FROM kpi_goals WHERE group_id=? AND thread_id=? AND metric=?',
-                       (gid, tid, metric)).fetchone()
+    old    = conn.execute(
+        'SELECT value FROM kpi_goals WHERE group_id=? AND thread_id=? AND metric=?',
+        (gid, tid, metric)
+    ).fetchone()
     conn.execute(
         '''INSERT INTO kpi_goals (group_id,thread_id,metric,value,set_by) VALUES (?,?,?,?,?)
            ON CONFLICT(group_id,thread_id,metric) DO UPDATE SET value=excluded.value,
@@ -1070,9 +1334,10 @@ async def _save_kpi_goal(update, context, value, via_cb=False):
     conn.commit(); conn.close()
     log_change(gid, tid, 'kpi_goal', 0, metric, old['value'] if old else None, value, by)
     for k in ('kpi_gid','kpi_tid','kpi_metric'): context.user_data.pop(k, None)
-    send = update.callback_query.message if via_cb else update.message
-    await send.reply_text(f"✅ Цель: *{metric}* → {value}", parse_mode='Markdown',
-                          reply_markup=main_keyboard())
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text=f"✅ Цель: *{metric}* → {value}", parse_mode='Markdown'
+    )
     return ConversationHandler.END
 
 
@@ -1111,13 +1376,13 @@ async def cancel_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Отменено", reply_markup=main_keyboard())
 
 async def cp_edit_value_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cp_id = context.user_data.get('cp_edit_id'); field = context.user_data.get('cp_edit_field')
-    gid = context.user_data.get('cp_edit_gid', update.effective_chat.id)
-    tid = context.user_data.get('cp_edit_tid', 0); value = update.message.text; by = get_uname(update)
+    cp_id     = context.user_data.get('cp_edit_id'); field = context.user_data.get('cp_edit_field')
+    gid       = context.user_data.get('cp_edit_gid', update.effective_chat.id)
+    tid       = context.user_data.get('cp_edit_tid', 0); value = update.message.text; by = get_uname(update)
     field_map = {'desc': 'description', 'refs': 'refs', 'date': 'plan_date'}
     db_field  = field_map.get(field, field)
     conn = get_db()
-    old = conn.execute(f'SELECT {db_field} FROM content_plan WHERE id=?', (cp_id,)).fetchone()
+    old  = conn.execute(f'SELECT {db_field} FROM content_plan WHERE id=?', (cp_id,)).fetchone()
     conn.execute(f'UPDATE content_plan SET {db_field}=? WHERE id=?', (value, cp_id))
     conn.commit(); conn.close()
     label_map = {'desc': '📝 Описание', 'refs': '🖼 Референс', 'date': '📅 Дата'}
@@ -1127,15 +1392,12 @@ async def cp_edit_value_received(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text("✅ Обновлено!", reply_markup=main_keyboard())
 
 async def cp_edit_refs_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обновление референса фотографией при редактировании."""
     if not context.user_data.get('cp_edit_id'): return
     cp_id = context.user_data['cp_edit_id']
-    gid = context.user_data.get('cp_edit_gid', update.effective_chat.id)
-    tid = context.user_data.get('cp_edit_tid', 0)
-    by = get_uname(update)
-    file_id = update.message.photo[-1].file_id
-    value = f"photo:{file_id}"
-    conn = get_db()
+    gid   = context.user_data.get('cp_edit_gid', update.effective_chat.id)
+    tid   = context.user_data.get('cp_edit_tid', 0); by = get_uname(update)
+    value = f"photo:{update.message.photo[-1].file_id}"
+    conn  = get_db()
     conn.execute('UPDATE content_plan SET refs=? WHERE id=?', (value, cp_id))
     conn.commit(); conn.close()
     log_change(gid, tid, 'content_plan', cp_id, '🖼 Референс', '—', 'фото', by)
@@ -1143,13 +1405,10 @@ async def cp_edit_refs_photo(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("✅ Фото-референс обновлён!", reply_markup=main_keyboard())
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Brief editing
     if context.user_data.get('brief_field'):
         await brief_value_received(update, context); return
-    # CP field editing
     if context.user_data.get('cp_edit_id') and context.user_data.get('cp_edit_field') != 'type':
         await cp_edit_value_received(update, context); return
-    # Main menu buttons
     text = update.message.text
     if   text == "📋 Список":  await list_tasks(update, context)
     elif text == "📅 Контент": await content_plan(update, context)
@@ -1158,7 +1417,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📈 KPI":     await kpi(update, context)
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Фото вне разговора — для редактирования референса."""
     if context.user_data.get('cp_edit_id') and context.user_data.get('cp_edit_field') == 'refs':
         await cp_edit_refs_photo(update, context)
 
@@ -1175,15 +1433,20 @@ def main():
             MessageHandler(filters.Regex("^➕ Задача$"), new_task_start),
         ],
         states={
-            T_TYPE:     [CallbackQueryHandler(t_type_chosen, pattern="^tt_")],
-            T_DESC:     [MessageHandler(filters.TEXT & ~filters.COMMAND, t_desc_received)],
-            T_DATE:     [
+            T_TYPE: [CallbackQueryHandler(t_type_chosen, pattern="^tt_")],
+            T_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, t_desc_received)],
+            T_REFS: [
+                MessageHandler(filters.PHOTO, t_refs_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, t_refs_text),
+                CommandHandler("skip", t_refs_skip),
+            ],
+            T_DATE: [
                 CallbackQueryHandler(t_date_chosen, pattern="^tcday_"),
                 CallbackQueryHandler(t_cal_nav,     pattern="^tc(prev|next)_"),
                 CallbackQueryHandler(t_cal_noop,    pattern="^tcnoop$"),
             ],
             T_ASSIGNEE: [
-                CallbackQueryHandler(t_toggle_assignee,  pattern="^mtoggle_"),
+                CallbackQueryHandler(t_toggle_assignee,   pattern="^mtoggle_"),
                 CallbackQueryHandler(t_confirm_assignees, pattern="^mconfirm$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, t_assignee_text),
             ],
@@ -1249,6 +1512,10 @@ def main():
     app.add_handler(kpi_conv)
     app.add_handler(CallbackQueryHandler(role_chosen,        pattern="^role_"))
     app.add_handler(CallbackQueryHandler(status_change_cb,   pattern=r"^st_\d+_"))
+    app.add_handler(CallbackQueryHandler(tlist_mine_cb,      pattern="^tlist_mine$"))
+    app.add_handler(CallbackQueryHandler(tlist_given_cb,     pattern="^tlist_given$"))
+    app.add_handler(CallbackQueryHandler(lmine_action_cb,    pattern=r"^lmst_\d+_"))
+    app.add_handler(CallbackQueryHandler(lgiven_action_cb,   pattern=r"^lgst_\d+_"))
     app.add_handler(CallbackQueryHandler(brief_field_chosen, pattern="^br_"))
     app.add_handler(CallbackQueryHandler(cp_manage_cb,       pattern=r"^cp_manage_\d"))
     app.add_handler(CallbackQueryHandler(cp_manage_close_cb, pattern="^cp_manage_close$"))
@@ -1265,7 +1532,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("✅ WhyNot бот v5 запущен!")
+    logger.info("✅ WhyNot бот v6 запущен!")
     app.run_polling(drop_pending_updates=True)
 
 
