@@ -214,7 +214,8 @@ def main_keyboard():
         [KeyboardButton("📋 Список"),  KeyboardButton("📁 Проект")],
     ], resize_keyboard=True)
 
-def build_calendar(year: int, month: int, prefix: str) -> InlineKeyboardMarkup:
+def build_calendar(year: int, month: int, prefix: str,
+                   show_skip: bool = False) -> InlineKeyboardMarkup:
     pm = month - 1 if month > 1 else 12
     py = year if month > 1 else year - 1
     nm = month + 1 if month < 12 else 1
@@ -233,6 +234,11 @@ def build_calendar(year: int, month: int, prefix: str) -> InlineKeyboardMarkup:
                                  callback_data=f"{prefix}day_{year}_{month:02d}_{d:02d}"
                                  if d else f"{prefix}noop")
             for d in week
+        ])
+    if show_skip:
+        rows.append([
+            InlineKeyboardButton("⏭ Без даты", callback_data=f"{prefix}skip"),
+            InlineKeyboardButton("❌ Отмена",   callback_data="conv_cancel"),
         ])
     return InlineKeyboardMarkup(rows)
 
@@ -400,18 +406,29 @@ async def t_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ttype = q.data.replace("tt_", "")
     context.user_data['t_type'] = ttype
     emoji, name = TASK_TYPES[ttype]
-    await q.edit_message_text(f"{emoji} *{name}*\n\nОпиши задачу:", parse_mode='Markdown')
+    await q.edit_message_text(
+        f"{emoji} *{name}*\n\nОпиши задачу:",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ Отмена", callback_data="conv_cancel")
+        ]])
+    )
     return T_DESC
 
 async def t_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['t_desc'] = update.message.text
     gid = context.user_data['t_gid']
     tid = context.user_data['t_tid']
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("⏭ Без референса", callback_data="t_refs_skip"),
+        InlineKeyboardButton("❌ Отмена",        callback_data="conv_cancel"),
+    ]])
     await context.bot.send_message(
         chat_id=gid,
         message_thread_id=tid if tid else None,
-        text="🖼 *Референс?*\n\nПришли фото, вставь ссылку или напиши текст\n\n/skip — без референса",
-        parse_mode='Markdown'
+        text="🖼 *Референс?*\n\nПришли фото или вставь ссылку:",
+        parse_mode='Markdown',
+        reply_markup=kb
     )
     return T_REFS
 
@@ -431,7 +448,11 @@ async def t_refs_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _t_ask_date(update, context)
 
 async def t_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пропустить референс — через /skip (legacy) или inline-кнопку."""
     context.user_data['t_refs'] = None
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("🖼 Без референса")
     return await _t_ask_date(update, context)
 
 async def _t_ask_date(update, context):
@@ -441,9 +462,35 @@ async def _t_ask_date(update, context):
     label = "📅 Дата съёмки:" if context.user_data.get('t_type') == 'shoot' else "📅 Дедлайн:"
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text=label, reply_markup=build_calendar(today.year, today.month, prefix="tc")
+        text=label,
+        reply_markup=build_calendar(today.year, today.month, prefix="tc", show_skip=True)
     )
     return T_DATE
+
+async def t_date_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Без даты — inline-кнопка в календаре."""
+    q = update.callback_query; await q.answer()
+    context.user_data['t_date'] = None
+    await q.edit_message_text("📅 Без даты")
+    gid = context.user_data['t_gid']
+    tid = context.user_data['t_tid']
+    context.user_data['m_selected'] = set()
+    kb = multi_assignee_keyboard(gid, set())
+    if kb:
+        await context.bot.send_message(
+            chat_id=gid, message_thread_id=tid if tid else None,
+            text="👤 Выбери исполнителей:", reply_markup=kb
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=gid, message_thread_id=tid if tid else None,
+            text="👤 Напиши @username или выбери кнопкой:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("⏭ Без исполнителя", callback_data="mconfirm"),
+                InlineKeyboardButton("❌ Отмена",          callback_data="conv_cancel"),
+            ]])
+        )
+    return T_ASSIGNEE
 
 async def t_cal_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
@@ -548,6 +595,19 @@ async def _save_task(update, context):
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("❌ Отменено", reply_markup=main_keyboard())
+    return ConversationHandler.END
+
+async def cancel_conv_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена через inline-кнопку ❌ Отмена — работает из любого шага."""
+    q = update.callback_query; await q.answer("Отменено")
+    await q.edit_message_text("❌ Отменено")
+    context.user_data.clear()
+    await context.bot.send_message(
+        chat_id=q.message.chat_id,
+        message_thread_id=q.message.message_thread_id or None,
+        text="Главное меню 👇",
+        reply_markup=main_keyboard()
+    )
     return ConversationHandler.END
 
 
@@ -843,7 +903,10 @@ async def cp_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tid = context.user_data.get('cp_tid', 0)
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text="✏️ Что должно быть в публикации?"
+        text="✏️ Что должно быть в публикации?",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ Отмена", callback_data="conv_cancel")
+        ]])
     )
     return CP_DESC_S
 
@@ -851,10 +914,15 @@ async def cp_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['cp_desc'] = update.message.text
     gid = context.user_data.get('cp_gid', update.effective_chat.id)
     tid = context.user_data.get('cp_tid', 0)
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("⏭ Без референса", callback_data="cp_refs_skip"),
+        InlineKeyboardButton("❌ Отмена",        callback_data="conv_cancel"),
+    ]])
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text="🖼 *Референс?*\n\nПришли фото, вставь ссылку или напиши текст\n\n/skip — без референса",
-        parse_mode='Markdown'
+        text="🖼 *Референс?*\n\nПришли фото или вставь ссылку:",
+        parse_mode='Markdown',
+        reply_markup=kb
     )
     return CP_REFS_S
 
@@ -874,7 +942,11 @@ async def cp_refs_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _cp_ask_date(update, context)
 
 async def cp_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пропустить референс — через /skip или inline-кнопку."""
     context.user_data['cp_refs'] = None
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("🖼 Без референса")
     return await _cp_ask_date(update, context)
 
 async def _cp_ask_date(update, context):
@@ -884,9 +956,16 @@ async def _cp_ask_date(update, context):
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
         text="📅 Дата публикации:",
-        reply_markup=build_calendar(today.year, today.month, prefix="cp")
+        reply_markup=build_calendar(today.year, today.month, prefix="cp", show_skip=True)
     )
     return CP_DATE
+
+async def cp_date_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Без даты — inline-кнопка в календаре."""
+    q = update.callback_query; await q.answer()
+    context.user_data['cp_date'] = None
+    await q.edit_message_text("📅 Без даты")
+    return await _save_cp(update, context)
 
 async def cp_cal_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
@@ -1427,23 +1506,34 @@ def main():
     init_db()
     app = Application.builder().token(TOKEN).build()
 
+    _cancel_fallbacks = [
+        CommandHandler("cancel", cancel),
+        CallbackQueryHandler(cancel_conv_cb, pattern="^conv_cancel$"),
+    ]
+
     task_conv = ConversationHandler(
         entry_points=[
             CommandHandler("task", new_task_start),
             MessageHandler(filters.Regex("^➕ Задача$"), new_task_start),
         ],
         states={
-            T_TYPE: [CallbackQueryHandler(t_type_chosen, pattern="^tt_")],
-            T_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, t_desc_received)],
+            T_TYPE: [
+                CallbackQueryHandler(t_type_chosen, pattern="^tt_"),
+            ],
+            T_DESC: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, t_desc_received),
+            ],
             T_REFS: [
                 MessageHandler(filters.PHOTO, t_refs_photo),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, t_refs_text),
                 CommandHandler("skip", t_refs_skip),
+                CallbackQueryHandler(t_refs_skip, pattern="^t_refs_skip$"),
             ],
             T_DATE: [
                 CallbackQueryHandler(t_date_chosen, pattern="^tcday_"),
                 CallbackQueryHandler(t_cal_nav,     pattern="^tc(prev|next)_"),
                 CallbackQueryHandler(t_cal_noop,    pattern="^tcnoop$"),
+                CallbackQueryHandler(t_date_skip,   pattern="^tcskip$"),
             ],
             T_ASSIGNEE: [
                 CallbackQueryHandler(t_toggle_assignee,   pattern="^mtoggle_"),
@@ -1451,27 +1541,33 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, t_assignee_text),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=_cancel_fallbacks,
         per_message=False, allow_reentry=True,
     )
 
     cp_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(cp_add_start, pattern="^cp_add$")],
         states={
-            CP_TYPE_S: [CallbackQueryHandler(cp_type_chosen, pattern="^cpt_")],
-            CP_DESC_S: [MessageHandler(filters.TEXT & ~filters.COMMAND, cp_desc_received)],
+            CP_TYPE_S: [
+                CallbackQueryHandler(cp_type_chosen, pattern="^cpt_"),
+            ],
+            CP_DESC_S: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, cp_desc_received),
+            ],
             CP_REFS_S: [
                 MessageHandler(filters.PHOTO, cp_refs_photo),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, cp_refs_received),
                 CommandHandler("skip", cp_refs_skip),
+                CallbackQueryHandler(cp_refs_skip, pattern="^cp_refs_skip$"),
             ],
             CP_DATE: [
                 CallbackQueryHandler(cp_date_chosen, pattern="^cpday_"),
                 CallbackQueryHandler(cp_cal_nav,     pattern="^cp(prev|next)_"),
                 CallbackQueryHandler(cp_cal_noop,    pattern="^cpnoop$"),
+                CallbackQueryHandler(cp_date_skip,   pattern="^cpskip$"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=_cancel_fallbacks,
         per_message=False, allow_reentry=True,
     )
 
@@ -1481,7 +1577,7 @@ def main():
             IDEA_TEXT:     [MessageHandler(filters.TEXT & ~filters.COMMAND, idea_text_received)],
             IDEA_PRIORITY: [CallbackQueryHandler(idea_priority_chosen, pattern="^iprio_")],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=_cancel_fallbacks,
         per_message=False, allow_reentry=True,
     )
 
@@ -1497,7 +1593,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, kpi_value_text),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=_cancel_fallbacks,
         per_message=False, allow_reentry=True,
     )
 
@@ -1510,6 +1606,7 @@ def main():
     app.add_handler(cp_conv)
     app.add_handler(idea_conv)
     app.add_handler(kpi_conv)
+    app.add_handler(CallbackQueryHandler(cancel_conv_cb,     pattern="^conv_cancel$"))
     app.add_handler(CallbackQueryHandler(role_chosen,        pattern="^role_"))
     app.add_handler(CallbackQueryHandler(status_change_cb,   pattern=r"^st_\d+_"))
     app.add_handler(CallbackQueryHandler(tlist_mine_cb,      pattern="^tlist_mine$"))
@@ -1532,7 +1629,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("✅ WhyNot бот v6 запущен!")
+    logger.info("✅ WhyNot бот v7 запущен!")
     app.run_polling(drop_pending_updates=True)
 
 
