@@ -571,12 +571,11 @@ async def _save_task(update, context):
     context.user_data.clear()
     await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
                                    text=msg, parse_mode='Markdown',
-                                   reply_markup=task_action_kb(task_id, 'active'),
+                                   reply_markup=main_kb(),
                                    disable_web_page_preview=True)
     if refs and refs.startswith("photo:"):
         await context.bot.send_photo(chat_id=gid, message_thread_id=tid if tid else None,
                                      photo=refs.replace("photo:", ""), caption="🖼 Референс")
-    await send_menu(gid, tid, context)
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -808,7 +807,7 @@ async def idea_priority_chosen(update: Update, context: ContextTypes.DEFAULT_TYP
     for k in ('idea_gid','idea_tid','idea_text'): context.user_data.pop(k, None)
     await q.edit_message_text(f"💡 {P.get(priority,'🟡')} Идея сохранена!\n_{text}_",
                               parse_mode='Markdown')
-    await send_menu(gid, tid, context)
+    await _send_ideas(gid, tid, context)
     return ConversationHandler.END
 
 
@@ -817,20 +816,30 @@ async def idea_priority_chosen(update: Update, context: ContextTypes.DEFAULT_TYP
 async def _send_content(chat_id, tid, username, context):
     conn = get_db()
     rows = conn.execute(
-        'SELECT * FROM content_plan WHERE group_id=? AND thread_id=? ORDER BY plan_date, id LIMIT 30',
+        'SELECT * FROM content_plan WHERE group_id=? AND thread_id=? ORDER BY plan_date, id LIMIT 50',
         (chat_id, tid)
     ).fetchall()
     mgr = is_manager(conn, chat_id, username); conn.close()
     DOT = {'planned': '⚪', 'in_progress': '🟡', 'done': '🟢', 'published': '✅'}
-    if not rows:
-        msg = "📅 *Контент-план*\n\nПока пусто."
-    else:
-        msg = "📅 *Контент-план*\n\n"
-        for r in rows:
+    active_rows = [r for r in rows if r['status'] not in ('done', 'published')]
+    done_rows   = [r for r in rows if r['status'] in ('done', 'published')]
+    msg = "📅 *Контент-план*\n\n"
+    if active_rows:
+        for r in active_rows:
             dot = DOT.get(r['status'], '⚪')
             ri  = (" 🖼" if r['refs'] and r['refs'].startswith("photo:") else
                    " 🔗" if r['refs'] else "")
             msg += f"{dot} *#{r['id']}* {r['content_type']} — {r['plan_date'] or '—'}\n   {r['description']}{ri}\n\n"
+    elif not done_rows:
+        msg += "Пока пусто.\n"
+    else:
+        msg += "Активных записей нет.\n"
+    if done_rows:
+        msg += "─────\n✅ *Отработано:*\n\n"
+        for r in done_rows[:8]:
+            msg += f"✅ *#{r['id']}* {r['content_type']} — {r['plan_date'] or '—'}\n   {r['description']}\n\n"
+        if len(done_rows) > 8:
+            msg += f"_...и ещё {len(done_rows)-8} записей_\n"
     buttons = []
     if mgr:
         buttons.append([InlineKeyboardButton("➕ Добавить",    callback_data="cp_add"),
@@ -859,12 +868,18 @@ async def cp_manage_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_manager(conn, chat.id, username):
         conn.close(); await q.answer("⛔ Только АМ и Директор", show_alert=True); return
     tid   = q.message.message_thread_id or 0
-    rows  = conn.execute('SELECT * FROM content_plan WHERE group_id=? AND thread_id=? ORDER BY plan_date, id LIMIT 5 OFFSET ?',
-                         (chat.id, tid, offset)).fetchall()
-    total = conn.execute('SELECT COUNT(*) FROM content_plan WHERE group_id=? AND thread_id=?',
-                         (chat.id, tid)).fetchone()[0]
+    rows  = conn.execute(
+        "SELECT * FROM content_plan WHERE group_id=? AND thread_id=? AND status NOT IN ('done','published') ORDER BY plan_date, id LIMIT 5 OFFSET ?",
+        (chat.id, tid, offset)).fetchall()
+    total = conn.execute(
+        "SELECT COUNT(*) FROM content_plan WHERE group_id=? AND thread_id=? AND status NOT IN ('done','published')",
+        (chat.id, tid)).fetchone()[0]
     conn.close()
-    if not rows: await q.edit_message_text("Записей нет"); return
+    if not rows:
+        await q.edit_message_text(
+            "⚙️ *Управление*\n\nАктивных записей нет.", parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Контент", callback_data="mm_content")]]))
+        return
     DOT     = {'planned': '⚪', 'in_progress': '🟡', 'done': '🟢', 'published': '✅'}
     msg     = f"⚙️ *Управление* ({offset+1}–{min(offset+5, total)} из {total})\n\n"
     buttons = []
@@ -873,9 +888,13 @@ async def cp_manage_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{DOT.get(r['status'],'⚪')} #{r['id']} {r['content_type']} {r['plan_date'] or ''}",
             callback_data="cp_noop")])
         buttons.append([
-            InlineKeyboardButton("✏️ Изменить", callback_data=f"cpEdit_{r['id']}"),
-            InlineKeyboardButton("📌 В задачи", callback_data=f"cpTask_{r['id']}"),
-            InlineKeyboardButton("🗑 Удалить",  callback_data=f"cpDel_{r['id']}"),
+            InlineKeyboardButton("✏️ Изменить",  callback_data=f"cpEdit_{r['id']}"),
+            InlineKeyboardButton("📌 В задачи",  callback_data=f"cpTask_{r['id']}"),
+        ])
+        buttons.append([
+            InlineKeyboardButton("✅ Готово",     callback_data=f"cpSt_{r['id']}_done"),
+            InlineKeyboardButton("🚀 Опубл.",    callback_data=f"cpSt_{r['id']}_published"),
+            InlineKeyboardButton("🗑 Удалить",   callback_data=f"cpDel_{r['id']}"),
         ])
     nav = []
     if offset > 0:         nav.append(InlineKeyboardButton("◀️", callback_data=f"cp_manage_{offset-5}"))
@@ -1000,7 +1019,7 @@ async def _save_cp(update, context):
     if refs and refs.startswith("photo:"):
         await context.bot.send_photo(chat_id=gid, message_thread_id=tid if tid else None,
                                      photo=refs.replace("photo:", ""), caption="🖼 Референс")
-    await send_menu(gid, tid, context)
+    await _send_content(gid, tid, by, context)
     return ConversationHandler.END
 
 
@@ -1152,6 +1171,26 @@ async def cp_del_ok_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                   InlineKeyboardButton("← Управление", callback_data="cp_manage_0")
                               ]]))
 
+async def cp_status_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query; await q.answer()
+    parts      = q.data.replace("cpSt_", "").split("_")
+    cp_id      = int(parts[0]); new_status = parts[1]
+    by         = q.from_user.username or str(q.from_user.id)
+    STATUS_LABEL = {'done': '✅ Готово', 'published': '🚀 Опубликовано'}
+    conn = get_db()
+    r    = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
+    if r:
+        conn.execute('UPDATE content_plan SET status=? WHERE id=?', (new_status, cp_id))
+        conn.commit()
+        log_change(r['group_id'], r['thread_id'], 'content_plan', cp_id, 'статус',
+                   r['status'], new_status, by)
+    conn.close()
+    label = STATUS_LABEL.get(new_status, new_status)
+    await q.answer(f"#{cp_id} → {label}", show_alert=False)
+    # Refresh management view
+    q.data = "cp_manage_0"
+    await cp_manage_cb(update, context)
+
 
 # ── KPI ───────────────────────────────────────────────────────────
 
@@ -1273,7 +1312,7 @@ async def _save_kpi_goal(update, context, value):
     for k in ('kpi_gid','kpi_tid','kpi_metric'): context.user_data.pop(k, None)
     await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
                                    text=f"✅ Цель: *{metric}* → {value}", parse_mode='Markdown')
-    await send_menu(gid, tid, context)
+    await _send_kpi(gid, tid, by, context)
     return ConversationHandler.END
 
 
@@ -1333,8 +1372,9 @@ async def brief_value_received(update: Update, context: ContextTypes.DEFAULT_TYP
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
         text=f"✅ *{BRIEF_FIELDS.get(field, field)}* обновлено!",
-        parse_mode='Markdown', reply_markup=main_kb()
+        parse_mode='Markdown'
     )
+    await _send_project(gid, tid, context)
 
 
 # ── General text / photo handlers ────────────────────────────────
@@ -1526,11 +1566,12 @@ def main():
     app.add_handler(CallbackQueryHandler(cptask_confirm_cb,  pattern="^cpconfirm"))
     app.add_handler(CallbackQueryHandler(cp_del_cb,          pattern="^cpDel_"))
     app.add_handler(CallbackQueryHandler(cp_del_ok_cb,       pattern="^cpDelOk_"))
+    app.add_handler(CallbackQueryHandler(cp_status_cb,       pattern="^cpSt_"))
     # Photos & generic text
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("✅ WhyNot бот v9 запущен!")
+    logger.info("✅ WhyNot бот v10 запущен!")
     app.run_polling(drop_pending_updates=True)
 
 
