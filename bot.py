@@ -91,6 +91,11 @@ BTN_DATE_TOMORROW = "📅 Завтра"
 BTN_DATE_PICK     = "📅 Выбрать дату"
 BTN_CP_ADD     = "➕ Добавить"
 BTN_CP_MANAGE  = "⚙️ Управление"
+BTN_CP_ACT_EDIT  = "✏️ Изменить"
+BTN_CP_ACT_TASKS = "📌 В задачи"
+BTN_CP_ACT_DONE  = "✅ Готово"
+BTN_CP_ACT_DEL   = "🗑 Удалить"
+BTN_CP_ACT_BACK  = "◀️ К списку"
 BTN_LIST_MINE  = "📥 Мне назначено"
 BTN_LIST_GIVEN = "📤 Я назначил"
 BTN_IDEAS_ADD  = "💡 Новая идея"
@@ -304,6 +309,14 @@ def ideas_action_kb() -> ReplyKeyboardMarkup:
         [[BTN_IDEAS_ADD, BTN_CANCEL]],
         resize_keyboard=True, one_time_keyboard=True
     )
+
+def cp_item_action_kb() -> ReplyKeyboardMarkup:
+    """Shown after user selects an item in management list."""
+    return ReplyKeyboardMarkup([
+        [BTN_CP_ACT_EDIT,  BTN_CP_ACT_TASKS],
+        [BTN_CP_ACT_DONE,  BTN_CP_ACT_DEL],
+        [BTN_CP_ACT_BACK],
+    ], resize_keyboard=True, one_time_keyboard=True)
 
 
 # ── Inline keyboards (in-chat message buttons) ──────────────────
@@ -924,10 +937,10 @@ async def idea_priority_chosen(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ── Content plan helpers ─────────────────────────────────────────
 
-_CP_PAGE = 8   # items per page in management view
+_CP_PAGE = 10   # items per page in management view
 
 def _build_cp_manage_markup(chat_id, tid, offset=0):
-    """Returns (msg, InlineKeyboardMarkup) for content plan management view."""
+    """Returns (msg, InlineKeyboardMarkup) — items as single-line select buttons."""
     conn  = get_db()
     rows  = conn.execute(
         "SELECT * FROM content_plan WHERE group_id=? AND thread_id=? AND status NOT IN ('done','published') ORDER BY plan_date, id LIMIT ? OFFSET ?",
@@ -942,19 +955,14 @@ def _build_cp_manage_markup(chat_id, tid, offset=0):
                 InlineKeyboardMarkup([back]))
     DOT = {'planned': '⚪', 'in_progress': '🟡'}
     end = min(offset + _CP_PAGE, total)
-    msg = f"⚙️ *Управление* ({offset+1}–{end} из {total})\n\n"
+    msg = f"⚙️ *Управление* ({offset+1}–{end} из {total})\n\nВыбери запись 👇"
     buttons = []
     for r in rows:
-        pd      = r['plan_date'] or ''
-        date_s  = pd[:5] if len(pd) >= 5 else pd        # DD.MM
-        title   = f"{DOT.get(r['status'],'⚪')} #{r['id']} {r['content_type']} {date_s}"
-        buttons.append([
-            InlineKeyboardButton(title,  callback_data="cp_noop"),
-            InlineKeyboardButton("✏️",  callback_data=f"cpEdit_{r['id']}"),
-            InlineKeyboardButton("📌",  callback_data=f"cpTask_{r['id']}"),
-            InlineKeyboardButton("✅",  callback_data=f"cpSt_{r['id']}_done"),
-            InlineKeyboardButton("🗑",  callback_data=f"cpDel_{r['id']}"),
-        ])
+        pd     = r['plan_date'] or '—'
+        date_s = pd[:5] if len(pd) >= 5 else pd          # DD.MM
+        desc_s = r['description'][:30] + ('…' if len(r['description']) > 30 else '')
+        title  = f"{DOT.get(r['status'],'⚪')} #{r['id']} {r['content_type']} — {desc_s} · {date_s}"
+        buttons.append([InlineKeyboardButton(title, callback_data=f"cpSel_{r['id']}")])
     nav = []
     if offset > 0:                nav.append(InlineKeyboardButton("◀️", callback_data=f"cp_manage_{offset-_CP_PAGE}"))
     if offset + _CP_PAGE < total: nav.append(InlineKeyboardButton("▶️", callback_data=f"cp_manage_{offset+_CP_PAGE}"))
@@ -1344,6 +1352,121 @@ async def cp_status_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text(msg, parse_mode='Markdown', reply_markup=kb)
 
 
+# ── Content plan: item selection + keyboard actions ───────────────
+
+async def cp_select_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User tapped an item in management list → show its info + action keyboard."""
+    q = update.callback_query; await q.answer()
+    cp_id = int(q.data.replace("cpSel_", ""))
+    conn  = get_db()
+    r     = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
+    conn.close()
+    if not r: return
+    context.user_data['cp_mgr_selected'] = cp_id
+    DOT  = {'planned': '⚪', 'in_progress': '🟡', 'done': '🟢', 'published': '✅'}
+    SLB  = {'planned': 'Запланировано', 'in_progress': 'В работе',
+            'done': 'Готово', 'published': 'Опубликовано'}
+    msg  = (f"{DOT.get(r['status'],'⚪')} *#{r['id']} {r['content_type']}*\n"
+            f"_{r['description']}_\n"
+            f"📅 {r['plan_date'] or '—'}  ·  {SLB.get(r['status'], r['status'])}")
+    gid  = q.message.chat.id
+    tid  = q.message.message_thread_id or 0
+    await context.bot.send_message(
+        chat_id=gid, message_thread_id=tid if tid else None,
+        text=msg, parse_mode='Markdown', reply_markup=cp_item_action_kb()
+    )
+
+
+async def handle_cp_item_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles action keyboard buttons after an item has been selected."""
+    text = update.message.text
+    gid  = update.effective_chat.id
+    tid  = get_thread(update)
+    by   = get_uname(update)
+
+    # ← К списку — re-show management, clear selection
+    if text == BTN_CP_ACT_BACK:
+        context.user_data.pop('cp_mgr_selected', None)
+        msg, kb = _build_cp_manage_markup(gid, tid, 0)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text=msg, parse_mode='Markdown', reply_markup=kb)
+        return
+
+    cp_id = context.user_data.get('cp_mgr_selected')
+    if not cp_id:
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text="⚠️ Выбери запись из списка", reply_markup=main_kb())
+        return
+    conn = get_db()
+    r    = conn.execute('SELECT * FROM content_plan WHERE id=?', (cp_id,)).fetchone()
+    conn.close()
+    if not r:
+        context.user_data.pop('cp_mgr_selected', None)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text="⚠️ Запись не найдена", reply_markup=main_kb())
+        return
+
+    if text == BTN_CP_ACT_DONE:
+        conn = get_db()
+        conn.execute('UPDATE content_plan SET status="done" WHERE id=?', (cp_id,))
+        conn.commit(); conn.close()
+        log_change(gid, tid, 'content_plan', cp_id, 'статус', r['status'], 'done', by)
+        context.user_data.pop('cp_mgr_selected', None)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text=f"✅ *#{cp_id}* отмечено готовым!", parse_mode='Markdown')
+        msg, kb = _build_cp_manage_markup(gid, tid, 0)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text=msg, parse_mode='Markdown', reply_markup=kb)
+
+    elif text == BTN_CP_ACT_DEL:
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Да, удалить", callback_data=f"cpDelOk_{cp_id}"),
+            InlineKeyboardButton("❌ Нет",         callback_data="cp_manage_0"),
+        ]])
+        await context.bot.send_message(
+            chat_id=gid, message_thread_id=tid if tid else None,
+            text=f"🗑 Удалить *#{cp_id}* {r['content_type']}?\n_{r['description'][:40]}_",
+            parse_mode='Markdown', reply_markup=kb)
+
+    elif text == BTN_CP_ACT_EDIT:
+        context.user_data.update({'cp_edit_id': cp_id, 'cp_edit_field': None,
+                                  'cp_edit_gid': gid, 'cp_edit_tid': tid})
+        msg_text = (f"✏️ *#{cp_id}* {r['content_type']} — {r['plan_date'] or '—'}\n"
+                    f"_{r['description']}_\n\nЧто изменить?")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📝 Описание", callback_data=f"cpEf_{cp_id}_desc"),
+             InlineKeyboardButton("🖼 Референс", callback_data=f"cpEf_{cp_id}_refs")],
+            [InlineKeyboardButton("📅 Дату",    callback_data=f"cpEf_{cp_id}_date"),
+             InlineKeyboardButton("🏷 Тип",     callback_data=f"cpEf_{cp_id}_type")],
+            [InlineKeyboardButton("← Управление", callback_data="cp_manage_0")],
+        ])
+        if r['refs'] and r['refs'].startswith("photo:"):
+            await context.bot.send_photo(chat_id=gid, message_thread_id=tid if tid else None,
+                                         photo=r['refs'].replace("photo:", ""),
+                                         caption="🖼 Текущий референс")
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text=msg_text, parse_mode='Markdown', reply_markup=kb)
+
+    elif text == BTN_CP_ACT_TASKS:
+        conn    = get_db()
+        members = conn.execute(
+            'SELECT username, full_name, role FROM members WHERE group_id=? ORDER BY full_name',
+            (r['group_id'],)).fetchall(); conn.close()
+        context.user_data['cptask_id']       = cp_id
+        context.user_data['cptask_selected'] = set()
+        re_map  = {'director': '👑', 'am': '📋', 'executor': '✂️'}
+        buttons = [[InlineKeyboardButton(
+            f"☐ {re_map.get(m['role'],'')} {m['full_name'] or m['username']}",
+            callback_data=f"cptoggle_{m['username']}")]
+            for m in members]
+        buttons.append([InlineKeyboardButton("✅ Назначить",       callback_data="cpconfirm")])
+        buttons.append([InlineKeyboardButton("📌 Без исполнителя", callback_data="cpconfirm_none")])
+        await context.bot.send_message(
+            chat_id=gid, message_thread_id=tid if tid else None,
+            text=f"👤 Кому назначить?\n_{r['description']}_",
+            parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(buttons))
+
+
 # ── KPI ───────────────────────────────────────────────────────────
 
 async def _send_kpi(chat_id, tid, username, context):
@@ -1701,6 +1824,12 @@ def main():
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_LIST_MINE}$"),  handle_list_mine))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_LIST_GIVEN}$"), handle_list_given))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_CP_MANAGE}$"),  handle_cp_manage))
+    # Content plan item action keyboard
+    _cp_act_pattern = "^(" + "|".join(re.escape(b) for b in [
+        BTN_CP_ACT_EDIT, BTN_CP_ACT_TASKS, BTN_CP_ACT_DONE,
+        BTN_CP_ACT_DEL,  BTN_CP_ACT_BACK,
+    ]) + ")$"
+    app.add_handler(MessageHandler(filters.Regex(_cp_act_pattern), handle_cp_item_action))
 
     # Inline callbacks
     app.add_handler(CallbackQueryHandler(cancel_conv_cb,  pattern="^conv_cancel$"))
@@ -1714,6 +1843,7 @@ def main():
     app.add_handler(CallbackQueryHandler(mm_content_cb,      pattern="^mm_content$"))
     app.add_handler(CallbackQueryHandler(cp_manage_cb,       pattern=r"^cp_manage_\d"))
     app.add_handler(CallbackQueryHandler(cp_noop_cb,         pattern="^cp_noop$"))
+    app.add_handler(CallbackQueryHandler(cp_select_cb,       pattern=r"^cpSel_\d"))
     app.add_handler(CallbackQueryHandler(cp_edit_cb,         pattern="^cpEdit_"))
     app.add_handler(CallbackQueryHandler(cp_edit_field_cb,   pattern="^cpEf_"))
     app.add_handler(CallbackQueryHandler(cp_edit_type_cb,    pattern="^cpt_"))
@@ -1730,7 +1860,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("✅ WhyNot бот v15 запущен!")
+    logger.info("✅ WhyNot бот v16 запущен!")
     app.run_polling(drop_pending_updates=True)
 
 
