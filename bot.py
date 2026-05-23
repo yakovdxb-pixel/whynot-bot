@@ -83,7 +83,8 @@ BTN_KPI     = "📈 KPI"
 BTN_LIST    = "📋 Список"
 BTN_PROJECT = "📁 Проект"
 BTN_CANCEL     = "❌ Отмена"
-BTN_SKIP       = "⏭ Без референса"
+BTN_NEXT       = "➡️ Далее"
+BTN_SKIP       = BTN_NEXT   # "skip refs / go next" — same text
 BTN_NO_DATE    = "⏭ Без даты"
 BTN_DATE_TODAY    = "📅 Сегодня"
 BTN_DATE_TOMORROW = "📅 Завтра"
@@ -230,29 +231,41 @@ def task_type_kb_reply() -> ReplyKeyboardMarkup:
         ['🎬 Съемка',   '📢 Публикация'],
         ['🎨 Дизайн',   '✂️ Монтаж'],
         ['📌 Другое'],
-        [BTN_CANCEL],
     ], resize_keyboard=True, one_time_keyboard=True)
 
 def cp_type_kb_reply() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
         ['📸 Пост',   '📱 Сторис'],
         ['🎬 Рилс',   '🎯 Актуальное'],
-        [BTN_CANCEL],
     ], resize_keyboard=True, one_time_keyboard=True)
 
 def cancel_kb_reply() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([[BTN_CANCEL]], resize_keyboard=True, one_time_keyboard=True)
 
+def desc_kb_reply() -> ReplyKeyboardMarkup:
+    """Keyboard shown during free-text description steps (no cancel clutter)."""
+    return ReplyKeyboardMarkup([[BTN_NEXT]], resize_keyboard=True, one_time_keyboard=True)
+
 def refs_kb_reply() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [[BTN_SKIP, BTN_CANCEL]], resize_keyboard=True, one_time_keyboard=True
+        [[BTN_NEXT]], resize_keyboard=True, one_time_keyboard=True
     )
 
-def quick_date_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([
-        [BTN_DATE_TODAY, BTN_DATE_TOMORROW, BTN_DATE_PICK],
-        [BTN_NO_DATE, BTN_CANCEL],
-    ], resize_keyboard=True, one_time_keyboard=True)
+def date_spinner_kb(y: int, m: int, d: int, h: int, mn: int, prefix: str) -> InlineKeyboardMarkup:
+    max_d = cal_lib.monthrange(y, m)[1]
+    d = min(d, max_d)
+    def b(label, cb): return InlineKeyboardButton(label, callback_data=cb)
+    def n(label):     return InlineKeyboardButton(label, callback_data=f"{prefix}_no")
+    return InlineKeyboardMarkup([
+        [b("◀️", f"{prefix}_d-"), n(f"   {d:02d}   "),         b("▶️", f"{prefix}_d+")],
+        [b("◀️", f"{prefix}_m-"), n(f"  {MONTH_RU[m]}  "),    b("▶️", f"{prefix}_m+")],
+        [b("◀️", f"{prefix}_y-"), n(f"   {y}   "),            b("▶️", f"{prefix}_y+")],
+        [b("◀️", f"{prefix}_h-"), n(f"   {h:02d}ч   "),       b("▶️", f"{prefix}_h+")],
+        [b("◀️", f"{prefix}_n-"), n(f"   {mn:02d} мин   "),   b("▶️", f"{prefix}_n+")],
+        [b("✅ Готово", f"{prefix}_ok"),
+         b("⏭ Без даты", f"{prefix}_sk"),
+         b("❌ Отмена", "conv_cancel")],
+    ])
 
 def month_kb() -> ReplyKeyboardMarkup:
     today = date.today()
@@ -493,11 +506,16 @@ async def t_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
         text=f"{emoji} *{name}*\n\nОпиши задачу:",
-        parse_mode='Markdown', reply_markup=cancel_kb_reply()
+        parse_mode='Markdown', reply_markup=desc_kb_reply()
     )
     return T_DESC
 
 async def t_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == BTN_NEXT:
+        gid = context.user_data['t_gid']; tid = context.user_data['t_tid']
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text="✏️ Напиши описание задачи:", reply_markup=desc_kb_reply())
+        return T_DESC
     context.user_data['t_desc'] = update.message.text
     gid = context.user_data['t_gid']; tid = context.user_data['t_tid']
     await context.bot.send_message(
@@ -526,73 +544,52 @@ async def t_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _t_ask_date(update, context):
     gid = context.user_data['t_gid']; tid = context.user_data['t_tid']
     label = "📅 Дата съёмки:" if context.user_data.get('t_type') == 'shoot' else "📅 Дедлайн:"
-    context.user_data.pop('t_date_ym', None)
+    today = date.today()
+    context.user_data.update({'sp_y': today.year, 'sp_m': today.month,
+                               'sp_d': today.day,  'sp_h': 0, 'sp_n': 0})
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text=label, reply_markup=quick_date_kb()
+        text=f"{label}\n\n◀️ / ▶️ — прокрути нужное значение:",
+        reply_markup=date_spinner_kb(today.year, today.month, today.day, 0, 0, "dt")
     )
     return T_DATE
 
-async def t_date_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    gid  = context.user_data.get('t_gid', update.effective_chat.id)
-    tid  = context.user_data.get('t_tid', 0)
-    # Quick buttons
-    if text == BTN_DATE_TODAY:
-        context.user_data['t_date'] = date.today().strftime("%d.%m.%Y")
-        context.user_data.pop('t_date_ym', None)
+async def t_date_spinner_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query; await q.answer()
+    cmd   = q.data
+    today = date.today()
+    y  = context.user_data.get('sp_y',  today.year)
+    m  = context.user_data.get('sp_m',  today.month)
+    d  = context.user_data.get('sp_d',  today.day)
+    h  = context.user_data.get('sp_h',  0)
+    mn = context.user_data.get('sp_n',  0)
+    if cmd == "dt_no": return T_DATE
+    if cmd == "dt_ok":
+        date_str = f"{d:02d}.{m:02d}.{y}"
+        if h or mn: date_str += f" {h:02d}:{mn:02d}"
+        context.user_data['t_date'] = date_str
+        for k in ('sp_y','sp_m','sp_d','sp_h','sp_n'): context.user_data.pop(k, None)
+        await q.edit_message_text(f"📅 {date_str}")
         return await _t_ask_assignee(update, context)
-    if text == BTN_DATE_TOMORROW:
-        context.user_data['t_date'] = (date.today() + timedelta(days=1)).strftime("%d.%m.%Y")
-        context.user_data.pop('t_date_ym', None)
+    if cmd == "dt_sk":
+        context.user_data['t_date'] = None
+        for k in ('sp_y','sp_m','sp_d','sp_h','sp_n'): context.user_data.pop(k, None)
+        await q.edit_message_text("📅 Без даты")
         return await _t_ask_assignee(update, context)
-    if text == BTN_DATE_PICK:
-        context.user_data.pop('t_date_ym', None)
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text="📅 Выбери месяц:", reply_markup=month_kb())
-        return T_DATE
-    if text == "◀️ Месяц":
-        context.user_data.pop('t_date_ym', None)
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text="📅 Выбери месяц:", reply_markup=month_kb())
-        return T_DATE
-    # Month → day two-step
-    if 't_date_ym' not in context.user_data:
-        parts = text.strip().split()
-        if len(parts) == 2:
-            try:
-                m_idx = MONTH_RU.index(parts[0]); year = int(parts[1])
-                if 1 <= m_idx <= 12:
-                    context.user_data['t_date_ym'] = (year, m_idx)
-                    await context.bot.send_message(
-                        chat_id=gid, message_thread_id=tid if tid else None,
-                        text=f"📅 {MONTH_RU[m_idx]} {year} — выбери число:",
-                        reply_markup=day_kb(year, m_idx))
-                    return T_DATE
-            except (ValueError, IndexError):
-                pass
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text="Выбери месяц:", reply_markup=month_kb())
-        return T_DATE
-    else:
-        y, m = context.user_data['t_date_ym']
-        try:
-            d = int(text)
-            if 1 <= d <= cal_lib.monthrange(y, m)[1]:
-                context.user_data['t_date'] = f"{d:02d}.{m:02d}.{y}"
-                context.user_data.pop('t_date_ym', None)
-                return await _t_ask_assignee(update, context)
-        except ValueError:
-            pass
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text=f"Выбери число ({MONTH_RU[m]} {y}):",
-                                       reply_markup=day_kb(y, m))
-        return T_DATE
-
-async def t_date_skip_kb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['t_date'] = None
-    context.user_data.pop('t_date_ym', None)
-    return await _t_ask_assignee(update, context)
+    max_d = cal_lib.monthrange(y, m)[1]
+    if   cmd == "dt_d+": d = d % max_d + 1
+    elif cmd == "dt_d-": d = (d - 2) % max_d + 1
+    elif cmd == "dt_m+": m = m % 12 + 1;    d = min(d, cal_lib.monthrange(y, m)[1])
+    elif cmd == "dt_m-": m = (m - 2) % 12 + 1; d = min(d, cal_lib.monthrange(y, m)[1])
+    elif cmd == "dt_y+": y += 1
+    elif cmd == "dt_y-": y = max(today.year, y - 1)
+    elif cmd == "dt_h+": h = (h + 1) % 24
+    elif cmd == "dt_h-": h = (h - 1) % 24
+    elif cmd == "dt_n+": mn = (mn + 5) % 60
+    elif cmd == "dt_n-": mn = (mn - 5) % 60
+    context.user_data.update({'sp_y': y, 'sp_m': m, 'sp_d': d, 'sp_h': h, 'sp_n': mn})
+    await q.edit_message_reply_markup(reply_markup=date_spinner_kb(y, m, d, h, mn, "dt"))
+    return T_DATE
 
 async def _t_ask_assignee(update, context):
     gid = context.user_data['t_gid']; tid = context.user_data['t_tid']
@@ -882,11 +879,17 @@ async def idea_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['idea_tid'] = tid
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text="💡 Напиши идею:", reply_markup=cancel_kb_reply()
+        text="💡 Напиши идею:", reply_markup=desc_kb_reply()
     )
     return IDEA_TEXT
 
 async def idea_text_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == BTN_NEXT:
+        gid = context.user_data.get('idea_gid', update.effective_chat.id)
+        tid = context.user_data.get('idea_tid', 0)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text="💡 Напиши идею:", reply_markup=desc_kb_reply())
+        return IDEA_TEXT
     context.user_data['idea_text'] = update.message.text
     gid = context.user_data.get('idea_gid', update.effective_chat.id)
     tid = context.user_data.get('idea_tid', 0)
@@ -921,12 +924,14 @@ async def idea_priority_chosen(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ── Content plan helpers ─────────────────────────────────────────
 
+_CP_PAGE = 8   # items per page in management view
+
 def _build_cp_manage_markup(chat_id, tid, offset=0):
     """Returns (msg, InlineKeyboardMarkup) for content plan management view."""
     conn  = get_db()
     rows  = conn.execute(
-        "SELECT * FROM content_plan WHERE group_id=? AND thread_id=? AND status NOT IN ('done','published') ORDER BY plan_date, id LIMIT 5 OFFSET ?",
-        (chat_id, tid, offset)).fetchall()
+        "SELECT * FROM content_plan WHERE group_id=? AND thread_id=? AND status NOT IN ('done','published') ORDER BY plan_date, id LIMIT ? OFFSET ?",
+        (chat_id, tid, _CP_PAGE, offset)).fetchall()
     total = conn.execute(
         "SELECT COUNT(*) FROM content_plan WHERE group_id=? AND thread_id=? AND status NOT IN ('done','published')",
         (chat_id, tid)).fetchone()[0]
@@ -935,25 +940,24 @@ def _build_cp_manage_markup(chat_id, tid, offset=0):
     if not rows:
         return ("⚙️ *Управление*\n\nАктивных записей нет.",
                 InlineKeyboardMarkup([back]))
-    DOT     = {'planned': '⚪', 'in_progress': '🟡'}
-    msg     = f"⚙️ *Управление* ({offset+1}–{min(offset+5, total)} из {total})\n\n"
+    DOT = {'planned': '⚪', 'in_progress': '🟡'}
+    end = min(offset + _CP_PAGE, total)
+    msg = f"⚙️ *Управление* ({offset+1}–{end} из {total})\n\n"
     buttons = []
     for r in rows:
-        buttons.append([InlineKeyboardButton(
-            f"{DOT.get(r['status'],'⚪')} #{r['id']} {r['content_type']} {r['plan_date'] or ''}",
-            callback_data="cp_noop")])
+        pd      = r['plan_date'] or ''
+        date_s  = pd[:5] if len(pd) >= 5 else pd        # DD.MM
+        title   = f"{DOT.get(r['status'],'⚪')} #{r['id']} {r['content_type']} {date_s}"
         buttons.append([
-            InlineKeyboardButton("✏️ Изменить", callback_data=f"cpEdit_{r['id']}"),
-            InlineKeyboardButton("📌 В задачи", callback_data=f"cpTask_{r['id']}"),
-        ])
-        buttons.append([
-            InlineKeyboardButton("✅ Готово",   callback_data=f"cpSt_{r['id']}_done"),
-            InlineKeyboardButton("🚀 Опубл.",  callback_data=f"cpSt_{r['id']}_published"),
-            InlineKeyboardButton("🗑 Удалить", callback_data=f"cpDel_{r['id']}"),
+            InlineKeyboardButton(title,  callback_data="cp_noop"),
+            InlineKeyboardButton("✏️",  callback_data=f"cpEdit_{r['id']}"),
+            InlineKeyboardButton("📌",  callback_data=f"cpTask_{r['id']}"),
+            InlineKeyboardButton("✅",  callback_data=f"cpSt_{r['id']}_done"),
+            InlineKeyboardButton("🗑",  callback_data=f"cpDel_{r['id']}"),
         ])
     nav = []
-    if offset > 0:         nav.append(InlineKeyboardButton("◀️", callback_data=f"cp_manage_{offset-5}"))
-    if offset + 5 < total: nav.append(InlineKeyboardButton("▶️", callback_data=f"cp_manage_{offset+5}"))
+    if offset > 0:                nav.append(InlineKeyboardButton("◀️", callback_data=f"cp_manage_{offset-_CP_PAGE}"))
+    if offset + _CP_PAGE < total: nav.append(InlineKeyboardButton("▶️", callback_data=f"cp_manage_{offset+_CP_PAGE}"))
     if nav: buttons.append(nav)
     buttons.append(back)
     return msg, InlineKeyboardMarkup(buttons)
@@ -1059,11 +1063,17 @@ async def cp_type_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
         text=f"Тип: {text}\n\n✏️ Что должно быть в публикации?",
-        reply_markup=cancel_kb_reply()
+        reply_markup=desc_kb_reply()
     )
     return CP_DESC_S
 
 async def cp_desc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == BTN_NEXT:
+        gid = context.user_data.get('cp_gid', update.effective_chat.id)
+        tid = context.user_data.get('cp_tid', 0)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text="✏️ Напиши описание публикации:", reply_markup=desc_kb_reply())
+        return CP_DESC_S
     context.user_data['cp_desc'] = update.message.text
     gid = context.user_data.get('cp_gid', update.effective_chat.id)
     tid = context.user_data.get('cp_tid', 0)
@@ -1094,71 +1104,52 @@ async def cp_refs_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _cp_ask_date(update, context):
     gid = context.user_data.get('cp_gid', update.effective_chat.id)
     tid = context.user_data.get('cp_tid', 0)
-    context.user_data.pop('cp_date_ym', None)
+    today = date.today()
+    context.user_data.update({'cp_sp_y': today.year, 'cp_sp_m': today.month,
+                               'cp_sp_d': today.day,  'cp_sp_h': 0, 'cp_sp_n': 0})
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text="📅 Дата публикации:", reply_markup=quick_date_kb()
+        text="📅 Дата публикации:\n\n◀️ / ▶️ — прокрути нужное значение:",
+        reply_markup=date_spinner_kb(today.year, today.month, today.day, 0, 0, "dc")
     )
     return CP_DATE
 
-async def cp_date_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    gid  = context.user_data.get('cp_gid', update.effective_chat.id)
-    tid  = context.user_data.get('cp_tid', 0)
-    if text == BTN_DATE_TODAY:
-        context.user_data['cp_date'] = date.today().strftime("%d.%m.%Y")
-        context.user_data.pop('cp_date_ym', None)
+async def cp_date_spinner_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query; await q.answer()
+    cmd   = q.data
+    today = date.today()
+    y  = context.user_data.get('cp_sp_y', today.year)
+    m  = context.user_data.get('cp_sp_m', today.month)
+    d  = context.user_data.get('cp_sp_d', today.day)
+    h  = context.user_data.get('cp_sp_h', 0)
+    mn = context.user_data.get('cp_sp_n', 0)
+    if cmd == "dc_no": return CP_DATE
+    if cmd == "dc_ok":
+        date_str = f"{d:02d}.{m:02d}.{y}"
+        if h or mn: date_str += f" {h:02d}:{mn:02d}"
+        context.user_data['cp_date'] = date_str
+        for k in ('cp_sp_y','cp_sp_m','cp_sp_d','cp_sp_h','cp_sp_n'): context.user_data.pop(k, None)
+        await q.edit_message_text(f"📅 {date_str}")
         return await _save_cp(update, context)
-    if text == BTN_DATE_TOMORROW:
-        context.user_data['cp_date'] = (date.today() + timedelta(days=1)).strftime("%d.%m.%Y")
-        context.user_data.pop('cp_date_ym', None)
+    if cmd == "dc_sk":
+        context.user_data['cp_date'] = None
+        for k in ('cp_sp_y','cp_sp_m','cp_sp_d','cp_sp_h','cp_sp_n'): context.user_data.pop(k, None)
+        await q.edit_message_text("📅 Без даты")
         return await _save_cp(update, context)
-    if text == BTN_DATE_PICK:
-        context.user_data.pop('cp_date_ym', None)
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text="📅 Выбери месяц:", reply_markup=month_kb())
-        return CP_DATE
-    if text == "◀️ Месяц":
-        context.user_data.pop('cp_date_ym', None)
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text="📅 Выбери месяц:", reply_markup=month_kb())
-        return CP_DATE
-    if 'cp_date_ym' not in context.user_data:
-        parts = text.strip().split()
-        if len(parts) == 2:
-            try:
-                m_idx = MONTH_RU.index(parts[0]); year = int(parts[1])
-                if 1 <= m_idx <= 12:
-                    context.user_data['cp_date_ym'] = (year, m_idx)
-                    await context.bot.send_message(
-                        chat_id=gid, message_thread_id=tid if tid else None,
-                        text=f"📅 {MONTH_RU[m_idx]} {year} — выбери число:",
-                        reply_markup=day_kb(year, m_idx))
-                    return CP_DATE
-            except (ValueError, IndexError):
-                pass
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text="Выбери месяц:", reply_markup=month_kb())
-        return CP_DATE
-    else:
-        y, m = context.user_data['cp_date_ym']
-        try:
-            d = int(text)
-            if 1 <= d <= cal_lib.monthrange(y, m)[1]:
-                context.user_data['cp_date'] = f"{d:02d}.{m:02d}.{y}"
-                context.user_data.pop('cp_date_ym', None)
-                return await _save_cp(update, context)
-        except ValueError:
-            pass
-        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
-                                       text=f"Выбери число ({MONTH_RU[m]} {y}):",
-                                       reply_markup=day_kb(y, m))
-        return CP_DATE
-
-async def cp_date_skip_kb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['cp_date'] = None
-    context.user_data.pop('cp_date_ym', None)
-    return await _save_cp(update, context)
+    max_d = cal_lib.monthrange(y, m)[1]
+    if   cmd == "dc_d+": d = d % max_d + 1
+    elif cmd == "dc_d-": d = (d - 2) % max_d + 1
+    elif cmd == "dc_m+": m = m % 12 + 1;     d = min(d, cal_lib.monthrange(y, m)[1])
+    elif cmd == "dc_m-": m = (m - 2) % 12 + 1; d = min(d, cal_lib.monthrange(y, m)[1])
+    elif cmd == "dc_y+": y += 1
+    elif cmd == "dc_y-": y = max(today.year, y - 1)
+    elif cmd == "dc_h+": h = (h + 1) % 24
+    elif cmd == "dc_h-": h = (h - 1) % 24
+    elif cmd == "dc_n+": mn = (mn + 5) % 60
+    elif cmd == "dc_n-": mn = (mn - 5) % 60
+    context.user_data.update({'cp_sp_y': y, 'cp_sp_m': m, 'cp_sp_d': d, 'cp_sp_h': h, 'cp_sp_n': mn})
+    await q.edit_message_reply_markup(reply_markup=date_spinner_kb(y, m, d, h, mn, "dc"))
+    return CP_DATE
 
 async def _save_cp(update, context):
     gid   = context.user_data.get('cp_gid', 0); tid  = context.user_data.get('cp_tid', 0)
@@ -1620,8 +1611,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, t_refs_text),
             ],
             T_DATE: [
-                MessageHandler(filters.Regex(f"^{BTN_NO_DATE}$"), t_date_skip_kb),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, t_date_text),
+                CallbackQueryHandler(t_date_spinner_cb, pattern="^dt_"),
             ],
             T_ASSIGNEE: [
                 CallbackQueryHandler(t_toggle_assignee,   pattern="^mtoggle_"),
@@ -1651,8 +1641,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, cp_refs_received),
             ],
             CP_DATE: [
-                MessageHandler(filters.Regex(f"^{BTN_NO_DATE}$"), cp_date_skip_kb),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, cp_date_text),
+                CallbackQueryHandler(cp_date_spinner_cb, pattern="^dc_"),
             ],
         },
         fallbacks=_cancel_fb,
@@ -1734,11 +1723,14 @@ def main():
     app.add_handler(CallbackQueryHandler(cp_del_cb,          pattern="^cpDel_"))
     app.add_handler(CallbackQueryHandler(cp_del_ok_cb,       pattern="^cpDelOk_"))
     app.add_handler(CallbackQueryHandler(cp_status_cb,       pattern="^cpSt_"))
+    # Date spinner callbacks (outside conversations — belt-and-suspenders)
+    app.add_handler(CallbackQueryHandler(t_date_spinner_cb,  pattern="^dt_"))
+    app.add_handler(CallbackQueryHandler(cp_date_spinner_cb, pattern="^dc_"))
     # Photos & generic text
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("✅ WhyNot бот v13 запущен!")
+    logger.info("✅ WhyNot бот v15 запущен!")
     app.run_polling(drop_pending_updates=True)
 
 
