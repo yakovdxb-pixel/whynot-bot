@@ -85,6 +85,9 @@ BTN_PROJECT = "📁 Проект"
 BTN_CANCEL     = "❌ Отмена"
 BTN_SKIP       = "⏭ Без референса"
 BTN_NO_DATE    = "⏭ Без даты"
+BTN_DATE_TODAY    = "📅 Сегодня"
+BTN_DATE_TOMORROW = "📅 Завтра"
+BTN_DATE_PICK     = "📅 Выбрать дату"
 BTN_CP_ADD     = "➕ Добавить"
 BTN_CP_MANAGE  = "⚙️ Управление"
 BTN_LIST_MINE  = "📥 Мне назначено"
@@ -244,6 +247,12 @@ def refs_kb_reply() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [[BTN_SKIP, BTN_CANCEL]], resize_keyboard=True, one_time_keyboard=True
     )
+
+def quick_date_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup([
+        [BTN_DATE_TODAY, BTN_DATE_TOMORROW, BTN_DATE_PICK],
+        [BTN_NO_DATE, BTN_CANCEL],
+    ], resize_keyboard=True, one_time_keyboard=True)
 
 def month_kb() -> ReplyKeyboardMarkup:
     today = date.today()
@@ -520,7 +529,7 @@ async def _t_ask_date(update, context):
     context.user_data.pop('t_date_ym', None)
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text=f"{label}\n\nВыбери месяц:", reply_markup=month_kb()
+        text=label, reply_markup=quick_date_kb()
     )
     return T_DATE
 
@@ -528,11 +537,26 @@ async def t_date_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     gid  = context.user_data.get('t_gid', update.effective_chat.id)
     tid  = context.user_data.get('t_tid', 0)
+    # Quick buttons
+    if text == BTN_DATE_TODAY:
+        context.user_data['t_date'] = date.today().strftime("%d.%m.%Y")
+        context.user_data.pop('t_date_ym', None)
+        return await _t_ask_assignee(update, context)
+    if text == BTN_DATE_TOMORROW:
+        context.user_data['t_date'] = (date.today() + timedelta(days=1)).strftime("%d.%m.%Y")
+        context.user_data.pop('t_date_ym', None)
+        return await _t_ask_assignee(update, context)
+    if text == BTN_DATE_PICK:
+        context.user_data.pop('t_date_ym', None)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text="📅 Выбери месяц:", reply_markup=month_kb())
+        return T_DATE
     if text == "◀️ Месяц":
         context.user_data.pop('t_date_ym', None)
         await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
                                        text="📅 Выбери месяц:", reply_markup=month_kb())
         return T_DATE
+    # Month → day two-step
     if 't_date_ym' not in context.user_data:
         parts = text.strip().split()
         if len(parts) == 2:
@@ -1073,7 +1097,7 @@ async def _cp_ask_date(update, context):
     context.user_data.pop('cp_date_ym', None)
     await context.bot.send_message(
         chat_id=gid, message_thread_id=tid if tid else None,
-        text="📅 Дата публикации:\n\nВыбери месяц:", reply_markup=month_kb()
+        text="📅 Дата публикации:", reply_markup=quick_date_kb()
     )
     return CP_DATE
 
@@ -1081,6 +1105,19 @@ async def cp_date_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     gid  = context.user_data.get('cp_gid', update.effective_chat.id)
     tid  = context.user_data.get('cp_tid', 0)
+    if text == BTN_DATE_TODAY:
+        context.user_data['cp_date'] = date.today().strftime("%d.%m.%Y")
+        context.user_data.pop('cp_date_ym', None)
+        return await _save_cp(update, context)
+    if text == BTN_DATE_TOMORROW:
+        context.user_data['cp_date'] = (date.today() + timedelta(days=1)).strftime("%d.%m.%Y")
+        context.user_data.pop('cp_date_ym', None)
+        return await _save_cp(update, context)
+    if text == BTN_DATE_PICK:
+        context.user_data.pop('cp_date_ym', None)
+        await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
+                                       text="📅 Выбери месяц:", reply_markup=month_kb())
+        return CP_DATE
     if text == "◀️ Месяц":
         context.user_data.pop('cp_date_ym', None)
         await context.bot.send_message(chat_id=gid, message_thread_id=tid if tid else None,
@@ -1701,7 +1738,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("✅ WhyNot бот v12 запущен!")
+    logger.info("✅ WhyNot бот v13 запущен!")
     app.run_polling(drop_pending_updates=True)
 
 
