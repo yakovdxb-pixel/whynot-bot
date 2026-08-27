@@ -136,6 +136,29 @@ async def serve_app():
                 return Response(content=f.read(), media_type="text/html; charset=utf-8")
     return HTMLResponse("<h1>WhyNot Agency</h1><p>App file not found</p>")
 
+@app.get("/api/debug")
+async def debug_info():
+    import sys, httpx
+    token = BOT_TOKEN
+    tg_ok = False
+    tg_info = ""
+    if token:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
+                tg_info = res.json()
+                tg_ok = res.status_code == 200
+        except Exception as e:
+            tg_info = str(e)
+    return {
+        "token_set": bool(token),
+        "token_prefix": token[:10]+"..." if token else None,
+        "telegram_ok": tg_ok,
+        "telegram_info": tg_info,
+        "python": sys.version,
+        "webapp_url": os.getenv("WEBAPP_URL","")
+    }
+
 @app.get("/api/companies")
 async def list_companies():
     conn = get_db()
