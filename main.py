@@ -1,9 +1,9 @@
 """
-WhyNot Agency — FastAPI (daemon thread) + Telegram bot (main thread)
-Bot MUST run in main thread because ptb v21 calls signal.signal()
-uvloop fix: must set event loop before calling bot.main()
+WhyNot Agency — FastAPI (daemon thread) + Telegram bot (subprocess)
+Running bot as a subprocess avoids all asyncio/uvloop event loop conflicts.
+The bot gets a clean Python process with no uvloop policy installed.
 """
-import os, threading, uvicorn, logging, importlib.util, time, asyncio
+import os, threading, uvicorn, logging, time, subprocess, sys
 from api import app, init_db
 
 logging.basicConfig(
@@ -28,28 +28,15 @@ if __name__ == "__main__":
     # Give API a moment to bind port
     time.sleep(2)
     
-    # uvloop (used by uvicorn) does NOT auto-create an event loop.
-    # We must explicitly create + set one in the main thread before ptb uses it.
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    logger.info("✅ Event loop set in main thread")
+    # Run bot as a completely separate subprocess.
+    # This isolates it from uvloop which uvicorn installs as the asyncio policy.
+    bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.py")
+    logger.info(f"🤖 Starting bot subprocess: {bot_path}")
     
-    # Bot MUST run in main thread — ptb calls signal.signal() which requires main thread
-    logger.info("🤖 Loading bot module...")
-    try:
-        bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.py")
-        spec = importlib.util.spec_from_file_location("bot", bot_path)
-        bot_mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(bot_mod)
-        logger.info("✅ Bot module loaded, calling main()...")
-        if hasattr(bot_mod, "main"):
-            bot_mod.main()  # Sync — ptb uses asyncio.run() internally
-        else:
-            logger.error("❌ bot.py has no main() function!")
-    except Exception as e:
-        logger.error(f"❌ Bot crashed: {e}", exc_info=True)
-    
-    # Bot exited — keep process alive so daemon API thread keeps running
-    logger.warning("⚠️ Bot stopped — keeping process alive for API")
     while True:
-        time.sleep(60)
+        try:
+            result = subprocess.run([sys.executable, bot_path], check=False)
+            logger.warning(f"⚠️ Bot subprocess exited with code {result.returncode}, restarting in 5s...")
+        except Exception as e:
+            logger.error(f"❌ Failed to start bot: {e}")
+        time.sleep(5)
