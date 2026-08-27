@@ -7,7 +7,7 @@ from datetime import datetime, date, timedelta, time as dttime
 import re
 from telegram import (
     Update, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, ReplyKeyboardRemove
+    ReplyKeyboardMarkup, ReplyKeyboardRemove, WebAppInfo
 )
 from telegram.ext import (
     Application, CommandHandler, ContextTypes,
@@ -614,16 +614,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown', reply_markup=main_kb()
         )
     else:
-        # Private chat
-        active_gid = context.user_data.get('active_gid')
-        if active_gid:
-            title = context.user_data.get('active_title', str(active_gid))
+        # Private chat — show mini app button
+        webapp_url = os.getenv('WEBAPP_URL', '')
+        if webapp_url:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🚀 Открыть приложение", web_app=WebAppInfo(url=webapp_url))
+            ]])
             await update.message.reply_text(
-                f"🏢 *{title}*\n\nВыбери действие:",
-                parse_mode='Markdown', reply_markup=main_kb()
+                "👋 *WhyNot Agency*\n\nУправляй задачами, командой и проектами прямо здесь 👇",
+                parse_mode='Markdown', reply_markup=kb
             )
         else:
-            await _show_company_selector(update.message, context)
+            active_gid = context.user_data.get('active_gid')
+            if active_gid:
+                title = context.user_data.get('active_title', str(active_gid))
+                await update.message.reply_text(
+                    f"🏢 *{title}*\n\nВыбери действие:",
+                    parse_mode='Markdown', reply_markup=main_kb()
+                )
+            else:
+                await _show_company_selector(update.message, context)
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat; user = update.effective_user
