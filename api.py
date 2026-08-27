@@ -124,21 +124,17 @@ class TaskUpdate(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 @app.get("/webapp/index.html", response_class=HTMLResponse)
 async def serve_app():
-    import traceback
+    from fastapi.responses import Response
     paths = [
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "webapp", "index.html"),
         "/app/webapp/index.html",
         "webapp/index.html",
     ]
     for path in paths:
-        try:
-            with open(path, encoding="utf-8") as f:
-                return HTMLResponse(f.read())
-        except FileNotFoundError:
-            continue
-        except Exception as e:
-            return HTMLResponse(f"<pre>Error reading {path}: {e}\n{traceback.format_exc()}</pre>")
-    return HTMLResponse(f"<pre>File not found in: {paths}</pre>")
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return Response(content=f.read(), media_type="text/html; charset=utf-8")
+    return HTMLResponse("<h1>WhyNot Agency</h1><p>App file not found</p>")
 
 @app.get("/api/companies")
 async def list_companies():
