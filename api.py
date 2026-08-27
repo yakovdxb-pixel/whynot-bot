@@ -1,5 +1,5 @@
 """
-WhyNot Agency â€” FastAPI backend + Telegram Mini App server
+WhyNot Agency — FastAPI backend + Telegram Mini App server
 """
 import os, sqlite3, hashlib, hmac, json, asyncio
 from datetime import datetime
@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import telegram
+import httpx
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 DB_PATH   = os.getenv("DB_PATH", "agency.db")
@@ -19,7 +20,7 @@ DB_PATH   = os.getenv("DB_PATH", "agency.db")
 app = FastAPI(title="WhyNot API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# â”€â”€ DB helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── DB helpers ───────────────────────────────────────────────────
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -70,12 +71,11 @@ def init_db():
     conn.commit()
     conn.close()
 
-# â”€â”€ Telegram WebApp auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Telegram WebApp auth ────────────────────────────────────────
 
 def validate_tg_data(init_data: str) -> dict:
     """Validate Telegram WebApp initData and return user dict."""
     if not BOT_TOKEN:
-        # Dev mode: return mock user
         return {"id": 0, "first_name": "Dev", "username": "dev"}
     try:
         parsed = {}
@@ -96,17 +96,15 @@ def validate_tg_data(init_data: str) -> dict:
 async def get_current_user(request: Request) -> dict:
     init_data = request.headers.get("X-Telegram-Init-Data", "")
     if not init_data:
-        # Allow in dev mode
         return {"id": 0, "first_name": "Dev", "username": "dev", "role": "am"}
     user = validate_tg_data(init_data)
-    # Fetch role from DB
     conn = get_db()
     row = conn.execute("SELECT role FROM users WHERE user_id=?", (user["id"],)).fetchone()
     conn.close()
     user["role"] = row["role"] if row else "executor"
     return user
 
-# â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Models ───────────────────────────────────────────────────────
 
 class TaskCreate(BaseModel):
     group_id: int
@@ -119,7 +117,7 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     status: str
 
-# â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Routes ───────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/webapp/index.html", response_class=HTMLResponse)
@@ -135,29 +133,6 @@ async def serve_app():
             with open(path, "rb") as f:
                 return Response(content=f.read(), media_type="text/html; charset=utf-8")
     return HTMLResponse("<h1>WhyNot Agency</h1><p>App file not found</p>")
-
-@app.get("/api/debug")
-async def debug_info():
-    import sys, httpx
-    token = BOT_TOKEN
-    tg_ok = False
-    tg_info = ""
-    if token:
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
-                tg_info = res.json()
-                tg_ok = res.status_code == 200
-        except Exception as e:
-            tg_info = str(e)
-    return {
-        "token_set": bool(token),
-        "token_prefix": token[:10]+"..." if token else None,
-        "telegram_ok": tg_ok,
-        "telegram_info": tg_info,
-        "python": sys.version,
-        "webapp_url": os.getenv("WEBAPP_URL","")
-    }
 
 @app.get("/api/companies")
 async def list_companies():
@@ -189,44 +164,38 @@ async def create_task(task: TaskCreate, user: dict = Depends(get_current_user)):
     )
     task_id = cur.lastrowid
     conn.commit()
-
-    # Get group info
     group = conn.execute("SELECT * FROM groups WHERE group_id=?", (task.group_id,)).fetchone()
     assignee = conn.execute("SELECT * FROM users WHERE user_id=?", (task.assignee_id,)).fetchone() if task.assignee_id else None
     conn.close()
-
-    # Post card to Telegram group
     if BOT_TOKEN and group:
         asyncio.create_task(_post_task_card(task_id, task, group, assignee, user))
-
     return {"id": task_id, "status": "active"}
 
 async def _post_task_card(task_id, task, group, assignee, creator):
     try:
         bot = telegram.Bot(token=BOT_TOKEN)
         TYPE_LABELS = {
-            "shoot": "ðŸŽ¬ Ð¡ÑŠÐµÐ¼ÐºÐ°", "publish": "ðŸ“¢ ÐŸÑƒÐ±Ð»Ð¸ÐºÐ°Ñ†Ð¸Ñ",
-            "design": "ðŸŽ¨ Ð”Ð¸Ð·Ð°Ð¹Ð½", "edit": "âœ‚ï¸ ÐœÐ¾Ð½Ñ‚Ð°Ð¶", "other": "ðŸ“Œ ÑÑ€ÑƒÐ³Ð¾Ðµ",
-            "post": "ðŸ“¸ ÐŸÐ¾ÑÑ‚", "stories": "ðŸ“± Ð¡Ñ‚Ð¾Ñ€Ð¸Ñ",
-            "reels": "ðŸŽ¬ Ð Ð¸Ð»Ñ", "actual": "ðŸŽ¯ ÐÐºÑ‚ÑƒÐ°Ð»ÑŒÐ½Ð¾Ðµ",
+            "shoot": "🎬 Съемка", "publish": "📢 Публикация",
+            "design": "🎨 Дизайн", "edit": "✂️ Монтаж", "other": "📌 Другое",
+            "post": "📸 Пост", "stories": "📱 Сторис",
+            "reels": "🎬 Рилс", "actual": "🎯 Актуальное",
         }
         type_label = TYPE_LABELS.get(task.type, task.type)
-        assignee_name = assignee["first_name"] if assignee else "â€”"
-        deadline_str = task.deadline or "Ð±ÐµÐ· Ð´Ð°Ñ‚Ñ‹"
+        assignee_name = assignee["first_name"] if assignee else "—"
+        deadline_str = task.deadline or "без даты"
         creator_name = creator.get("first_name", "AM")
-
         text = (
-            f"ðŸ“‹ *ÐÐ¾Ð²Ð°Ñ Ð·Ð°Ð´Ð°Ñ‡Ð° #{task_id}*\n\n"
-            f"*Ð¢Ð¸Ð¿:* {type_label}\n"
-            f"*ÐžÐ¿Ð¸ÑÐ°Ð½Ð¸Ðµ:* {task.description}\n"
+            f"📋 *Новая задача #{task_id}*\n\n"
+            f"*Тип:* {type_label}\n"
+            f"*Описание:* {task.description}\n"
         )
         if task.refs:
-            text += f"*Ð ÐµÑ„ÐµÑ€ÐµÐ½ÑÑ‹:* {task.refs}\n"
+            text += f"*Референсы:* {task.refs}\n"
         text += (
-            f"*Ð”ÐµÐ´Ð»Ð°Ð¹Ð½:* {deadline_str}\n"
-            f"*Ð˜ÑÐ¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»ÑŒ:* {assignee_name}\n"
-            f"*ÐŸÐ¾ÑÑ‚Ð°Ð²Ð¸Ð»:* {creator_name}\n"
-            f"\nâšª ÐžÐ¶Ð¸Ð´Ð°ÐµÑ‚"
+            f"*Дедлайн:* {deadline_str}\n"
+            f"*Исполнитель:* {assignee_name}\n"
+            f"*Поставил:* {creator_name}\n"
+            f"\n⚪ Ожидает"
         )
         await bot.send_message(
             chat_id=group["group_id"],
@@ -263,23 +232,7 @@ async def list_team():
     return [dict(r) for r in rows]
 
 @app.get("/api/stats")
-async def get_stats(group_id: Optional[int] = None):
-    conn = get_db()
-    q_filter = f"WHERE group_id={group_id}" if group_id else ""
-    active   = conn.execute(f"SELECT COUNT(*) FROM tasks {q_filter} {'AND' if q_filter else 'WHERE'} status='active'").fetchone()[0] if not q_filter else conn.execute(f"SELECT COUNT(*) FROM tasks WHERE group_id=? AND status='active'", (group_id,)).fetchone()[0]
-    submitted = conn.execute(f"SELECT COUNT(*) FROM tasks WHERE {'group_id=? AND ' if group_id else ''}status='submitted'", ([group_id] if group_id else [])).fetchone()[0]
-    companies = conn.execute("SELECT COUNT(*) FROM groups").fetchone()[0]
-    avg_rating = conn.execute("SELECT AVG(rating) FROM ratings").fetchone()[0]
-    conn.close()
-    return {
-        "active_tasks": active,
-        "submitted": submitted,
-        "companies": companies,
-        "avg_rating": round(avg_rating, 1) if avg_rating else 0,
-    }
-
-@app.get("/api/stats")
-async def get_stats_simple():
+async def get_stats():
     conn = get_db()
     active    = conn.execute("SELECT COUNT(*) FROM tasks WHERE status='active'").fetchone()[0]
     submitted = conn.execute("SELECT COUNT(*) FROM tasks WHERE status='submitted'").fetchone()[0]
@@ -289,11 +242,74 @@ async def get_stats_simple():
     return {"active_tasks": active, "submitted": submitted, "companies": companies,
             "avg_rating": round(avg_r, 1) if avg_r else 0}
 
-# â”€â”€ Startup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+@app.get("/api/debug")
+async def debug_info():
+    token = BOT_TOKEN
+    tg_ok = False
+    tg_info = ""
+    if token:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
+                tg_info = res.json()
+                tg_ok = res.status_code == 200
+        except Exception as e:
+            tg_info = str(e)
+    import sys
+    return {
+        "token_set": bool(token),
+        "telegram_ok": tg_ok,
+        "telegram_info": tg_info,
+        "python_version": sys.version,
+        "cwd": os.getcwd(),
+        "webapp_url": os.getenv("WEBAPP_URL", ""),
+    }
+
+@app.get("/api/bot-status")
+async def bot_status():
+    """Check webhook info and polling status."""
+    if not BOT_TOKEN:
+        return {"error": "BOT_TOKEN not set"}
+    async with httpx.AsyncClient() as client:
+        wh_res = await client.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo",
+            timeout=10
+        )
+        wh_data = wh_res.json()
+        upd_res = await client.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates",
+            params={"limit": 1, "timeout": 0},
+            timeout=10
+        )
+        upd_data = upd_res.json()
+    webhook_url = wh_data.get("result", {}).get("url", "")
+    polling_conflict = upd_data.get("error_code") == 409
+    return {
+        "webhook_url": webhook_url,
+        "webhook_set": bool(webhook_url),
+        "polling_active_conflict": polling_conflict,
+        "webhook_info": wh_data.get("result", {}),
+        "updates_response": upd_data,
+    }
+
+@app.post("/api/delete-webhook")
+async def delete_webhook_endpoint():
+    """Delete any set webhook so polling can work."""
+    if not BOT_TOKEN:
+        return {"error": "BOT_TOKEN not set"}
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",
+            json={"drop_pending_updates": False},
+            timeout=10
+        )
+    return res.json()
+
+# ── Startup ─────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
     init_db()
-    print("âœ… DB initialized")
+    print("✅ DB initialized")
 
 if __name__ == "__main__":
     import uvicorn
