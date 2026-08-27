@@ -1,5 +1,5 @@
 """
-WhyNot Agency — FastAPI backend + Telegram Mini App server
+WhyNot Agency â€” FastAPI backend + Telegram Mini App server
 """
 import os, sqlite3, hashlib, hmac, json, asyncio
 from datetime import datetime
@@ -19,7 +19,7 @@ DB_PATH   = os.getenv("DB_PATH", "agency.db")
 app = FastAPI(title="WhyNot API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# ── DB helpers ───────────────────────────────────────────────────
+# â”€â”€ DB helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -70,7 +70,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ── Telegram WebApp auth ────────────────────────────────────────
+# â”€â”€ Telegram WebApp auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def validate_tg_data(init_data: str) -> dict:
     """Validate Telegram WebApp initData and return user dict."""
@@ -106,7 +106,7 @@ async def get_current_user(request: Request) -> dict:
     user["role"] = row["role"] if row else "executor"
     return user
 
-# ── Models ───────────────────────────────────────────────────────
+# â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TaskCreate(BaseModel):
     group_id: int
@@ -119,13 +119,17 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     status: str
 
-# ── Routes ───────────────────────────────────────────────────────
+# â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/webapp/index.html", response_class=HTMLResponse)
 async def serve_app():
     path = os.path.join(os.path.dirname(__file__), "webapp", "index.html")
-    with open(path) as f:
-        return f.read()
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return HTMLResponse("<h1>WhyNot Agency</h1>", status_code=200)
 
 @app.get("/api/companies")
 async def list_companies():
@@ -173,28 +177,28 @@ async def _post_task_card(task_id, task, group, assignee, creator):
     try:
         bot = telegram.Bot(token=BOT_TOKEN)
         TYPE_LABELS = {
-            "shoot": "🎬 Съемка", "publish": "📢 Публикация",
-            "design": "🎨 Дизайн", "edit": "✂️ Монтаж", "other": "📌 �ругое",
-            "post": "📸 Пост", "stories": "📱 Сторис",
-            "reels": "🎬 Рилс", "actual": "🎯 Актуальное",
+            "shoot": "ðŸŽ¬ Ð¡ÑŠÐµÐ¼ÐºÐ°", "publish": "ðŸ“¢ ÐŸÑƒÐ±Ð»Ð¸ÐºÐ°Ñ†Ð¸Ñ",
+            "design": "ðŸŽ¨ Ð”Ð¸Ð·Ð°Ð¹Ð½", "edit": "âœ‚ï¸ ÐœÐ¾Ð½Ñ‚Ð°Ð¶", "other": "ðŸ“Œ ÑÑ€ÑƒÐ³Ð¾Ðµ",
+            "post": "ðŸ“¸ ÐŸÐ¾ÑÑ‚", "stories": "ðŸ“± Ð¡Ñ‚Ð¾Ñ€Ð¸Ñ",
+            "reels": "ðŸŽ¬ Ð Ð¸Ð»Ñ", "actual": "ðŸŽ¯ ÐÐºÑ‚ÑƒÐ°Ð»ÑŒÐ½Ð¾Ðµ",
         }
         type_label = TYPE_LABELS.get(task.type, task.type)
-        assignee_name = assignee["first_name"] if assignee else "—"
-        deadline_str = task.deadline or "без даты"
+        assignee_name = assignee["first_name"] if assignee else "â€”"
+        deadline_str = task.deadline or "Ð±ÐµÐ· Ð´Ð°Ñ‚Ñ‹"
         creator_name = creator.get("first_name", "AM")
 
         text = (
-            f"📋 *Новая задача #{task_id}*\n\n"
-            f"*Тип:* {type_label}\n"
-            f"*Описание:* {task.description}\n"
+            f"ðŸ“‹ *ÐÐ¾Ð²Ð°Ñ Ð·Ð°Ð´Ð°Ñ‡Ð° #{task_id}*\n\n"
+            f"*Ð¢Ð¸Ð¿:* {type_label}\n"
+            f"*ÐžÐ¿Ð¸ÑÐ°Ð½Ð¸Ðµ:* {task.description}\n"
         )
         if task.refs:
-            text += f"*Референсы:* {task.refs}\n"
+            text += f"*Ð ÐµÑ„ÐµÑ€ÐµÐ½ÑÑ‹:* {task.refs}\n"
         text += (
-            f"*Дедлайн:* {deadline_str}\n"
-            f"*Исполнитель:* {assignee_name}\n"
-            f"*Поставил:* {creator_name}\n"
-            f"\n⚪ Ожидает"
+            f"*Ð”ÐµÐ´Ð»Ð°Ð¹Ð½:* {deadline_str}\n"
+            f"*Ð˜ÑÐ¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»ÑŒ:* {assignee_name}\n"
+            f"*ÐŸÐ¾ÑÑ‚Ð°Ð²Ð¸Ð»:* {creator_name}\n"
+            f"\nâšª ÐžÐ¶Ð¸Ð´Ð°ÐµÑ‚"
         )
         await bot.send_message(
             chat_id=group["group_id"],
@@ -257,11 +261,11 @@ async def get_stats_simple():
     return {"active_tasks": active, "submitted": submitted, "companies": companies,
             "avg_rating": round(avg_r, 1) if avg_r else 0}
 
-# ── Startup ─────────────────────────────────────────────────────
+# â”€â”€ Startup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.on_event("startup")
 async def startup():
     init_db()
-    print("✅ DB initialized")
+    print("âœ… DB initialized")
 
 if __name__ == "__main__":
     import uvicorn
