@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WhyNot Agency</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#f0f0f0;--surface:#fff;--surface2:#f7f7f7;
+  --text:#1a1a1a;--text2:#666;--text3:#999;
+  --accent:#2481cc;--accent-bg:#e8f2fb;
+  --border:#e0e0e0;--radius:12px;
+  --success:#27ae60;--warning:#f39c12;--danger:#e74c3c;
+  --blue:#2481cc;--yellow:#f39c12;--green:#27ae60;--red:#e74c3c;
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#1a1a1a;--surface:#2a2a2a;--surface2:#222;--text:#f0f0f0;--text2:#aaa;--text3:#666;--border:#333;--accent-bg:#1a2d3d}
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* Layout */
+#app{display:flex;flex-direction:column;height:100vh;max-height:100vh}
+.screen{display:none;flex:1;overflow-y:auto;padding:12px 12px 0}
+.screen.active{display:block}
+
+/* Nav */
+.nav{display:flex;background:var(--surface);border-top:1px solid var(--border);padding:4px 0 max(4px,env(safe-area-inset-bottom));flex-shrink:0}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer;transition:color .15s}
+.nav-btn svg{width:22px;height:22px;stroke-width:1.8}
+.nav-btn.active{color:var(--accent)}
+
+/* Cards */
+.card{background:var(--surface);border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.card-title{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px}
+
+/* Stats grid */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.stat{background:var(--surface);border-radius:var(--radius);padding:12px}
+.stat-val{font-size:24px;font-weight:600;color:var(--text)}
+.stat-lbl{font-size:11px;color:var(--text2);margin-top:2px}
+
+/* Task item */
+.task-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.task-item:last-child{border:none;padding-bottom:0}
+.task-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.task-name{font-size:14px;font-weight:500;color:var(--text)}
+.task-meta{font-size:12px;color:var(--text2);margin-top:2px}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;margin-top:4px;font-weight:500}
+
+/* Status colors */
+.s-active    {background:#edf2fb;color:#2481cc}
+.s-in_progress{background:#fef5e4;color:#b7770d}
+.s-submitted {background:#eaf7ef;color:#1a7a3e}
+.s-revision  {background:#fdecea;color:#c0392b}
+.s-approved  {background:#eaf7ef;color:#1a7a3e}
+.s-published {background:#f0ebff;color:#6c3fd4}
+
+/* Company selector */
+.company-card{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;cursor:pointer;border:2px solid transparent;transition:border .15s}
+.company-card.selected{border-color:var(--accent)}
+.company-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:20px;flex-shrink:0}
+.company-name{font-size:15px;font-weight:500;color:var(--text)}
+.company-sub{font-size:12px;color:var(--text2)}
+
+/* Form */
+.form-group{margin-bottom:14px}
+.form-label{font-size:12px;color:var(--text2);margin-bottom:6px;display:block}
+.form-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text);outline:none}
+.form-input:focus{border-color:var(--accent)}
+textarea.form-input{min-height:80px;resize:none}
+select.form-input{appearance:none}
+
+/* Type grid */
+.type-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.type-btn{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;cursor:pointer;font-size:13px;color:var(--text);transition:all .15s}
+.type-btn.selected{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+
+/* Team */
+.exec-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.exec-row:last-child{border:none}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--accent);flex-shrink:0}
+.exec-info{flex:1}
+.exec-name{font-size:14px;font-weight:500;color:var(--text)}
+.exec-sub{font-size:12px;color:var(--text2)}
+.rating-bar{height:4px;background:var(--border);border-radius:2px;margin-top:5px;overflow:hidden}
+.rating-fill{height:100%;border-radius:2px;background:var(--accent)}
+.rating-num{font-size:14px;font-weight:600;color:var(--text);min-width:32px;text-align:right}
+
+/* Primary btn */
+.btn-primary{width:100%;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;transition:opacity .15s}
+.btn-primary:active{opacity:.8}
+.btn-primary:disabled{opacity:.5}
+
+/* FAB */
+.fab{position:fixed;bottom:76px;right:16px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(36,129,204,.4);z-index:10}
+
+/* Loading / empty */
+.empty{text-align:center;padding:40px 20px;color:var(--text2);font-size:14px}
+.loader{text-align:center;padding:30px;color:var(--text3);font-size:13px}
+
+/* Section header */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.section-title{font-size:16px;font-weight:600;color:var(--text)}
+
+/* Status selector modal overlay */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-end}
+.modal-overlay.hidden{display:none}
+.modal-sheet{background:var(--surface);border-radius:16px 16px 0 0;padding:16px;width:100%;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:12px;text-align:center;color:var(--text)}
+.status-option{padding:12px 16px;border-radius:8px;font-size:14px;cursor:pointer;margin-bottom:6px;background:var(--surface2)}
+.status-option:active{opacity:.7}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ══ HOME ══ -->
+  <div class="screen active" id="s-home">
+    <div style="padding:16px 0 6px">
+      <div class="section-title">Добро пожаловать 👋</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:2px" id="user-greeting">WhyNot Agency</div>
+    </div>
+    <div class="stats" id="stats-grid">
+      <div class="stat"><div class="stat-val" id="st-active">—</div><div class="stat-lbl">Активных задач</div></div>
+      <div class="stat"><div class="stat-val" id="st-submitted">—</div><div class="stat-lbl">На проверке</div></div>
+      <div class="stat"><div class="stat-val" id="st-companies">—</div><div class="stat-lbl">Компаний</div></div>
+      <div class="stat"><div class="stat-val" id="st-rating">—</div><div class="stat-lbl">Рейтинг команды</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Последние задачи</div>
+      <div id="home-tasks-list"><div class="loader">Загрузка...</div></div>
+    </div>
+    <div style="height:80px"></div>
+  </div>
+
+  <!-- ══ TASKS ══ -->
+  <div class="screen" id="s-tasks">
+    <div style="padding:16px 0 6px">
+      <div class="section-title">Задачи</div>
+    </div>
+    <!-- Company selector -->
+    <div id="company-list"><div class="loader">Загрузка компаний...</div></div>
+    <!-- Task list for selected company -->
+    <div id="task-list-wrap" class="hidden">
+      <div class="section-header" style="margin-top:14px">
+        <div class="section-title" id="selected-company-name">Задачи</div>
+        <span style="font-size:13px;color:var(--accent);cursor:pointer" onclick="clearCompany()">Изменить</span>
+      </div>
+      <div class="card" style="padding:0 14px">
+        <div id="task-list"><div class="loader">Загрузка...</div></div>
+      </div>
+    </div>
+    <div style="height:80px"></div>
+    <button class="fab" onclick="goCreate()" title="Создать задачу">＋</button>
+  </div>
+
+  <!-- ══ CREATE ══ -->
+  <div class="screen" id="s-create">
+    <div style="padding:16px 0 6px">
+      <div class="section-title">Новая задача</div>
+    </div>
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">Тип контента</label>
+        <div class="type-grid" id="type-grid">
+          <div class="type-btn selected" data-val="reels"   onclick="selectType(this)">🎬 Рилс</div>
+          <div class="type-btn"          data-val="post"    onclick="selectType(this)">📸 Пост</div>
+          <div class="type-btn"          data-val="stories" onclick="selectType(this)">📱 Сторис</div>
+          <div class="type-btn"          data-val="shoot"   onclick="selectType(this)">🎥 Съемка</div>
+          <div class="type-btn"          data-val="design"  onclick="selectType(this)">🎨 Дизайн</div>
+          <div class="type-btn"          data-val="other"   onclick="selectType(this)">📌 Другое</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Компания</label>
+        <select class="form-input" id="create-company">
+          <option value="">Выбрать компанию...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Исполнитель</label>
+        <select class="form-input" id="create-assignee">
+          <option value="">Выбрать исполнителя...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Описание задачи</label>
+        <textarea class="form-input" id="create-desc" placeholder="Что нужно создать, детали, требования..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Референсы (ссылки)</label>
+        <input class="form-input" id="create-refs" placeholder="https://... или текстовое описание">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Дедлайн</label>
+        <input type="date" class="form-input" id="create-deadline">
+      </div>
+      <button class="btn-primary" id="create-btn" onclick="submitTask()">Создать задачу → отправить в группу</button>
+    </div>
+    <div style="height:20px"></div>
+  </div>
+
+  <!-- ══ TEAM ══ -->
+  <div class="screen" id="s-team">
+    <div style="padding:16px 0 6px">
+      <div class="section-title">Команда</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Исполнители · рейтинг</div>
+      <div id="team-list"><div class="loader">Загрузка...</div></div>
+    </div>
+    <div style="height:20px"></div>
+  </div>
+
+  <!-- ══ NAV ══ -->
+  <nav class="nav">
+    <button class="nav-btn active" data-tab="home" onclick="nav('home',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Главная
+    </button>
+    <button class="nav-btn" data-tab="tasks" onclick="nav('tasks',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      Задачи
+    </button>
+    <button class="nav-btn" data-tab="create" onclick="nav('create',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Создать
+    </button>
+    <button class="nav-btn" data-tab="team" onclick="nav('team',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      Команда
+    </button>
+  </nav>
+
+</div>
+
+<!-- Status update sheet -->
+<div class="modal-overlay hidden" id="status-modal" onclick="closeStatusModal(event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-title">Изменить статус</div>
+    <div id="status-options"></div>
+  </div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────
+const API = '';  // same origin
+const tg  = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const INIT_DATA = tg?.initData || '';
+const ME = tg?.initDataUnsafe?.user || {first_name:'Dev', id:0};
+
+const STATUS_LABELS = {
+  active:'⚪ Ожидает', in_progress:'🔵 В процессе',
+  submitted:'🟡 На проверке', revision:'🔴 На доработку',
+  approved:'🟢 Принято', published:'✅ Опубликовано'
+};
+const STATUS_COLORS = {
+  active:'blue', in_progress:'yellow', submitted:'green',
+  revision:'red', approved:'green', published:'green'
+};
+const DOT_COLORS = {
+  active:'#2481cc', in_progress:'#f39c12', submitted:'#27ae60',
+  revision:'#e74c3c', approved:'#27ae60', published:'#9b59b6'
+};
+
+// State
+let companies = [], teamMembers = [], selectedType = 'reels', selectedGroupId = null, editingTaskId = null;
+
+// ── Helpers ───────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const res = await fetch(API + '/api' + path, {
+    headers: {'X-Telegram-Init-Data': INIT_DATA, 'Content-Type':'application/json', ...opts.headers},
+    ...opts
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function initials(name) {
+  return (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+}
+
+function formatDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleDateString('ru-RU',{day:'numeric',month:'short'}); } catch { return s; }
+}
+
+// ── Navigation ────────────────────────────────────────────────
+function nav(tab, btn) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('s-'+tab).classList.add('active');
+  btn.classList.add('active');
+  if (tab==='home')   loadHome();
+  if (tab==='tasks')  loadCompanies();
+  if (tab==='team')   loadTeam();
+  if (tab==='create') loadCreateForm();
+}
+
+function goCreate() {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('s-create').classList.add('active');
+  document.querySelector('[data-tab="create"]').classList.add('active');
+  loadCreateForm();
+}
+
+// ── Home ──────────────────────────────────────────────────────
+async function loadHome() {
+  document.getElementById('user-greeting').textContent = ME.first_name || 'WhyNot Agency';
+  try {
+    const stats = await api('/stats');
+    document.getElementById('st-active').textContent    = stats.active_tasks;
+    document.getElementById('st-submitted').textContent  = stats.submitted;
+    document.getElementById('st-companies').textContent  = stats.companies;
+    document.getElementById('st-rating').textContent     = stats.avg_rating || '—';
+  } catch {}
+  try {
+    const tasks = await api('/tasks');
+    renderTaskList(document.getElementById('home-tasks-list'), tasks.slice(0,10), true);
+  } catch { document.getElementById('home-tasks-list').innerHTML = '<div class="empty">Нет задач</div>'; }
+}
+
+// ── Tasks ─────────────────────────────────────────────────────
+async function loadCompanies() {
+  const el = document.getElementById('company-list');
+  if (selectedGroupId) return;
+  el.innerHTML = '<div class="loader">Загрузка...</div>';
+  try {
+    companies = await api('/companies');
+    if (!companies.length) { el.innerHTML = '<div class="empty">Компаний нет.<br>Добавь бота в группу клиента и напиши /start</div>'; return; }
+    el.innerHTML = companies.map(c => `
+      <div class="company-card" onclick="selectCompany(${c.group_id}, '${c.title.replace(/'/g,"\\'")}')">
+        <div class="company-icon">🏢</div>
+        <div>
+          <div class="company-name">${c.title}</div>
+          <div class="company-sub">Нажми чтобы открыть задачи</div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#aaa;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    `).join('');
+  } catch { el.innerHTML = '<div class="empty">Ошибка загрузки</div>'; }
+}
+
+async function selectCompany(gid, title) {
+  selectedGroupId = gid;
+  document.getElementById('selected-company-name').textContent = title;
+  document.getElementById('company-list').classList.add('hidden');
+  document.getElementById('task-list-wrap').classList.remove('hidden');
+  await loadTasks(gid);
+}
+
+function clearCompany() {
+  selectedGroupId = null;
+  document.getElementById('company-list').classList.remove('hidden');
+  document.getElementById('task-list-wrap').classList.add('hidden');
+}
+
+async function loadTasks(gid) {
+  const el = document.getElementById('task-list');
+  el.innerHTML = '<div class="loader">Загрузка...</div>';
+  try {
+    const tasks = await api('/tasks?group_id=' + gid);
+    renderTaskList(el, tasks, false);
+  } catch { el.innerHTML = '<div class="empty">Ошибка загрузки</div>'; }
+}
+
+function renderTaskList(el, tasks, compact) {
+  if (!tasks.length) { el.innerHTML = '<div class="empty">Нет задач</div>'; return; }
+  el.innerHTML = tasks.map(t => `
+    <div class="task-item" onclick="openStatusModal(${t.id}, '${t.status}')">
+      <div class="task-dot" style="background:${DOT_COLORS[t.status]||'#aaa'}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="task-name">${t.type} · ${t.description.slice(0,40)}${t.description.length>40?'…':''}</div>
+        <div class="task-meta">${t.assignee_name||'Не назначен'} · ${formatDate(t.deadline)}</div>
+        <span class="badge s-${t.status}">${STATUS_LABELS[t.status]||t.status}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Status modal ──────────────────────────────────────────────
+function openStatusModal(taskId, currentStatus) {
+  editingTaskId = taskId;
+  const opts = document.getElementById('status-options');
+  opts.innerHTML = Object.entries(STATUS_LABELS).map(([s,l]) =>
+    `<div class="status-option${s===currentStatus?' selected':''}" onclick="setStatus('${s}')">${l}</div>`
+  ).join('');
+  document.getElementById('status-modal').classList.remove('hidden');
+}
+
+function closeStatusModal(e) {
+  document.getElementById('status-modal').classList.add('hidden');
+}
+
+async function setStatus(status) {
+  closeStatusModal();
+  try {
+    await api('/tasks/'+editingTaskId, {method:'PATCH', body:JSON.stringify({status})});
+    if (selectedGroupId) await loadTasks(selectedGroupId);
+    await loadHome();
+    if (tg) tg.HapticFeedback?.notificationOccurred('success');
+  } catch { alert('Ошибка обновления статуса'); }
+}
+
+// ── Create ────────────────────────────────────────────────────
+async function loadCreateForm() {
+  // Load companies
+  try {
+    if (!companies.length) companies = await api('/companies');
+    const sel = document.getElementById('create-company');
+    sel.innerHTML = '<option value="">Выбрать компанию...</option>' +
+      companies.map(c=>`<option value="${c.group_id}">${c.title}</option>`).join('');
+    if (selectedGroupId) sel.value = selectedGroupId;
+  } catch {}
+  // Load team
+  try {
+    if (!teamMembers.length) teamMembers = await api('/team');
+    const sel = document.getElementById('create-assignee');
+    sel.innerHTML = '<option value="">Выбрать исполнителя...</option>' +
+      teamMembers.map(u=>`<option value="${u.user_id}">${u.first_name}${u.last_name?' '+u.last_name:''}</option>`).join('');
+  } catch {}
+  // Default deadline = tomorrow
+  const tom = new Date(); tom.setDate(tom.getDate()+1);
+  document.getElementById('create-deadline').value = tom.toISOString().split('T')[0];
+}
+
+function selectType(btn) {
+  document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedType = btn.dataset.val;
+}
+
+async function submitTask() {
+  const group_id  = parseInt(document.getElementById('create-company').value);
+  const desc      = document.getElementById('create-desc').value.trim();
+  const assignee  = parseInt(document.getElementById('create-assignee').value) || null;
+  const refs      = document.getElementById('create-refs').value.trim();
+  const deadline  = document.getElementById('create-deadline').value;
+
+  if (!group_id) { alert('Выбери компанию'); return; }
+  if (!desc)     { alert('Напиши описание задачи'); return; }
+
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true; btn.textContent = 'Создание...';
+  try {
+    await api('/tasks', {method:'POST', body:JSON.stringify({
+      group_id, type: selectedType, description: desc,
+      refs, deadline, assignee_id: assignee
+    })});
+    if (tg) tg.HapticFeedback?.notificationOccurred('success');
+    // Reset form
+    document.getElementById('create-desc').value = '';
+    document.getElementById('create-refs').value = '';
+    document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('selected'));
+    document.querySelector('.type-btn[data-val="reels"]').classList.add('selected');
+    selectedType = 'reels';
+    // Go to tasks
+    nav('tasks', document.querySelector('[data-tab="tasks"]'));
+    if (selectedGroupId) loadTasks(selectedGroupId);
+  } catch(e) { alert('Ошибка: '+e.message); }
+  finally { btn.disabled=false; btn.textContent='Создать задачу → отправить в группу'; }
+}
+
+// ── Team ──────────────────────────────────────────────────────
+async function loadTeam() {
+  const el = document.getElementById('team-list');
+  el.innerHTML = '<div class="loader">Загрузка...</div>';
+  try {
+    const team = await api('/team');
+    if (!team.length) { el.innerHTML = '<div class="empty">Нет участников команды</div>'; return; }
+    const max = Math.max(...team.map(u=>u.avg_rating||0), 5);
+    el.innerHTML = team.map(u => {
+      const rating = u.avg_rating ? u.avg_rating.toFixed(1) : '—';
+      const pct    = u.avg_rating ? Math.round(u.avg_rating/max*100) : 0;
+      const role   = {director:'👑 �иректор', am:'📋 АМ', executor:'✂️ Исполнитель'}[u.role] || u.role;
+      return `
+      <div class="exec-row">
+        <div class="avatar">${initials(u.first_name+' '+(u.last_name||''))}</div>
+        <div class="exec-info">
+          <div class="exec-name">${u.first_name||''} ${u.last_name||''}</div>
+          <div class="exec-sub">${role} · ${u.task_count||0} задач</div>
+          <div class="rating-bar"><div class="rating-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="rating-num">${rating}</div>
+      </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div class="empty">Ошибка загрузки</div>'; }
+}
+
+// ── Init ──────────────────────────────────────────────────────
+loadHome();
+</script>
+</body>
+</html>
