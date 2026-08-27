@@ -1,8 +1,9 @@
 """
 WhyNot Agency — FastAPI (daemon thread) + Telegram bot (main thread)
 Bot MUST run in main thread because ptb v21 calls signal.signal()
+uvloop fix: must set event loop before calling bot.main()
 """
-import os, threading, uvicorn, logging, importlib.util, time
+import os, threading, uvicorn, logging, importlib.util, time, asyncio
 from api import app, init_db
 
 logging.basicConfig(
@@ -19,7 +20,7 @@ def run_api():
 if __name__ == "__main__":
     init_db()
     
-    # Start API in a daemon thread (it stays alive as long as main thread lives)
+    # Start API in a daemon thread
     api_thread = threading.Thread(target=run_api, daemon=True)
     api_thread.start()
     logger.info("✅ API thread started")
@@ -27,15 +28,22 @@ if __name__ == "__main__":
     # Give API a moment to bind port
     time.sleep(2)
     
+    # uvloop (used by uvicorn) does NOT auto-create an event loop.
+    # We must explicitly create + set one in the main thread before ptb uses it.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    logger.info("✅ Event loop set in main thread")
+    
     # Bot MUST run in main thread — ptb calls signal.signal() which requires main thread
     logger.info("🤖 Loading bot module...")
     try:
-        spec = importlib.util.spec_from_file_location("bot", "bot.py")
+        bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.py")
+        spec = importlib.util.spec_from_file_location("bot", bot_path)
         bot_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(bot_mod)
         logger.info("✅ Bot module loaded, calling main()...")
         if hasattr(bot_mod, "main"):
-            bot_mod.main()  # Sync call — bot.py uses asyncio.run() internally
+            bot_mod.main()  # Sync — ptb uses asyncio.run() internally
         else:
             logger.error("❌ bot.py has no main() function!")
     except Exception as e:
