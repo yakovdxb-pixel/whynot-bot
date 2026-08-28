@@ -232,7 +232,7 @@ async def update_task(task_id: int, update: TaskUpdate, user: dict = Depends(get
     conn.close()
     return {"ok": True}
 
-@app.get("/api/team")
+@app.get("/api/legacy/team")
 async def list_team():
     conn = get_db()
     rows = conn.execute(

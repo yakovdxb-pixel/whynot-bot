@@ -109,11 +109,17 @@
   }
   nav button{
     flex:1; background:none; border:none; cursor:pointer;
-    padding:8px 0 6px; color:var(--hint); font-size:11px;
+    padding:8px 0 6px; color:var(--hint); font-size:10px;
     display:flex; flex-direction:column; align-items:center; gap:3px;
   }
-  nav button .ic{font-size:21px; line-height:1}
+  nav button .ic{font-size:20px; line-height:1}
   nav button.active{color:var(--link)}
+
+  .role-select{
+    width:100%; margin-top:10px; font:14px inherit; color:var(--text);
+    background:var(--bg); border:1px solid var(--sep); border-radius:9px;
+    padding:8px 10px; -webkit-appearance:none; appearance:none;
+  }
 
   .toast{
     position:fixed; left:50%; bottom:78px; transform:translateX(-50%);
@@ -190,6 +196,7 @@
   <button data-tab="content"><span class="ic">📋</span>Контент</button>
   <button data-tab="ideas"><span class="ic">💡</span>Идеи</button>
   <button data-tab="blockers"><span class="ic">🚫</span>Блокеры</button>
+  <button data-tab="team"><span class="ic">👥</span>Команда</button>
 </nav>
 
 <button class="fab" id="fab" aria-label="Создать">+</button>
@@ -210,7 +217,15 @@ const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 const INIT_DATA = (tg && tg.initData) || "";
 
-const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры" };
+const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры", team:"Команда" };
+const ROLE_LABELS = {
+  admin:"Админ", am:"AM", producer:"Продюсер", smm:"SMM", photographer:"Фотограф",
+  editor:"Монтажёр", designer:"Дизайнер", copywriter:"Копирайтер", intern:"Стажёр"
+};
+const ROLE_COLORS = {
+  admin:"#8e44ad", am:"#2481cc", smm:"#34c759", designer:"#ff9500",
+  photographer:"#ffcc00", editor:"#1abc9c", intern:"#8a8a8e"
+};
 const PIPELINE_LABELS = {
   idea:"Идея", approval:"Согласование", script:"Сценарий", shoot:"Съёмка",
   edit:"Монтаж", review:"Ревью", client:"У клиента", revisions:"Правки",
@@ -231,6 +246,7 @@ const view = document.getElementById("view");
 const screenTitle = document.getElementById("screenTitle");
 let currentTab = "home";
 let homeScope = "mine";   // "mine" | "all" — Главная tasks filter
+let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
 
 function toast(msg){
@@ -317,6 +333,7 @@ async function renderHome(){
     api("/api/home"),
     api("/api/tasks?my=" + (homeScope === "mine" ? "true" : "false")),
   ]);
+  ME = d.user;
   setWhoami(d.user);
   const parts = [];
 
@@ -403,7 +420,48 @@ async function renderBlockers(){
     : `<div class="empty">Активных блокеров нет 👌</div>`;
 }
 
-const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers };
+function teamCard(u, isAdmin){
+  const label = ROLE_LABELS[u.role] || u.role;
+  const color = ROLE_COLORS[u.role] || "#8a8a8e";
+  const picker = isAdmin ? `
+    <select class="role-select" data-user="${u.id}">
+      ${Object.keys(ROLE_LABELS).map(r =>
+        `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r]}</option>`).join("")}
+    </select>` : "";
+  return `
+  <div class="card">
+    <div class="row">
+      <p class="title">${esc(u.full_name || "—")}</p>
+      <span class="pill" style="background:${color}">${esc(label)}</span>
+    </div>
+    <div class="meta">
+      ${u.username ? `<span>@${esc(u.username)}</span>` : ""}
+      ${u.is_active === false ? `<span>неактивен</span>` : ""}
+    </div>
+    ${picker}
+  </div>`;
+}
+
+async function renderTeam(){
+  try {
+    const home = await api("/api/home");
+    ME = home.user; setWhoami(ME);
+  } catch(e){ /* keep whatever ME we have */ }
+
+  let team;
+  try {
+    team = await api("/api/team");
+  } catch(e){
+    view.innerHTML = `<div class="empty">${esc(e.message || "Список команды доступен только админам и AM")}</div>`;
+    return;
+  }
+  const isAdmin = !!(ME && ME.role === "admin");
+  view.innerHTML = team.length
+    ? team.map(u => teamCard(u, isAdmin)).join("")
+    : `<div class="empty">В команде пока никого</div>`;
+}
+
+const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, team:renderTeam };
 
 function setWhoami(u){
   const el = document.getElementById("whoami");
@@ -419,6 +477,7 @@ async function load(tab){
   screenTitle.textContent = TITLES[tab];
   document.querySelectorAll("nav button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
+  document.getElementById("fab").style.display = FORMS[tab] ? "" : "none";
   view.innerHTML = `<div class="loader">Загрузка…</div>`;
   try {
     await RENDERERS[tab]();
@@ -481,6 +540,22 @@ view.addEventListener("click", async e => {
   }
 });
 
+view.addEventListener("change", async e => {
+  const sel = e.target.closest(".role-select");
+  if (!sel || busy) return;
+  const prev = sel.dataset.prev || sel.value;
+  busy = true; sel.disabled = true;
+  try {
+    await api(`/api/team/${sel.dataset.user}/role`, {method:"PATCH", body:{role: sel.value}});
+    haptic("medium"); toast("Роль обновлена");
+    await load("team");
+  } catch(err){
+    toast(err.message); sel.value = prev; sel.disabled = false; busy = false;
+    return;
+  }
+  busy = false;
+});
+
 /* ── creation forms (bottom-sheet) ───────────────────────── */
 
 const FORMS = {
@@ -492,6 +567,8 @@ const FORMS = {
       { name:"priority",     label:"Приоритет", type:"select", value:"normal",
         options:[["normal","Обычный"],["high","Высокий"],["urgent","Срочный"]] },
       { name:"deadline",     label:"Дедлайн",   type:"date" },
+      { name:"assignee_id",  label:"Исполнитель", type:"select", value:"", coerce:"int",
+        dynamic:"team", options:[["","Не назначено"]] },
     ],
   },
   content: {
@@ -538,7 +615,7 @@ function setFormError(msg){
   formErr.textContent = msg; formErr.style.display = "block";
 }
 
-function openSheet(){
+async function openSheet(){
   const cfg = FORMS[currentTab];
   if (!cfg) return;
   document.getElementById("sheetTitle").textContent = cfg.title;
@@ -563,6 +640,27 @@ function openSheet(){
   formSubmit.disabled = false; formSubmit.textContent = "Создать";
   sheetBackdrop.classList.add("open");
   sheet.classList.add("open");
+
+  // dynamic option lists (e.g. assignee picker <- GET /api/team)
+  for (const f of cfg.fields){
+    if (f.dynamic !== "team") continue;
+    const sel = document.getElementById("f_" + f.name);
+    try {
+      const team = await api("/api/team");
+      if (!sel.isConnected) return;
+      team.forEach(u => {
+        const o = document.createElement("option");
+        o.value = u.id;
+        o.textContent = `${u.full_name} (${ROLE_LABELS[u.role] || u.role})`;
+        sel.appendChild(o);
+      });
+    } catch(e){
+      // not admin/am — leave "Не назначено" as the only choice
+      const lbl = sel.previousElementSibling;
+      if (lbl) lbl.textContent += " — недоступно";
+      sel.disabled = true;
+    }
+  }
 }
 
 function closeSheet(){
@@ -583,7 +681,7 @@ async function submitForm(){
       el.closest(".field").classList.add("bad"); valid = false; continue;
     }
     if (raw === "") continue;
-    if (f.type === "number"){
+    if (f.type === "number" || f.coerce === "int"){
       const n = parseInt(raw, 10);
       if (!Number.isNaN(n)) body[f.name] = n;
     } else {

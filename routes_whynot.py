@@ -152,6 +152,11 @@ class TaskCreate(BaseModel):
     description: str | None = None
     priority: str | None = "normal"
     deadline: str | None = None
+    assignee_id: int | None = None
+
+
+class TeamRolePatch(BaseModel):
+    role: str
 
 
 class ContentCreate(BaseModel):
@@ -438,6 +443,8 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
     if prio not in TASK_PRIORITIES:
         raise HTTPException(422, f"priority must be one of {sorted(TASK_PRIORITIES)}")
     uid = user["id"] or None
+    # explicit assignee from the picker, else self-assign (keeps it on the creator's Главная)
+    assignee_id = body.assignee_id if body.assignee_id else uid
     deadline = _parse_dt(body.deadline)
     obj = Task(
         title=title,
@@ -446,7 +453,7 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
         deadline=deadline,
         status="pending",
         created_by=uid,
-        assignee_id=uid,          # self-assign so it lands on the creator's Главная
+        assignee_id=assignee_id,
     )
     result = await _commit_new(session, obj)
     tg = await _telegram_id_for(session, obj.assignee_id)
@@ -519,6 +526,44 @@ async def create_blocker(body: BlockerCreate, bg: BackgroundTasks,
     if tg:
         bg.add_task(_tg_send, tg, f"🚫 На тебе блокер: {title}\n{desc or ''}".rstrip())
     return result
+
+
+# ── team ────────────────────────────────────────────────────────
+
+def _user_out(u):
+    return {"id": u.id, "telegram_id": u.telegram_id, "full_name": u.full_name,
+            "username": u.username, "role": u.role, "is_active": u.is_active}
+
+
+@router.get("/team")
+async def list_team(user: dict = Depends(current_user), session=Depends(get_session)):
+    if user["role"] not in ("admin", "am"):
+        raise HTTPException(403, "team list is for admin / am only")
+    rows = (await session.execute(
+        select(User).where(User.is_active.is_(True))
+        .order_by(User.role, User.full_name)
+    )).scalars().all()
+    return [_user_out(u) for u in rows]
+
+
+@router.patch("/team/{user_id}/role")
+async def set_team_role(user_id: int, body: TeamRolePatch,
+                        user: dict = Depends(current_user), session=Depends(get_session)):
+    """Change a teammate's role. Caller must be admin (via init-data, no secret)."""
+    if user["role"] != "admin":
+        raise HTTPException(403, "only an admin can change roles")
+    if body.role not in USER_ROLES:
+        raise HTTPException(422, f"role must be one of {sorted(USER_ROLES)}")
+    target = (await session.execute(
+        select(User).where(User.id == user_id)
+    )).scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "user not found")
+    target.role = body.role
+    target.updated_at = _now()
+    await session.commit()
+    await session.refresh(target)
+    return _user_out(target)
 
 
 # ── admin ───────────────────────────────────────────────────────
