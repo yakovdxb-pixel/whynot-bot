@@ -20,6 +20,7 @@
     --st-done:#34c759;
     --st-overdue:#ff3b30;
     --st-cancelled:#8a8a8e;
+    --fab:#ff6b5e;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0}
@@ -109,6 +110,56 @@
     max-width:88%;
   }
   .toast.show{opacity:.92}
+
+  /* ── floating + button ─────────────────────────────────── */
+  .fab{
+    position:fixed; right:16px; z-index:15;
+    bottom:calc(64px + env(safe-area-inset-bottom) + 14px);
+    width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
+    background:var(--fab, #ff6b5e); color:#fff; font-size:28px; line-height:52px;
+    box-shadow:0 4px 14px rgba(0,0,0,.28); padding:0;
+    transition:transform .12s;
+  }
+  .fab:active{transform:scale(.9)}
+
+  /* ── bottom-sheet modal ────────────────────────────────── */
+  .sheet-backdrop{
+    position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.4);
+    opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .sheet-backdrop.open{opacity:1; pointer-events:auto}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:31;
+    background:var(--bg); color:var(--text);
+    border-radius:16px 16px 0 0; padding:8px 16px calc(20px + env(safe-area-inset-bottom));
+    transform:translateY(100%); transition:transform .26s cubic-bezier(.32,.72,0,1);
+    max-height:88vh; overflow-y:auto;
+  }
+  .sheet.open{transform:translateY(0)}
+  .sheet .grabber{width:36px; height:4px; border-radius:2px; background:var(--sep);
+    margin:6px auto 12px}
+  .sheet h2{font-size:17px; font-weight:700; margin:0 0 14px}
+  .field{margin-bottom:12px}
+  .field label{display:block; font-size:12px; color:var(--hint); margin-bottom:5px}
+  .field input, .field textarea, .field select{
+    width:100%; font:15px inherit; color:var(--text);
+    background:var(--card); border:1px solid var(--sep); border-radius:10px;
+    padding:10px 12px; outline:none; -webkit-appearance:none; appearance:none;
+  }
+  .field textarea{min-height:74px; resize:vertical}
+  .field select{background-image:none}
+  .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--link)}
+  .field.bad input, .field.bad textarea, .field.bad select{border-color:var(--st-overdue)}
+  .sheet .form-err{
+    background:color-mix(in srgb, var(--st-overdue) 14%, transparent);
+    color:var(--st-overdue); border-radius:10px; padding:9px 12px; font-size:13px; margin-bottom:10px;
+  }
+  .sheet .submit{
+    width:100%; border:none; border-radius:12px; margin-top:4px;
+    background:var(--btn); color:var(--btn-text); font-size:15px; font-weight:600;
+    padding:13px; cursor:pointer;
+  }
+  .sheet .submit[disabled]{opacity:.55; cursor:default}
 </style>
 </head>
 <body>
@@ -128,6 +179,17 @@
   <button data-tab="ideas"><span class="ic">💡</span>Идеи</button>
   <button data-tab="blockers"><span class="ic">🚫</span>Блокеры</button>
 </nav>
+
+<button class="fab" id="fab" aria-label="Создать">+</button>
+
+<div class="sheet-backdrop" id="sheetBackdrop"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="grabber"></div>
+  <h2 id="sheetTitle"></h2>
+  <div class="form-err" id="formErr" style="display:none"></div>
+  <div id="formFields"></div>
+  <button class="submit" id="formSubmit">Создать</button>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -380,6 +442,137 @@ view.addEventListener("click", async e => {
     finally { busy = false; }
   }
 });
+
+/* ── creation forms (bottom-sheet) ───────────────────────── */
+
+const FORMS = {
+  home: {
+    title: "Новая задача", endpoint: "/api/tasks",
+    fields: [
+      { name:"title",       label:"Название",  type:"text", required:true },
+      { name:"description",  label:"Описание",  type:"textarea" },
+      { name:"priority",     label:"Приоритет", type:"select", value:"normal",
+        options:[["normal","Обычный"],["high","Высокий"],["urgent","Срочный"]] },
+      { name:"deadline",     label:"Дедлайн",   type:"date" },
+    ],
+  },
+  content: {
+    title: "Новый контент", endpoint: "/api/content",
+    fields: [
+      { name:"format", label:"Формат", type:"select", required:true,
+        options:[["post","Пост"],["reels","Reels"],["story","Сторис"],
+                 ["carousel","Карусель"],["tiktok","TikTok"],
+                 ["youtube_long","YouTube"],["other","Другое"]] },
+      { name:"topic",        label:"Тема",              type:"text" },
+      { name:"publish_date", label:"Дата публикации",   type:"date" },
+      { name:"project_id",   label:"ID проекта (необяз.)", type:"number" },
+      { name:"client_id",    label:"ID клиента (необяз.)", type:"number" },
+    ],
+  },
+  ideas: {
+    title: "Новая идея", endpoint: "/api/ideas",
+    fields: [
+      { name:"title",       label:"Название", type:"text", required:true },
+      { name:"description", label:"Описание", type:"textarea" },
+      { name:"format",      label:"Формат (необяз.)", type:"select", value:"",
+        options:[["","—"],["post","Пост"],["reels","Reels"],["story","Сторис"],
+                 ["carousel","Карусель"],["other","Другое"]] },
+    ],
+  },
+  blockers: {
+    title: "Новый блокер", endpoint: "/api/blockers",
+    fields: [
+      { name:"title",       label:"Что блокирует", type:"text", required:true },
+      { name:"description", label:"Подробнее",     type:"textarea" },
+    ],
+  },
+};
+
+const sheet = document.getElementById("sheet");
+const sheetBackdrop = document.getElementById("sheetBackdrop");
+const formFields = document.getElementById("formFields");
+const formErr = document.getElementById("formErr");
+const formSubmit = document.getElementById("formSubmit");
+
+function setFormError(msg){
+  if (!msg){ formErr.style.display = "none"; return; }
+  formErr.textContent = msg; formErr.style.display = "block";
+}
+
+function openSheet(){
+  const cfg = FORMS[currentTab];
+  if (!cfg) return;
+  document.getElementById("sheetTitle").textContent = cfg.title;
+  setFormError("");
+  formFields.innerHTML = cfg.fields.map(f => {
+    const id = "f_" + f.name;
+    let control;
+    if (f.type === "textarea"){
+      control = `<textarea id="${id}"></textarea>`;
+    } else if (f.type === "select"){
+      const opts = f.options.map(([v,l]) =>
+        `<option value="${esc(v)}"${v === (f.value ?? "") ? " selected" : ""}>${esc(l)}</option>`).join("");
+      control = `<select id="${id}">${opts}</select>`;
+    } else {
+      const t = f.type === "number" ? "number" : (f.type === "date" ? "date" : "text");
+      control = `<input id="${id}" type="${t}"${f.type === "number" ? ' inputmode="numeric"' : ""}>`;
+    }
+    return `<div class="field" data-field="${f.name}">
+      <label for="${id}">${esc(f.label)}${f.required ? " *" : ""}</label>${control}
+    </div>`;
+  }).join("");
+  formSubmit.disabled = false; formSubmit.textContent = "Создать";
+  sheetBackdrop.classList.add("open");
+  sheet.classList.add("open");
+}
+
+function closeSheet(){
+  sheet.classList.remove("open");
+  sheetBackdrop.classList.remove("open");
+}
+
+async function submitForm(){
+  const cfg = FORMS[currentTab];
+  if (!cfg || busy) return;
+  const body = {};
+  let valid = true;
+  formFields.querySelectorAll(".field").forEach(w => w.classList.remove("bad"));
+  for (const f of cfg.fields){
+    const el = document.getElementById("f_" + f.name);
+    const raw = (el.value || "").trim();
+    if (f.required && !raw){
+      el.closest(".field").classList.add("bad"); valid = false; continue;
+    }
+    if (raw === "") continue;
+    if (f.type === "number"){
+      const n = parseInt(raw, 10);
+      if (!Number.isNaN(n)) body[f.name] = n;
+    } else {
+      body[f.name] = raw;
+    }
+  }
+  if (!valid){ setFormError("Заполни обязательные поля"); return; }
+
+  busy = true;
+  formSubmit.disabled = true; formSubmit.textContent = "Сохранение…";
+  setFormError("");
+  try {
+    await api(cfg.endpoint, { method:"POST", body });
+    haptic("medium");
+    closeSheet();
+    toast("Создано");
+    await load(currentTab);
+  } catch(e){
+    setFormError(e.message || "Не удалось сохранить");
+    formSubmit.disabled = false; formSubmit.textContent = "Создать";
+  } finally {
+    busy = false;
+  }
+}
+
+document.getElementById("fab").addEventListener("click", () => { haptic(); openSheet(); });
+sheetBackdrop.addEventListener("click", closeSheet);
+formSubmit.addEventListener("click", submitForm);
 
 load("home");
 </script>

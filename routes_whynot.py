@@ -15,10 +15,12 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, or_
+from sqlalchemy.exc import IntegrityError
 
 from db.models import (
     AsyncSessionLocal, User, Task, ContentItem, Idea, IdeaVote, Blocker,
     PIPELINE_SEQUENCE, task_status_enum, user_role_enum,
+    content_format_enum, task_priority_enum,
 )
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -127,6 +129,11 @@ async def current_user(request: Request, session=Depends(get_session)) -> dict:
 TASK_STATUSES = set(task_status_enum.enums)
 OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue")
 USER_ROLES = set(user_role_enum.enums)
+TASK_PRIORITIES = set(task_priority_enum.enums)          # low, normal, high, urgent
+CONTENT_FORMATS = set(content_format_enum.enums)
+# tolerate the labels the Mini App form uses
+PRIORITY_ALIASES = {"critical": "urgent", "medium": "normal"}
+FORMAT_ALIASES = {"reel": "reels", "video": "youtube_long", "article": "other"}
 
 
 class TaskPatch(BaseModel):
@@ -137,6 +144,60 @@ class RolePatch(BaseModel):
     role: str
     full_name: str | None = None
     username: str | None = None
+
+
+class TaskCreate(BaseModel):
+    title: str
+    description: str | None = None
+    priority: str | None = "normal"
+    deadline: str | None = None
+
+
+class ContentCreate(BaseModel):
+    format: str
+    topic: str | None = None
+    publish_date: str | None = None
+    project_id: int | None = None
+    client_id: int | None = None
+
+
+class IdeaCreate(BaseModel):
+    title: str
+    description: str | None = None
+    format: str | None = None
+
+
+class BlockerCreate(BaseModel):
+    title: str
+    description: str | None = None
+
+
+def _clean(s):
+    if s is None:
+        return None
+    s = s.strip()
+    return s or None
+
+
+def _parse_date(v):
+    v = _clean(v)
+    if not v:
+        return None
+    try:
+        return date.fromisoformat(v[:10])
+    except ValueError:
+        raise HTTPException(422, f"bad date: {v!r} (expected YYYY-MM-DD)")
+
+
+def _parse_dt(v):
+    v = _clean(v)
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v + "T00:00:00+00:00") if len(v) == 10 \
+            else datetime.fromisoformat(v)
+    except ValueError:
+        raise HTTPException(422, f"bad datetime: {v!r}")
 
 
 # ── helpers ─────────────────────────────────────────────────────
@@ -325,6 +386,98 @@ async def list_blockers(user: dict = Depends(current_user), session=Depends(get_
         d["assigned_to_name"] = names.get(r.assigned_to)
         out.append(d)
     return out
+
+
+# ── creation (from the Mini App forms) ─────────────────────────
+
+async def _commit_new(session, obj):
+    session.add(obj)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "a referenced id (project_id / client_id) does not exist")
+    await session.refresh(obj)
+    return row_to_dict(obj)
+
+
+@router.post("/tasks", status_code=201)
+async def create_task(body: TaskCreate,
+                      user: dict = Depends(current_user), session=Depends(get_session)):
+    title = _clean(body.title)
+    if not title:
+        raise HTTPException(422, "title is required")
+    prio = (_clean(body.priority) or "normal").lower()
+    prio = PRIORITY_ALIASES.get(prio, prio)
+    if prio not in TASK_PRIORITIES:
+        raise HTTPException(422, f"priority must be one of {sorted(TASK_PRIORITIES)}")
+    uid = user["id"] or None
+    return await _commit_new(session, Task(
+        title=title,
+        description=_clean(body.description),
+        priority=prio,
+        deadline=_parse_dt(body.deadline),
+        status="pending",
+        created_by=uid,
+        assignee_id=uid,          # self-assign so it lands on the creator's Главная
+    ))
+
+
+@router.post("/content", status_code=201)
+async def create_content(body: ContentCreate,
+                         user: dict = Depends(current_user), session=Depends(get_session)):
+    fmt = (_clean(body.format) or "").lower()
+    fmt = FORMAT_ALIASES.get(fmt, fmt)
+    if fmt not in CONTENT_FORMATS:
+        raise HTTPException(422, f"format must be one of {sorted(CONTENT_FORMATS)}")
+    uid = user["id"] or None
+    return await _commit_new(session, ContentItem(
+        format=fmt,
+        topic=_clean(body.topic),
+        publish_date=_parse_date(body.publish_date),
+        project_id=body.project_id,
+        client_id=body.client_id,
+        pipeline_status="idea",
+        created_by=uid,
+        author_id=uid,
+    ))
+
+
+@router.post("/ideas", status_code=201)
+async def create_idea(body: IdeaCreate,
+                      user: dict = Depends(current_user), session=Depends(get_session)):
+    title = _clean(body.title)
+    if not title:
+        raise HTTPException(422, "title is required")
+    fmt = _clean(body.format)
+    if fmt:
+        fmt = FORMAT_ALIASES.get(fmt.lower(), fmt.lower())
+        if fmt not in CONTENT_FORMATS:
+            raise HTTPException(422, f"format must be one of {sorted(CONTENT_FORMATS)}")
+    uid = user["id"] or None
+    return await _commit_new(session, Idea(
+        title=title,
+        description=_clean(body.description),
+        format=fmt,
+        status="new",
+        proposed_by=uid,
+        votes_count=0,
+    ))
+
+
+@router.post("/blockers", status_code=201)
+async def create_blocker(body: BlockerCreate,
+                         user: dict = Depends(current_user), session=Depends(get_session)):
+    title = _clean(body.title)
+    if not title:
+        raise HTTPException(422, "title is required")
+    uid = user["id"] or None
+    return await _commit_new(session, Blocker(
+        title=title,
+        description=_clean(body.description),
+        status="active",
+        reported_by=uid,
+    ))
 
 
 # ── admin ───────────────────────────────────────────────────────
