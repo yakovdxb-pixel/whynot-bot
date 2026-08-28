@@ -48,7 +48,7 @@
   header{
     position:sticky; top:0; z-index:5;
     background:var(--bg);
-    padding:14px 16px 10px; border-bottom:1px solid var(--sep);
+    padding:calc(14px + var(--safe-top, 0px)) 16px 10px; border-bottom:1px solid var(--sep);
     display:flex; align-items:center; justify-content:space-between;
   }
   header h1{font-size:18px; font-weight:700; margin:0}
@@ -298,8 +298,37 @@
 
 <script>
 const tg = window.Telegram && window.Telegram.WebApp;
-if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 const INIT_DATA = (tg && tg.initData) || "";
+
+/* make the Mini App feel like a standalone app inside Telegram */
+(function tgChrome(){
+  if (!tg) return;
+  const atLeast = (v) => !tg.isVersionAtLeast || tg.isVersionAtLeast(v);
+  try { tg.ready(); } catch(e){}
+  try { tg.expand(); } catch(e){}
+  // stop the swipe-down gesture that collapses / minimises the app (Bot API 7.7+)
+  try { if (atLeast("7.7") && tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch(e){}
+  // blend Telegram's top bar into the app
+  try { tg.setHeaderColor && tg.setHeaderColor("#330a3a"); } catch(e){}
+  try { tg.setBackgroundColor && tg.setBackgroundColor(
+    getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#ffffff"); } catch(e){}
+
+  function applySafeTop(){
+    const t = (tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) ||
+              (tg.safeAreaInset && tg.safeAreaInset.top) || 0;
+    document.documentElement.style.setProperty("--safe-top", t ? t + "px" : "0px");
+  }
+  // go truly fullscreen where supported (Bot API 8.0+) and keep the header clear of the notch
+  try {
+    if (atLeast("8.0") && tg.requestFullscreen){
+      tg.onEvent && tg.onEvent("fullscreenChanged", applySafeTop);
+      tg.onEvent && tg.onEvent("safeAreaChanged", applySafeTop);
+      tg.onEvent && tg.onEvent("contentSafeAreaChanged", applySafeTop);
+      tg.requestFullscreen();
+      applySafeTop();
+    }
+  } catch(e){}
+})();
 
 /* ── install / add-to-home-screen banner ────────────────── */
 (function installBanner(){
