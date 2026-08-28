@@ -12,7 +12,8 @@ from datetime import datetime, date, timezone
 from decimal import Decimal
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
@@ -170,6 +171,7 @@ class IdeaCreate(BaseModel):
 class BlockerCreate(BaseModel):
     title: str
     description: str | None = None
+    assigned_to: int | None = None
 
 
 def _clean(s):
@@ -396,13 +398,37 @@ async def _commit_new(session, obj):
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(400, "a referenced id (project_id / client_id) does not exist")
+        raise HTTPException(400, "a referenced id (project_id / client_id / assigned_to) does not exist")
     await session.refresh(obj)
     return row_to_dict(obj)
 
 
+async def _tg_send(telegram_id: int, text: str):
+    """Fire a Telegram DM. Best-effort — never raises into the request."""
+    if not (BOT_TOKEN and telegram_id):
+        return
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": telegram_id, "text": text},
+            )
+        if r.status_code != 200:
+            print(f"notify {telegram_id}: telegram {r.status_code} {r.text[:200]}")
+    except Exception as e:  # noqa: BLE001
+        print(f"notify {telegram_id} failed: {e}")
+
+
+async def _telegram_id_for(session, user_id):
+    if not user_id:
+        return None
+    return (await session.execute(
+        select(User.telegram_id).where(User.id == user_id)
+    )).scalar_one_or_none()
+
+
 @router.post("/tasks", status_code=201)
-async def create_task(body: TaskCreate,
+async def create_task(body: TaskCreate, bg: BackgroundTasks,
                       user: dict = Depends(current_user), session=Depends(get_session)):
     title = _clean(body.title)
     if not title:
@@ -412,15 +438,23 @@ async def create_task(body: TaskCreate,
     if prio not in TASK_PRIORITIES:
         raise HTTPException(422, f"priority must be one of {sorted(TASK_PRIORITIES)}")
     uid = user["id"] or None
-    return await _commit_new(session, Task(
+    deadline = _parse_dt(body.deadline)
+    obj = Task(
         title=title,
         description=_clean(body.description),
         priority=prio,
-        deadline=_parse_dt(body.deadline),
+        deadline=deadline,
         status="pending",
         created_by=uid,
         assignee_id=uid,          # self-assign so it lands on the creator's Главная
-    ))
+    )
+    result = await _commit_new(session, obj)
+    tg = await _telegram_id_for(session, obj.assignee_id)
+    if tg:
+        dl = deadline.strftime("%d.%m.%Y") if deadline else "без срока"
+        bg.add_task(_tg_send, tg,
+                    f"📋 Тебе назначена задача: {title}\nПриоритет: {prio}\nДедлайн: {dl}")
+    return result
 
 
 @router.post("/content", status_code=201)
@@ -466,18 +500,25 @@ async def create_idea(body: IdeaCreate,
 
 
 @router.post("/blockers", status_code=201)
-async def create_blocker(body: BlockerCreate,
+async def create_blocker(body: BlockerCreate, bg: BackgroundTasks,
                          user: dict = Depends(current_user), session=Depends(get_session)):
     title = _clean(body.title)
     if not title:
         raise HTTPException(422, "title is required")
     uid = user["id"] or None
-    return await _commit_new(session, Blocker(
+    desc = _clean(body.description)
+    obj = Blocker(
         title=title,
-        description=_clean(body.description),
+        description=desc,
         status="active",
         reported_by=uid,
-    ))
+        assigned_to=body.assigned_to,
+    )
+    result = await _commit_new(session, obj)
+    tg = await _telegram_id_for(session, obj.assigned_to)
+    if tg:
+        bg.add_task(_tg_send, tg, f"🚫 На тебе блокер: {title}\n{desc or ''}".rstrip())
+    return result
 
 
 # ── admin ───────────────────────────────────────────────────────

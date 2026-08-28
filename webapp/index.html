@@ -76,6 +76,18 @@
   button.act.ghost{background:transparent; color:var(--link); border:1px solid var(--sep)}
   button.act[disabled]{opacity:.45; cursor:default}
 
+  .seg{
+    display:flex; background:var(--card); border-radius:10px; padding:3px;
+    margin:2px 0 12px;
+  }
+  .seg button{
+    flex:1; border:none; background:none; color:var(--hint); cursor:pointer;
+    font-size:13px; font-weight:600; padding:7px 0; border-radius:8px;
+  }
+  .seg button.on{background:var(--bg); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+  .done-mark{margin-top:10px; text-align:center; color:var(--st-done); font-weight:600; font-size:14px}
+
   .vote{
     display:flex; align-items:center; gap:6px; border:1px solid var(--sep);
     background:transparent; color:var(--text); border-radius:999px;
@@ -208,10 +220,17 @@ const STATUS_LABELS = {
   pending:"ожидает", in_progress:"в работе", done:"готово",
   overdue:"просрочено", cancelled:"отменено"
 };
+// which status button a task card shows, keyed by current status
+const TASK_NEXT = {
+  pending:     { to:"in_progress", label:"▶ В работу" },
+  overdue:     { to:"in_progress", label:"▶ В работу" },
+  in_progress: { to:"done",        label:"✅ Готово" },
+};
 
 const view = document.getElementById("view");
 const screenTitle = document.getElementById("screenTitle");
 let currentTab = "home";
+let homeScope = "mine";   // "mine" | "all" — Главная tasks filter
 let busy = false;
 
 function toast(msg){
@@ -255,9 +274,9 @@ function deadlineMeta(v){
   return f ? `⏰ ${f}` : "⏰ без срока";
 }
 
-function taskCard(t, {withAction=true}={}){
+function taskCard(t){
   const st = t.status || "pending";
-  const done = st === "done" || st === "cancelled";
+  const next = TASK_NEXT[st];
   return `
   <div class="card" data-task="${t.id}">
     <div class="row">
@@ -270,7 +289,9 @@ function taskCard(t, {withAction=true}={}){
       ${t.assignee_name ? `<span>👤 ${esc(t.assignee_name)}</span>` : ""}
       ${t.priority && t.priority !== "normal" ? `<span>❗ ${esc(t.priority)}</span>` : ""}
     </div>
-    ${withAction && !done ? `<button class="act" data-done="${t.id}">Готово</button>` : ""}
+    ${next
+      ? `<button class="act" data-task-to="${next.to}" data-task-id="${t.id}">${next.label}</button>`
+      : st === "done" ? `<div class="done-mark">✅ Выполнено</div>` : ""}
   </div>`;
 }
 
@@ -292,14 +313,23 @@ function blockerCard(b){
 /* ── screens ─────────────────────────────────────────────── */
 
 async function renderHome(){
-  const d = await api("/api/home");
+  const [d, tasks] = await Promise.all([
+    api("/api/home"),
+    api("/api/tasks?my=" + (homeScope === "mine" ? "true" : "false")),
+  ]);
   setWhoami(d.user);
   const parts = [];
 
-  parts.push(`<div class="section-title">Мои задачи</div>`);
-  parts.push(d.my_tasks.length
-    ? d.my_tasks.map(t => taskCard(t)).join("")
-    : `<div class="empty">Нет активных задач 🎉</div>`);
+  parts.push(`
+    <div class="seg" id="scopeSeg">
+      <button data-scope="mine" class="${homeScope === "mine" ? "on" : ""}">Мои</button>
+      <button data-scope="all"  class="${homeScope === "all"  ? "on" : ""}">Все</button>
+    </div>`);
+
+  parts.push(`<div class="section-title">Задачи</div>`);
+  parts.push(tasks.length
+    ? tasks.map(taskCard).join("")
+    : `<div class="empty">${homeScope === "mine" ? "Нет задач 🎉" : "Задач нет"}</div>`);
 
   parts.push(`<div class="section-title">Мои блокеры</div>`);
   parts.push(d.my_blockers.length
@@ -406,18 +436,26 @@ document.querySelector("nav").addEventListener("click", e => {
 document.getElementById("refreshBtn").addEventListener("click", () => { haptic(); load(currentTab); });
 
 view.addEventListener("click", async e => {
-  const doneBtn = e.target.closest("[data-done]");
+  const scopeBtn = e.target.closest("[data-scope]");
+  if (scopeBtn){
+    if (scopeBtn.dataset.scope !== homeScope){ homeScope = scopeBtn.dataset.scope; haptic(); load("home"); }
+    return;
+  }
+
+  const stBtn = e.target.closest("[data-task-to]");
   const advBtn = e.target.closest("[data-advance]");
   const voteBtn = e.target.closest("[data-vote]");
   if (busy) return;
 
-  if (doneBtn){
-    busy = true; doneBtn.disabled = true; doneBtn.textContent = "…";
+  if (stBtn){
+    const orig = stBtn.textContent;
+    busy = true; stBtn.disabled = true; stBtn.textContent = "…";
     try {
-      await api(`/api/tasks/${doneBtn.dataset.done}`, {method:"PATCH", body:{status:"done"}});
-      haptic("medium"); toast("Задача закрыта");
+      await api(`/api/tasks/${stBtn.dataset.taskId}`, {method:"PATCH", body:{status: stBtn.dataset.taskTo}});
+      haptic("medium");
+      toast(stBtn.dataset.taskTo === "done" ? "Задача закрыта" : "Взято в работу");
       await load(currentTab);
-    } catch(err){ toast(err.message); doneBtn.disabled = false; doneBtn.textContent = "Готово"; }
+    } catch(err){ toast(err.message); stBtn.disabled = false; stBtn.textContent = orig; }
     finally { busy = false; }
   }
 
@@ -484,6 +522,7 @@ const FORMS = {
     fields: [
       { name:"title",       label:"Что блокирует", type:"text", required:true },
       { name:"description", label:"Подробнее",     type:"textarea" },
+      { name:"assigned_to", label:"ID исполнителя (уведомить)", type:"number" },
     ],
   },
 };
