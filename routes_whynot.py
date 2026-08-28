@@ -18,10 +18,11 @@ from sqlalchemy import select, or_
 
 from db.models import (
     AsyncSessionLocal, User, Task, ContentItem, Idea, IdeaVote, Blocker,
-    PIPELINE_SEQUENCE, task_status_enum,
+    PIPELINE_SEQUENCE, task_status_enum, user_role_enum,
 )
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 
 router = APIRouter(prefix="/api", tags=["whynot-os"])
 
@@ -125,10 +126,17 @@ async def current_user(request: Request, session=Depends(get_session)) -> dict:
 
 TASK_STATUSES = set(task_status_enum.enums)
 OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue")
+USER_ROLES = set(user_role_enum.enums)
 
 
 class TaskPatch(BaseModel):
     status: str
+
+
+class RolePatch(BaseModel):
+    role: str
+    full_name: str | None = None
+    username: str | None = None
 
 
 # ── helpers ─────────────────────────────────────────────────────
@@ -317,3 +325,56 @@ async def list_blockers(user: dict = Depends(current_user), session=Depends(get_
         d["assigned_to_name"] = names.get(r.assigned_to)
         out.append(d)
     return out
+
+
+# ── admin ───────────────────────────────────────────────────────
+
+def _require_admin(request: Request):
+    """Gate on the X-Admin-Secret header matching the ADMIN_SECRET env var."""
+    if not ADMIN_SECRET:
+        raise HTTPException(503, "ADMIN_SECRET is not configured on the server")
+    provided = request.headers.get("X-Admin-Secret", "")
+    if not hmac.compare_digest(provided, ADMIN_SECRET):
+        raise HTTPException(403, "Invalid admin secret")
+
+
+@router.patch("/users/{telegram_id}/role")
+async def set_user_role(telegram_id: int, patch: RolePatch, request: Request,
+                        session=Depends(get_session)):
+    """Set (or create) a user's role. Admin-only via X-Admin-Secret header.
+
+    Body: {"role": "admin", "full_name"?: "...", "username"?: "..."}
+    Creates the users row if telegram_id is not registered yet — useful for
+    bootstrapping the first admin before anyone exists in Postgres.
+    """
+    _require_admin(request)
+    if patch.role not in USER_ROLES:
+        raise HTTPException(422, f"role must be one of {sorted(USER_ROLES)}")
+
+    user = (await session.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )).scalar_one_or_none()
+
+    created = user is None
+    if user:
+        user.role = patch.role
+        if patch.full_name:
+            user.full_name = patch.full_name
+        if patch.username:
+            user.username = patch.username
+        user.updated_at = _now()
+    else:
+        user = User(
+            telegram_id=telegram_id,
+            full_name=patch.full_name or f"User {telegram_id}",
+            username=patch.username,
+            role=patch.role,
+            is_active=True,
+        )
+        session.add(user)
+
+    await session.commit()
+    await session.refresh(user)
+    result = row_to_dict(user)
+    result["created"] = created
+    return result
