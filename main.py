@@ -4,6 +4,9 @@ Running bot as a subprocess avoids all asyncio/uvloop event loop conflicts.
 The bot gets a clean Python process with no uvloop policy installed.
 """
 import os, threading, uvicorn, logging, time, subprocess, sys
+# main.py supervises the bot subprocess itself — stop api.py from spawning a
+# second one (double polling → Telegram 409 Conflict).
+os.environ.setdefault("RUN_BOT", "0")
 from api import app, init_db
 
 logging.basicConfig(

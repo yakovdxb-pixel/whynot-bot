@@ -305,11 +305,60 @@ async def delete_webhook_endpoint():
         )
     return res.json()
 
+# ── WHY NOT? OS — Postgres layer ────────────────────────────────
+
+@app.get("/health")
+async def health():
+    """Liveness + Postgres connectivity check for WHY NOT? OS."""
+    from sqlalchemy import text as _sql_text
+    try:
+        from db.models import engine as _pg_engine
+        async with _pg_engine.connect() as conn:
+            await conn.execute(_sql_text("SELECT 1"))
+        return {"db": "ok"}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"db": "error", "detail": str(e)})
+
+
+def _bot_supervisor():
+    """Run bot.py as an isolated subprocess (uvloop-safe), auto-restart on exit.
+
+    Skipped when RUN_BOT=0 — set that on the web service once bot.py runs
+    as its own Railway 'worker' process (see Procfile).
+    """
+    import subprocess, sys, time
+    bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.py")
+    while True:
+        try:
+            result = subprocess.run([sys.executable, bot_path], check=False)
+            print(f"⚠️ bot subprocess exited ({result.returncode}), restart in 5s")
+        except Exception as e:
+            print(f"❌ bot subprocess failed: {e}")
+        time.sleep(5)
+
+
 # ── Startup ─────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
+    # Legacy sqlite tables (old Agency endpoints)
     init_db()
-    print("✅ DB initialized")
+    print("✅ sqlite DB initialized")
+
+    # WHY NOT? OS Postgres schema (idempotent)
+    try:
+        from db.models import init_db as init_pg_db
+        await init_pg_db()
+        print("✅ Postgres schema ensured")
+    except Exception as e:
+        print(f"⚠️ Postgres init skipped: {e}")
+
+    # Keep the Telegram bot alive unless it runs as its own process
+    if os.getenv("RUN_BOT", "1") != "0":
+        import threading
+        threading.Thread(target=_bot_supervisor, daemon=True).start()
+        print("🤖 bot subprocess supervisor started (RUN_BOT=1)")
+
 
 if __name__ == "__main__":
     import uvicorn
