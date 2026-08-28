@@ -7,7 +7,8 @@ from datetime import datetime, date, timedelta, time as dttime
 import re
 from telegram import (
     Update, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, ReplyKeyboardRemove, WebAppInfo
+    ReplyKeyboardMarkup, ReplyKeyboardRemove, WebAppInfo,
+    MenuButtonWebApp, BotCommand
 )
 from telegram.ext import (
     Application, CommandHandler, ContextTypes,
@@ -2163,11 +2164,33 @@ async def install_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, reply_markup=kb, disable_web_page_preview=True)
 
 
+WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://worker-production-7137.up.railway.app/webapp"
+
+
+async def _post_init(app: Application):
+    """Set the persistent 'Открыть приложение' menu button + command list."""
+    try:
+        await app.bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="Открыть приложение",
+                                        web_app=WebAppInfo(url=WEBAPP_URL))
+        )
+        await app.bot.set_my_commands([
+            BotCommand("start",   "Запуск / открыть приложение"),
+            BotCommand("install", "Установить как приложение (PWA)"),
+            BotCommand("my",      "Мои задачи"),
+            BotCommand("join",    "Регистрация в компании"),
+            BotCommand("history", "История"),
+        ])
+        logger.info("✅ menu button + commands set")
+    except Exception as e:
+        logger.warning(f"post_init setup failed: {e}")
+
+
 # ── main ─────────────────────────────────────────────────────────
 
 def main():
     init_db()
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).post_init(_post_init).build()
 
     # ── Daily deadline reminder: 09:00 Uzbekistan = 04:00 UTC ────────
     app.job_queue.run_daily(deadline_reminder_job, time=dttime(4, 0, 0))
