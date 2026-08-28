@@ -181,6 +181,23 @@
     padding:8px 10px; -webkit-appearance:none; appearance:none;
   }
 
+  #installBanner{
+    display:flex; align-items:center; gap:10px;
+    background:#6c5ce7; color:#fff;
+    padding:10px 12px; font-size:13px; line-height:1.35;
+  }
+  #installBanner[hidden]{display:none}
+  #installBanner #installText{flex:1}
+  #installBanner #installBtn{
+    flex:0 0 auto; border:none; border-radius:8px; cursor:pointer;
+    background:#fff; color:#6c5ce7; font-size:13px; font-weight:700; padding:8px 12px;
+  }
+  #installBanner #installBtn[hidden]{display:none}
+  #installBanner #installClose{
+    flex:0 0 auto; border:none; background:transparent; color:#fff;
+    font-size:20px; line-height:1; cursor:pointer; padding:0 2px;
+  }
+
   .toast{
     position:fixed; left:50%; bottom:78px; transform:translateX(-50%);
     background:#000; color:#fff; padding:9px 16px; border-radius:10px;
@@ -249,6 +266,12 @@
   <button class="refresh" id="refreshBtn" aria-label="Обновить">⟳</button>
 </header>
 
+<div id="installBanner" hidden>
+  <span id="installText"></span>
+  <button id="installBtn" hidden>📲 Установить приложение</button>
+  <button id="installClose" aria-label="Закрыть">×</button>
+</div>
+
 <main id="view"><div class="loader">Загрузка…</div></main>
 
 <nav>
@@ -277,6 +300,60 @@
 const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 const INIT_DATA = (tg && tg.initData) || "";
+
+/* ── PWA install banner ─────────────────────────────────── */
+(function installBanner(){
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+  const inTelegram = !!(tg && tg.initData);       // can't install a PWA from inside Telegram
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+  const bar   = document.getElementById("installBanner");
+  const txt   = document.getElementById("installText");
+  const btn   = document.getElementById("installBtn");
+  const close = document.getElementById("installClose");
+  let deferred = null;
+
+  function dismissed(){ try { return localStorage.getItem("wn_install_dismissed") === "1"; } catch(e){ return false; } }
+  function hide(){ bar.hidden = true; }
+  function show(){ if (!isStandalone && !inTelegram && !dismissed()) bar.hidden = false; }
+
+  close.addEventListener("click", () => {
+    try { localStorage.setItem("wn_install_dismissed", "1"); } catch(e){}
+    hide();
+  });
+
+  if (isStandalone || inTelegram) return;   // nothing to offer
+
+  if (isIOS){
+    txt.innerHTML = 'Установи как приложение: <b>Поделиться</b> ⬆️ → <b>На экран «Домой»</b>';
+    btn.hidden = true;
+    show();
+  }
+
+  window.addEventListener("beforeinstallprompt", (e) => {   // Android / desktop Chrome
+    e.preventDefault();
+    deferred = e;
+    txt.textContent = "Установить WHY NOT? OS на телефон";
+    btn.hidden = false;
+    show();
+  });
+
+  btn.addEventListener("click", async () => {
+    if (!deferred) return;
+    btn.disabled = true;
+    deferred.prompt();
+    try { await deferred.userChoice; } catch(e){}
+    deferred = null;
+    hide();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    try { localStorage.setItem("wn_install_dismissed", "1"); } catch(e){}
+    hide();
+  });
+})();
 
 const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры", team:"Команда", dash:"Обзор" };
 const ENTITY_NOUN = { task:"задачу", content:"контент", idea:"идею", blocker:"блокер", project:"проект", client:"клиента", user:"пользователя" };

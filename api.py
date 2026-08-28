@@ -23,7 +23,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # ── WHY NOT? OS — Mini App static assets + REST API ─────────────
 _WEBAPP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webapp")
 try:
-    app.mount("/static", StaticFiles(directory=_WEBAPP_DIR), name="static")
+    app.mount("/static", StaticFiles(directory=_WEBAPP_DIR, html=True), name="static")
 except Exception as e:  # directory missing at build time — non-fatal
     print(f"⚠️ /static not mounted: {e}")
 

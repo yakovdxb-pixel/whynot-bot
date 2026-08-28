@@ -2149,6 +2149,20 @@ async def cancel_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _sched_delete(context.bot, gid, m.message_id, 4)
 
 
+INSTALL_URL = "https://worker-production-7137.up.railway.app/static/"
+
+
+async def install_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "📲 Установить WHY NOT? OS как приложение:\n\n"
+        "Открой эту ссылку в Safari:\n"
+        f"{INSTALL_URL}\n\n"
+        "Затем: Share → На экран «Домой» → Добавить"
+    )
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Открыть в Safari", url=INSTALL_URL)]])
+    await update.message.reply_text(text, reply_markup=kb, disable_web_page_preview=True)
+
+
 # ── main ─────────────────────────────────────────────────────────
 
 def main():
@@ -2247,6 +2261,7 @@ def main():
 
     # Commands
     app.add_handler(CommandHandler("start",   start))
+    app.add_handler(CommandHandler("install", install_cmd))
     app.add_handler(CommandHandler("join",    join))
     app.add_handler(CommandHandler("my",      my_tasks))
     app.add_handler(CommandHandler("history", history))
