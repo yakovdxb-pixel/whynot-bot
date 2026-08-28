@@ -1,45 +1,68 @@
 """
-WhyNot Agency — FastAPI (daemon thread) + Telegram bot (subprocess)
-Running bot as a subprocess avoids all asyncio/uvloop event loop conflicts.
-The bot gets a clean Python process with no uvloop policy installed.
+WHY NOT? OS entrypoint (Railway `web` process — Procfile: `web: python main.py`).
+
+Layout that keeps python-telegram-bot happy:
+
+  * THIS process / main thread -> the Telegram bot long-polling.
+      run_polling() installs SIGINT/SIGTERM handlers and therefore must own the
+      real main thread. This process never imports uvicorn, so uvloop is never
+      installed as the asyncio policy here — no event-loop conflict for PTB.
+
+  * subprocess -> `python -m uvicorn api:app`.
+      uvicorn[standard] installs uvloop process-wide; isolating it in its own
+      process keeps that away from the bot. Supervised + restarted by a daemon
+      thread below.
 """
-import os, threading, uvicorn, logging, time, subprocess, sys
-# main.py supervises the bot subprocess itself — stop api.py from spawning a
-# second one (double polling → Telegram 409 Conflict).
-os.environ.setdefault("RUN_BOT", "0")
-from api import app, init_db
+import os, sys, time, logging, threading, subprocess
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
 )
-logger = logging.getLogger(__name__)
+log = logging.getLogger("entry")
 
-def run_api():
-    port = int(os.getenv("PORT", 8000))
-    logger.info(f"Starting FastAPI on port {port}")
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+# main.py owns the bot; api.py must NOT also spawn one (double getUpdates -> 409).
+os.environ["RUN_BOT"] = "0"
+
+PORT = os.getenv("PORT", "8000")
+_stop = threading.Event()
+_uvicorn = {"proc": None}
+
+
+def _uvicorn_supervisor():
+    while not _stop.is_set():
+        log.info("Starting uvicorn subprocess on 0.0.0.0:%s", PORT)
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "api:app",
+             "--host", "0.0.0.0", "--port", str(PORT), "--log-level", "info"]
+        )
+        _uvicorn["proc"] = proc
+        proc.wait()
+        if _stop.is_set():
+            break
+        log.warning("uvicorn exited (code %s) — restarting in 3s", proc.returncode)
+        time.sleep(3)
+
+
+def _kill_uvicorn():
+    proc = _uvicorn.get("proc")
+    if proc and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
 
 if __name__ == "__main__":
-    init_db()
-    
-    # Start API in a daemon thread
-    api_thread = threading.Thread(target=run_api, daemon=True)
-    api_thread.start()
-    logger.info("✅ API thread started")
-    
-    # Give API a moment to bind port
-    time.sleep(2)
-    
-    # Run bot as a completely separate subprocess.
-    # This isolates it from uvloop which uvicorn installs as the asyncio policy.
-    bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.py")
-    logger.info(f"🤖 Starting bot subprocess: {bot_path}")
-    
-    while True:
-        try:
-            result = subprocess.run([sys.executable, bot_path], check=False)
-            logger.warning(f"⚠️ Bot subprocess exited with code {result.returncode}, restarting in 5s...")
-        except Exception as e:
-            logger.error(f"❌ Failed to start bot: {e}")
-        time.sleep(5)
+    threading.Thread(target=_uvicorn_supervisor, daemon=True).start()
+    time.sleep(2)  # let uvicorn bind the port before the bot blocks the thread
+
+    log.info("Starting Telegram bot polling (main thread)")
+    import bot
+    try:
+        bot.main()  # blocks on Application.run_polling()
+    finally:
+        _stop.set()
+        _kill_uvicorn()
+        log.info("Shutdown complete")
