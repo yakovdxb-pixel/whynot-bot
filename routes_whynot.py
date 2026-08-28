@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 from db.models import (
     AsyncSessionLocal, User, Task, ContentItem, Idea, IdeaVote, Blocker,
+    Client, Project,
     PIPELINE_SEQUENCE, task_status_enum, user_role_enum,
     content_format_enum, task_priority_enum,
 )
@@ -153,10 +154,24 @@ class TaskCreate(BaseModel):
     priority: str | None = "normal"
     deadline: str | None = None
     assignee_id: int | None = None
+    client_id: int | None = None
+    project_id: int | None = None
 
 
 class TeamRolePatch(BaseModel):
     role: str
+
+
+class ClientCreate(BaseModel):
+    name: str
+    contact: str | None = None
+    notes: str | None = None
+
+
+class ProjectCreate(BaseModel):
+    client_id: int
+    name: str
+    description: str | None = None
 
 
 class ContentCreate(BaseModel):
@@ -301,13 +316,14 @@ async def update_task(task_id: int, patch: TaskPatch,
 
 
 @router.get("/content")
-async def list_content(user: dict = Depends(current_user), session=Depends(get_session)):
-    rows = (await session.execute(
-        select(ContentItem)
-        .order_by(ContentItem.pipeline_status, ContentItem.publish_date.is_(None),
-                  ContentItem.publish_date, ContentItem.id.desc())
-        .limit(300)
-    )).scalars().all()
+async def list_content(client_id: int | None = None,
+                       user: dict = Depends(current_user), session=Depends(get_session)):
+    q = select(ContentItem)
+    if client_id:
+        q = q.where(ContentItem.client_id == client_id)
+    q = q.order_by(ContentItem.pipeline_status, ContentItem.publish_date.is_(None),
+                   ContentItem.publish_date, ContentItem.id.desc()).limit(300)
+    rows = (await session.execute(q)).scalars().all()
     return [row_to_dict(c) for c in rows]
 
 
@@ -454,6 +470,8 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
         status="pending",
         created_by=uid,
         assignee_id=assignee_id,
+        client_id=body.client_id,
+        project_id=body.project_id,
     )
     result = await _commit_new(session, obj)
     tg = await _telegram_id_for(session, obj.assignee_id)
@@ -526,6 +544,74 @@ async def create_blocker(body: BlockerCreate, bg: BackgroundTasks,
     if tg:
         bg.add_task(_tg_send, tg, f"🚫 На тебе блокер: {title}\n{desc or ''}".rstrip())
     return result
+
+
+# ── clients & projects ──────────────────────────────────────────
+
+def _client_out(c, am_name=None):
+    return {"id": c.id, "name": c.name, "contact": c.contact, "notes": c.notes,
+            "am_id": c.am_id, "am_name": am_name, "is_active": c.is_active}
+
+
+def _project_out(p):
+    return {"id": p.id, "client_id": p.client_id, "name": p.name,
+            "description": p.description, "is_active": p.is_active}
+
+
+@router.get("/clients")
+async def list_clients(user: dict = Depends(current_user), session=Depends(get_session)):
+    rows = (await session.execute(
+        select(Client).order_by(Client.is_active.desc(), Client.name)
+    )).scalars().all()
+    names = await _names_for(session, [c.am_id for c in rows])
+    return [_client_out(c, names.get(c.am_id)) for c in rows]
+
+
+@router.post("/clients", status_code=201)
+async def create_client(body: ClientCreate,
+                        user: dict = Depends(current_user), session=Depends(get_session)):
+    if user["role"] not in ("admin", "am"):
+        raise HTTPException(403, "only admin / am can add clients")
+    name = _clean(body.name)
+    if not name:
+        raise HTTPException(422, "name is required")
+    return await _commit_new(session, Client(
+        name=name,
+        contact=_clean(body.contact),
+        notes=_clean(body.notes),
+        am_id=user["id"] or None,
+        is_active=True,
+    ))
+
+
+@router.get("/projects")
+async def list_projects(client_id: int | None = None, active: bool = True,
+                        user: dict = Depends(current_user), session=Depends(get_session)):
+    q = select(Project)
+    if client_id:
+        q = q.where(Project.client_id == client_id)
+    if active:
+        q = q.where(Project.is_active.is_(True))
+    q = q.order_by(Project.name)
+    rows = (await session.execute(q)).scalars().all()
+    return [_project_out(p) for p in rows]
+
+
+@router.post("/projects", status_code=201)
+async def create_project(body: ProjectCreate,
+                         user: dict = Depends(current_user), session=Depends(get_session)):
+    if user["role"] not in ("admin", "am"):
+        raise HTTPException(403, "only admin / am can add projects")
+    name = _clean(body.name)
+    if not name:
+        raise HTTPException(422, "name is required")
+    return await _commit_new(session, Project(
+        client_id=body.client_id,
+        name=name,
+        description=_clean(body.description),
+        am_id=user["id"] or None,
+        is_active=True,
+    ))
 
 
 # ── team ────────────────────────────────────────────────────────

@@ -88,6 +88,29 @@
 
   .done-mark{margin-top:10px; text-align:center; color:var(--st-done); font-weight:600; font-size:14px}
 
+  .pills-row{
+    display:flex; gap:6px; overflow-x:auto; margin:2px 0 12px; padding-bottom:4px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .pills-row::-webkit-scrollbar{display:none}
+  .pill-btn{
+    flex:0 0 auto; border:1px solid var(--sep); background:transparent; color:var(--hint);
+    border-radius:999px; padding:6px 13px; font-size:13px; font-weight:600; cursor:pointer;
+    white-space:nowrap;
+  }
+  .pill-btn.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+
+  .client-card .row{cursor:pointer}
+  .proj-block{margin-top:12px; border-top:1px solid var(--sep); padding-top:10px}
+  .proj-item{font-size:14px; padding:5px 0}
+  .proj-item .hint{color:var(--hint)}
+  .proj-form{margin-top:8px; display:flex; flex-direction:column; gap:8px}
+  .proj-form input, .proj-form textarea{
+    width:100%; font:14px inherit; color:var(--text); background:var(--bg);
+    border:1px solid var(--sep); border-radius:9px; padding:8px 10px; outline:none;
+  }
+  .proj-form textarea{min-height:52px; resize:vertical}
+
   .vote{
     display:flex; align-items:center; gap:6px; border:1px solid var(--sep);
     background:transparent; color:var(--text); border-radius:999px;
@@ -246,8 +269,14 @@ const view = document.getElementById("view");
 const screenTitle = document.getElementById("screenTitle");
 let currentTab = "home";
 let homeScope = "mine";   // "mine" | "all" — Главная tasks filter
+let teamSub = "team";     // "team" | "clients" — Команда sub-section
+let contentClientId = ""; // "" = all — Контент client filter
+let expandedClient = null;
+let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
+
+function isManager(){ return !!(ME && (ME.role === "admin" || ME.role === "am")); }
 
 function toast(msg){
   const t = document.getElementById("toast");
@@ -381,17 +410,28 @@ function contentCard(c, {advance=true}={}){
 }
 
 async function renderContent(){
-  const items = await api("/api/content");
-  if (!items.length){ view.innerHTML = `<div class="empty">Контента пока нет</div>`; return; }
+  const [clients, items] = await Promise.all([
+    api("/api/clients").catch(() => []),
+    api("/api/content" + (contentClientId ? "?client_id=" + encodeURIComponent(contentClientId) : "")),
+  ]);
+  const pills = `<div class="pills-row">
+    <button class="pill-btn ${contentClientId === "" ? "on" : ""}" data-cfilter="">Все</button>
+    ${clients.map(c => `<button class="pill-btn ${String(contentClientId) === String(c.id) ? "on" : ""}" data-cfilter="${c.id}">${esc(c.name)}</button>`).join("")}
+  </div>`;
+
   const order = ["idea","approval","script","shoot","edit","review","client","revisions","done","published","analytics"];
   const groups = {};
   items.forEach(c => { (groups[c.pipeline_status] ||= []).push(c); });
-  const parts = [];
-  order.forEach(st => {
-    if (!groups[st]) return;
-    parts.push(`<div class="section-title">${PIPELINE_LABELS[st] || st} · ${groups[st].length}</div>`);
-    parts.push(groups[st].map(c => contentCard(c)).join(""));
-  });
+  const parts = [pills];
+  if (!items.length){
+    parts.push(`<div class="empty">${contentClientId ? "У клиента нет контента" : "Контента пока нет"}</div>`);
+  } else {
+    order.forEach(st => {
+      if (!groups[st]) return;
+      parts.push(`<div class="section-title">${PIPELINE_LABELS[st] || st} · ${groups[st].length}</div>`);
+      parts.push(groups[st].map(c => contentCard(c)).join(""));
+    });
+  }
   view.innerHTML = parts.join("");
 }
 
@@ -442,23 +482,78 @@ function teamCard(u, isAdmin){
   </div>`;
 }
 
-async function renderTeam(){
-  try {
-    const home = await api("/api/home");
-    ME = home.user; setWhoami(ME);
-  } catch(e){ /* keep whatever ME we have */ }
+function clientCard(c){
+  const open = expandedClient === c.id;
+  const active = c.is_active !== false;
+  return `
+  <div class="card client-card" data-client="${c.id}">
+    <div class="row" data-client-toggle="${c.id}">
+      <p class="title">${esc(c.name)}</p>
+      <span class="pill ${active ? "done" : "cancelled"}">${active ? "активен" : "неактивен"}</span>
+    </div>
+    <div class="meta">
+      ${c.contact ? `<span>${esc(c.contact)}</span>` : ""}
+      ${c.am_name ? `<span>AM: ${esc(c.am_name)}</span>` : ""}
+      <span>${open ? "▲" : "▼ проекты"}</span>
+    </div>
+    ${open ? projectsBlock(c.id) : ""}
+  </div>`;
+}
 
-  let team;
-  try {
-    team = await api("/api/team");
-  } catch(e){
-    view.innerHTML = `<div class="empty">${esc(e.message || "Список команды доступен только админам и AM")}</div>`;
-    return;
+function projectsBlock(clientId){
+  const projects = clientProjects[clientId];
+  if (!Array.isArray(projects)){
+    return `<div class="proj-block"><div class="hint">Загрузка проектов…</div></div>`;
   }
-  const isAdmin = !!(ME && ME.role === "admin");
-  view.innerHTML = team.length
-    ? team.map(u => teamCard(u, isAdmin)).join("")
-    : `<div class="empty">В команде пока никого</div>`;
+  const mgr = isManager();
+  return `
+  <div class="proj-block">
+    ${projects.length
+      ? projects.map(p => `<div class="proj-item">📁 ${esc(p.name)}${p.description ? ` — <span class="hint">${esc(p.description)}</span>` : ""}</div>`).join("")
+      : `<div class="hint">Нет активных проектов</div>`}
+    ${mgr ? `
+      <button class="act ghost" data-proj-add="${clientId}" style="margin-top:8px">＋ Проект</button>
+      <div class="proj-form" id="projForm-${clientId}" style="display:none">
+        <input id="projName-${clientId}" placeholder="Название проекта *">
+        <textarea id="projDesc-${clientId}" placeholder="Описание"></textarea>
+        <button class="act" data-proj-save="${clientId}">Создать проект</button>
+      </div>` : ""}
+  </div>`;
+}
+
+async function renderTeam(){
+  if (!ME){
+    try { const home = await api("/api/home"); ME = home.user; setWhoami(ME); } catch(e){}
+  }
+  const pills = `
+    <div class="seg">
+      <button data-teamsub="team"    class="${teamSub === "team" ? "on" : ""}">👥 Команда</button>
+      <button data-teamsub="clients" class="${teamSub === "clients" ? "on" : ""}">🏢 Клиенты</button>
+    </div>`;
+
+  let body;
+  if (teamSub === "team"){
+    try {
+      const team = await api("/api/team");
+      const isAdmin = !!(ME && ME.role === "admin");
+      body = team.length
+        ? team.map(u => teamCard(u, isAdmin)).join("")
+        : `<div class="empty">В команде пока никого</div>`;
+    } catch(e){
+      body = `<div class="empty">${esc(e.message || "Список команды — только для админов и AM")}</div>`;
+    }
+  } else {
+    try {
+      const clients = await api("/api/clients");
+      body = clients.length
+        ? clients.map(clientCard).join("")
+        : `<div class="empty">Клиентов пока нет</div>`;
+    } catch(e){
+      body = `<div class="empty">${esc(e.message || "Не удалось загрузить клиентов")}</div>`;
+    }
+  }
+  view.innerHTML = pills + body;
+  updateFab();
 }
 
 const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, team:renderTeam };
@@ -472,18 +567,31 @@ function setWhoami(u){
   el.textContent = bits.join(" · ");
 }
 
+// which FORMS entry the "+" button opens for the current view
+function activeFormKey(){
+  if (currentTab === "team") return teamSub === "clients" ? "clients" : null;
+  return currentTab;
+}
+function updateFab(){
+  const key = activeFormKey();
+  let show = !!(key && FORMS[key]);
+  if (key === "clients") show = show && isManager();
+  document.getElementById("fab").style.display = show ? "" : "none";
+}
+
 async function load(tab){
   currentTab = tab;
   screenTitle.textContent = TITLES[tab];
   document.querySelectorAll("nav button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
-  document.getElementById("fab").style.display = FORMS[tab] ? "" : "none";
+  updateFab();
   view.innerHTML = `<div class="loader">Загрузка…</div>`;
   try {
     await RENDERERS[tab]();
   } catch (e){
     view.innerHTML = `<div class="err">${esc(e.message || "Не удалось загрузить")}</div>`;
   }
+  updateFab();
 }
 
 /* ── events ──────────────────────────────────────────────── */
@@ -498,6 +606,60 @@ view.addEventListener("click", async e => {
   const scopeBtn = e.target.closest("[data-scope]");
   if (scopeBtn){
     if (scopeBtn.dataset.scope !== homeScope){ homeScope = scopeBtn.dataset.scope; haptic(); load("home"); }
+    return;
+  }
+
+  const subBtn = e.target.closest("[data-teamsub]");
+  if (subBtn){
+    if (subBtn.dataset.teamsub !== teamSub){
+      teamSub = subBtn.dataset.teamsub; expandedClient = null; haptic(); load("team");
+    }
+    return;
+  }
+
+  const cfilterBtn = e.target.closest("[data-cfilter]");
+  if (cfilterBtn){
+    const v = cfilterBtn.dataset.cfilter;
+    if (String(v) !== String(contentClientId)){ contentClientId = v; haptic(); load("content"); }
+    return;
+  }
+
+  const clientToggle = e.target.closest("[data-client-toggle]");
+  if (clientToggle && !e.target.closest("[data-proj-add],[data-proj-save],.proj-form")){
+    const cid = +clientToggle.dataset.clientToggle;
+    expandedClient = expandedClient === cid ? null : cid;
+    haptic();
+    if (expandedClient && !Array.isArray(clientProjects[expandedClient])){
+      clientProjects[expandedClient] = null;
+      api("/api/projects?client_id=" + expandedClient)
+        .then(p => { clientProjects[expandedClient] = p; renderTeam(); })
+        .catch(() => { clientProjects[expandedClient] = []; renderTeam(); });
+    }
+    renderTeam();
+    return;
+  }
+
+  const projAdd = e.target.closest("[data-proj-add]");
+  if (projAdd){
+    const f = document.getElementById("projForm-" + projAdd.dataset.projAdd);
+    if (f) f.style.display = f.style.display === "none" ? "flex" : "none";
+    return;
+  }
+
+  const projSave = e.target.closest("[data-proj-save]");
+  if (projSave && !busy){
+    const cid = +projSave.dataset.projSave;
+    const name = (document.getElementById("projName-" + cid).value || "").trim();
+    const desc = (document.getElementById("projDesc-" + cid).value || "").trim();
+    if (!name){ toast("Укажи название проекта"); return; }
+    busy = true; projSave.disabled = true; projSave.textContent = "…";
+    try {
+      await api("/api/projects", {method:"POST", body:{client_id: cid, name, description: desc || undefined}});
+      haptic("medium"); toast("Проект создан");
+      clientProjects[cid] = await api("/api/projects?client_id=" + cid);
+      renderTeam();
+    } catch(err){ toast(err.message); projSave.disabled = false; projSave.textContent = "Создать проект"; }
+    finally { busy = false; }
     return;
   }
 
@@ -569,6 +731,10 @@ const FORMS = {
       { name:"deadline",     label:"Дедлайн",   type:"date" },
       { name:"assignee_id",  label:"Исполнитель", type:"select", value:"", coerce:"int",
         dynamic:"team", options:[["","Не назначено"]] },
+      { name:"client_id",    label:"Клиент (необяз.)", type:"select", value:"", coerce:"int",
+        dynamic:"clients", options:[["","—"]] },
+      { name:"project_id",   label:"Проект (необяз.)", type:"select", value:"", coerce:"int",
+        dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
     ],
   },
   content: {
@@ -580,8 +746,10 @@ const FORMS = {
                  ["youtube_long","YouTube"],["other","Другое"]] },
       { name:"topic",        label:"Тема",              type:"text" },
       { name:"publish_date", label:"Дата публикации",   type:"date" },
-      { name:"project_id",   label:"ID проекта (необяз.)", type:"number" },
-      { name:"client_id",    label:"ID клиента (необяз.)", type:"number" },
+      { name:"client_id",    label:"Клиент", type:"select", value:"", coerce:"int",
+        dynamic:"clients", options:[["","—"]] },
+      { name:"project_id",   label:"Проект", type:"select", value:"", coerce:"int",
+        dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
     ],
   },
   ideas: {
@@ -602,6 +770,14 @@ const FORMS = {
       { name:"assigned_to", label:"ID исполнителя (уведомить)", type:"number" },
     ],
   },
+  clients: {
+    title: "Новый клиент", endpoint: "/api/clients",
+    fields: [
+      { name:"name",    label:"Название",  type:"text", required:true },
+      { name:"contact", label:"Контакт",   type:"text" },
+      { name:"notes",   label:"Заметки",   type:"textarea" },
+    ],
+  },
 };
 
 const sheet = document.getElementById("sheet");
@@ -615,8 +791,46 @@ function setFormError(msg){
   formErr.textContent = msg; formErr.style.display = "block";
 }
 
+function _baseOptions(f){
+  return (f.options || [["",""]]).map(([v,l]) =>
+    `<option value="${esc(v)}"${v === (f.value ?? "") ? " selected" : ""}>${esc(l)}</option>`).join("");
+}
+
+async function fillDynamic(f){
+  const sel = document.getElementById("f_" + f.name);
+  if (!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = _baseOptions(f);
+  try {
+    let items = [];
+    if (f.dynamic === "team"){
+      items = (await api("/api/team")).map(u => [u.id, `${u.full_name} (${ROLE_LABELS[u.role] || u.role})`]);
+    } else if (f.dynamic === "clients"){
+      items = (await api("/api/clients")).map(c => [c.id, c.name]);
+    } else if (f.dynamic === "projects"){
+      const dep = f.dependsOn ? document.getElementById("f_" + f.dependsOn) : null;
+      const cid = dep && dep.value;
+      if (!cid){ sel.disabled = true; return; }
+      sel.disabled = false;
+      items = (await api("/api/projects?client_id=" + encodeURIComponent(cid))).map(p => [p.id, p.name]);
+    }
+    if (!sel.isConnected) return;
+    items.forEach(([v,l]) => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l; sel.appendChild(o);
+    });
+    if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  } catch(e){
+    if (f.dynamic !== "projects"){
+      sel.disabled = true;
+      const lbl = sel.previousElementSibling;
+      if (lbl && !/—/.test(lbl.textContent)) lbl.textContent += " — недоступно";
+    }
+  }
+}
+
 async function openSheet(){
-  const cfg = FORMS[currentTab];
+  const cfg = FORMS[activeFormKey()];
   if (!cfg) return;
   document.getElementById("sheetTitle").textContent = cfg.title;
   setFormError("");
@@ -626,9 +840,7 @@ async function openSheet(){
     if (f.type === "textarea"){
       control = `<textarea id="${id}"></textarea>`;
     } else if (f.type === "select"){
-      const opts = f.options.map(([v,l]) =>
-        `<option value="${esc(v)}"${v === (f.value ?? "") ? " selected" : ""}>${esc(l)}</option>`).join("");
-      control = `<select id="${id}">${opts}</select>`;
+      control = `<select id="${id}">${_baseOptions(f)}</select>`;
     } else {
       const t = f.type === "number" ? "number" : (f.type === "date" ? "date" : "text");
       control = `<input id="${id}" type="${t}"${f.type === "number" ? ' inputmode="numeric"' : ""}>`;
@@ -641,25 +853,15 @@ async function openSheet(){
   sheetBackdrop.classList.add("open");
   sheet.classList.add("open");
 
-  // dynamic option lists (e.g. assignee picker <- GET /api/team)
+  // wire dependent selects (project list follows the chosen client)
   for (const f of cfg.fields){
-    if (f.dynamic !== "team") continue;
-    const sel = document.getElementById("f_" + f.name);
-    try {
-      const team = await api("/api/team");
-      if (!sel.isConnected) return;
-      team.forEach(u => {
-        const o = document.createElement("option");
-        o.value = u.id;
-        o.textContent = `${u.full_name} (${ROLE_LABELS[u.role] || u.role})`;
-        sel.appendChild(o);
-      });
-    } catch(e){
-      // not admin/am — leave "Не назначено" as the only choice
-      const lbl = sel.previousElementSibling;
-      if (lbl) lbl.textContent += " — недоступно";
-      sel.disabled = true;
-    }
+    if (!f.dependsOn) continue;
+    const dep = document.getElementById("f_" + f.dependsOn);
+    if (dep) dep.addEventListener("change", () => fillDynamic(f));
+  }
+  // populate dynamic option lists (projects self-disable until a client is picked)
+  for (const f of cfg.fields){
+    if (f.dynamic) await fillDynamic(f);
   }
 }
 
@@ -669,7 +871,7 @@ function closeSheet(){
 }
 
 async function submitForm(){
-  const cfg = FORMS[currentTab];
+  const cfg = FORMS[activeFormKey()];
   if (!cfg || busy) return;
   const body = {};
   let valid = true;
