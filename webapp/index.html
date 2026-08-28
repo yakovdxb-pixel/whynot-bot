@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>WHY NOT? OS</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#6c5ce7">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WHY NOT? OS">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    });
+  }
+</script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root{
@@ -132,11 +147,33 @@
   }
   nav button{
     flex:1; background:none; border:none; cursor:pointer;
-    padding:8px 0 6px; color:var(--hint); font-size:10px;
+    padding:8px 1px 6px; color:var(--hint); font-size:9px; letter-spacing:-.2px;
     display:flex; flex-direction:column; align-items:center; gap:3px;
   }
-  nav button .ic{font-size:20px; line-height:1}
+  nav button .ic{font-size:19px; line-height:1}
   nav button.active{color:var(--link)}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px}
+  .stat{background:var(--card); border-radius:14px; padding:13px 14px; box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .stat .n{font-size:26px; font-weight:800; line-height:1.1}
+  .stat .l{font-size:12px; color:var(--hint); margin-top:4px}
+
+  .wl-row{background:var(--card); border-radius:12px; padding:11px 13px; margin-bottom:8px}
+  .wl-top{display:flex; justify-content:space-between; align-items:baseline; font-size:14px}
+  .wl-top .open{color:var(--hint); font-size:12px}
+  .bar{height:7px; border-radius:4px; background:var(--sep); margin-top:8px; overflow:hidden}
+  .bar > i{display:block; height:100%; border-radius:4px}
+  .bar-g{background:var(--st-done)} .bar-y{background:#ffcc00} .bar-r{background:var(--st-overdue)}
+  .wl-sub{font-size:11px; color:var(--hint); margin-top:5px}
+
+  .pipe-bar{display:flex; height:26px; border-radius:8px; overflow:hidden; margin:4px 0 8px}
+  .pipe-seg{display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; min-width:22px}
+  .pipe-legend{display:flex; flex-wrap:wrap; gap:8px 14px; font-size:11px; color:var(--hint)}
+  .pipe-legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:middle}
+
+  .act-row{font-size:13px; padding:8px 0; border-bottom:1px solid var(--sep)}
+  .act-row:last-child{border-bottom:none}
+  .act-row .ago{color:var(--hint); font-size:11px; margin-left:4px}
 
   .role-select{
     width:100%; margin-top:10px; font:14px inherit; color:var(--text);
@@ -220,6 +257,7 @@
   <button data-tab="ideas"><span class="ic">💡</span>Идеи</button>
   <button data-tab="blockers"><span class="ic">🚫</span>Блокеры</button>
   <button data-tab="team"><span class="ic">👥</span>Команда</button>
+  <button data-tab="dash"><span class="ic">📊</span>Обзор</button>
 </nav>
 
 <button class="fab" id="fab" aria-label="Создать">+</button>
@@ -240,7 +278,9 @@ const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 const INIT_DATA = (tg && tg.initData) || "";
 
-const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры", team:"Команда" };
+const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры", team:"Команда", dash:"Обзор" };
+const ENTITY_NOUN = { task:"задачу", content:"контент", idea:"идею", blocker:"блокер", project:"проект", client:"клиента", user:"пользователя" };
+const ACTION_VERB = { created:"создал", updated:"обновил", completed:"завершил", moved:"продвинул", voted:"проголосовал за", vote_changed:"переголосовал за", assigned:"назначил", resolved:"закрыл" };
 const ROLE_LABELS = {
   admin:"Админ", am:"AM", producer:"Продюсер", smm:"SMM", photographer:"Фотограф",
   editor:"Монтажёр", designer:"Дизайнер", copywriter:"Копирайтер", intern:"Стажёр"
@@ -556,7 +596,88 @@ async function renderTeam(){
   updateFab();
 }
 
-const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, team:renderTeam };
+function timeAgo(iso){
+  if (!iso) return "";
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "только что";
+  if (s < 3600) return Math.floor(s / 60) + " мин назад";
+  if (s < 86400) return Math.floor(s / 3600) + " ч назад";
+  return Math.floor(s / 86400) + " дн назад";
+}
+
+function activityLine(a){
+  const who = esc(a.actor_name || "Кто-то");
+  const verb = ACTION_VERB[a.action] || a.action;
+  const noun = ENTITY_NOUN[a.entity] || a.entity;
+  const t = a.title ? ` «${esc(a.title)}»` : "";
+  return `<div class="act-row">${who} ${verb} ${noun}${t}<span class="ago">· ${esc(timeAgo(a.happened_at))}</span></div>`;
+}
+
+const PIPE_COLORS = ["#8e8e93","#5ac8fa","#5856d6","#af52de","#ff9500","#ff2d55","#34c759","#ffcc00","#30b0c7","#248a3d","#8e8e93"];
+
+async function renderDashboard(){
+  let d;
+  try {
+    d = await api("/api/dashboard");
+  } catch(e){
+    view.innerHTML = `<div class="empty">${esc(e.message || "Обзор доступен только админам и AM")}</div>`;
+    return;
+  }
+  const parts = [];
+
+  parts.push(`<div class="stat-grid">
+    ${statCard(d.open_tasks, "Задач открыто")}
+    ${statCard(d.active_blockers, "Блокеров активных")}
+    ${statCard(d.content_in_progress, "Контента в работе")}
+    ${statCard(d.active_ideas, "Идей на голосовании")}
+  </div>`);
+
+  parts.push(`<div class="section-title">Загрузка команды</div>`);
+  if (d.team_workload.length){
+    parts.push(d.team_workload.map(w => {
+      const total = w.total_this_month || 0, done = w.done_this_month || 0;
+      const rate = total ? done / total : 0;
+      const cls = !total ? "" : rate > 0.7 ? "bar-g" : rate > 0.4 ? "bar-y" : "bar-r";
+      const pct = total ? Math.round(rate * 100) : 0;
+      return `<div class="wl-row">
+        <div class="wl-top"><span>${esc(w.name)}</span><span class="open">${w.open_tasks} откр.</span></div>
+        <div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>
+        <div class="wl-sub">${done}/${total} задач за месяц${total ? " · " + pct + "%" : ""}</div>
+      </div>`;
+    }).join(""));
+  } else {
+    parts.push(`<div class="empty">Нет данных</div>`);
+  }
+
+  parts.push(`<div class="section-title">Контент по этапам</div>`);
+  const pb = d.pipeline_breakdown || {};
+  const steps = Object.keys(pb).filter(k => pb[k] > 0);
+  const totalC = steps.reduce((s,k) => s + pb[k], 0);
+  if (totalC){
+    const order = ["idea","approval","script","shoot","edit","review","client","revisions","done","published","analytics"];
+    parts.push(`<div class="pipe-bar">${steps
+      .sort((a,b) => order.indexOf(a) - order.indexOf(b))
+      .map(k => `<div class="pipe-seg" style="flex:${pb[k]};background:${PIPE_COLORS[order.indexOf(k)] || "#8e8e93"}" title="${esc(PIPELINE_LABELS[k]||k)}: ${pb[k]}">${pb[k]}</div>`).join("")}</div>`);
+    parts.push(`<div class="pipe-legend">${steps
+      .sort((a,b) => order.indexOf(a) - order.indexOf(b))
+      .map(k => `<span><i style="background:${PIPE_COLORS[order.indexOf(k)] || "#8e8e93"}"></i>${esc(PIPELINE_LABELS[k]||k)} ${pb[k]}</span>`).join("")}</div>`);
+  } else {
+    parts.push(`<div class="empty">Контента нет</div>`);
+  }
+
+  parts.push(`<div class="section-title">Активность</div>`);
+  parts.push(d.recent_activity && d.recent_activity.length
+    ? `<div class="card">${d.recent_activity.map(activityLine).join("")}</div>`
+    : `<div class="empty">Пока пусто</div>`);
+
+  view.innerHTML = parts.join("");
+}
+
+function statCard(n, label){
+  return `<div class="stat"><div class="n">${n ?? 0}</div><div class="l">${esc(label)}</div></div>`;
+}
+
+const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, team:renderTeam, dash:renderDashboard };
 
 function setWhoami(u){
   const el = document.getElementById("whoami");

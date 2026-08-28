@@ -149,6 +149,18 @@ async def serve_app():
                 return Response(content=f.read(), media_type="text/html; charset=utf-8")
     return HTMLResponse("<h1>WhyNot Agency</h1><p>App file not found</p>")
 
+
+@app.get("/sw.js")
+async def service_worker():
+    """Serve the PWA service worker from the root so its scope covers /webapp."""
+    from fastapi.responses import Response
+    path = os.path.join(_WEBAPP_DIR, "sw.js")
+    body = open(path, "rb").read() if os.path.exists(path) else b"/* no sw */"
+    return Response(content=body, media_type="text/javascript", headers={
+        "Service-Worker-Allowed": "/",
+        "Cache-Control": "no-cache",
+    })
+
 @app.get("/api/companies")
 async def list_companies():
     conn = get_db()

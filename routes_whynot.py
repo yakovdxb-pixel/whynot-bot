@@ -15,15 +15,18 @@ from urllib.parse import unquote
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.exc import IntegrityError
 
 from db.models import (
     AsyncSessionLocal, User, Task, ContentItem, Idea, IdeaVote, Blocker,
-    Client, Project,
+    Client, Project, ActivityEvent,
     PIPELINE_SEQUENCE, task_status_enum, user_role_enum,
     content_format_enum, task_priority_enum,
 )
+
+PIPELINE_ORDER = ["idea", "approval", "script", "shoot", "edit", "review",
+                  "client", "revisions", "done", "published", "analytics"]
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
@@ -312,6 +315,8 @@ async def update_task(task_id: int, patch: TaskPatch,
         task.actual_completion = _now()
     await session.commit()
     await session.refresh(task)
+    await _log(session, "task", "completed" if patch.status == "done" else "updated",
+               task.id, user["id"], task.title)
     return row_to_dict(task)
 
 
@@ -343,6 +348,7 @@ async def advance_content(content_id: int,
     item.updated_at = _now()
     await session.commit()
     await session.refresh(item)
+    await _log(session, "content", "moved", item.id, user["id"], item.topic)
     return row_to_dict(item)
 
 
@@ -390,6 +396,8 @@ async def vote_idea(idea_id: int,
         voted = True
     idea.updated_at = _now()
     await session.commit()
+    if voted:
+        await _log(session, "idea", "voted", idea_id, user["id"], idea.title)
     return {"idea_id": idea_id, "votes_count": idea.votes_count, "voted": voted}
 
 
@@ -422,6 +430,20 @@ async def _commit_new(session, obj):
         raise HTTPException(400, "a referenced id (project_id / client_id / assigned_to) does not exist")
     await session.refresh(obj)
     return row_to_dict(obj)
+
+
+async def _log(session, entity, action, entity_id, actor_id, title=None):
+    """Append an activity_events row + commit. Best-effort — never raises."""
+    try:
+        session.add(ActivityEvent(
+            entity=entity, action=action, entity_id=entity_id,
+            actor_id=actor_id or None,
+            payload={"title": title} if title else {},
+        ))
+        await session.commit()
+    except Exception as e:  # noqa: BLE001
+        await session.rollback()
+        print(f"activity log failed ({entity}/{action}): {e}")
 
 
 async def _tg_send(telegram_id: int, text: str):
@@ -474,6 +496,7 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
         project_id=body.project_id,
     )
     result = await _commit_new(session, obj)
+    await _log(session, "task", "created", obj.id, uid, title)
     tg = await _telegram_id_for(session, obj.assignee_id)
     if tg:
         dl = deadline.strftime("%d.%m.%Y") if deadline else "без срока"
@@ -490,7 +513,7 @@ async def create_content(body: ContentCreate,
     if fmt not in CONTENT_FORMATS:
         raise HTTPException(422, f"format must be one of {sorted(CONTENT_FORMATS)}")
     uid = user["id"] or None
-    return await _commit_new(session, ContentItem(
+    obj = ContentItem(
         format=fmt,
         topic=_clean(body.topic),
         publish_date=_parse_date(body.publish_date),
@@ -499,7 +522,10 @@ async def create_content(body: ContentCreate,
         pipeline_status="idea",
         created_by=uid,
         author_id=uid,
-    ))
+    )
+    result = await _commit_new(session, obj)
+    await _log(session, "content", "created", obj.id, uid, obj.topic)
+    return result
 
 
 @router.post("/ideas", status_code=201)
@@ -514,14 +540,17 @@ async def create_idea(body: IdeaCreate,
         if fmt not in CONTENT_FORMATS:
             raise HTTPException(422, f"format must be one of {sorted(CONTENT_FORMATS)}")
     uid = user["id"] or None
-    return await _commit_new(session, Idea(
+    obj = Idea(
         title=title,
         description=_clean(body.description),
         format=fmt,
         status="new",
         proposed_by=uid,
         votes_count=0,
-    ))
+    )
+    result = await _commit_new(session, obj)
+    await _log(session, "idea", "created", obj.id, uid, title)
+    return result
 
 
 @router.post("/blockers", status_code=201)
@@ -540,6 +569,7 @@ async def create_blocker(body: BlockerCreate, bg: BackgroundTasks,
         assigned_to=body.assigned_to,
     )
     result = await _commit_new(session, obj)
+    await _log(session, "blocker", "created", obj.id, uid, title)
     tg = await _telegram_id_for(session, obj.assigned_to)
     if tg:
         bg.add_task(_tg_send, tg, f"🚫 На тебе блокер: {title}\n{desc or ''}".rstrip())
@@ -605,13 +635,16 @@ async def create_project(body: ProjectCreate,
     name = _clean(body.name)
     if not name:
         raise HTTPException(422, "name is required")
-    return await _commit_new(session, Project(
+    obj = Project(
         client_id=body.client_id,
         name=name,
         description=_clean(body.description),
         am_id=user["id"] or None,
         is_active=True,
-    ))
+    )
+    result = await _commit_new(session, obj)
+    await _log(session, "project", "created", obj.id, user["id"], name)
+    return result
 
 
 # ── team ────────────────────────────────────────────────────────
@@ -650,6 +683,92 @@ async def set_team_role(user_id: int, body: TeamRolePatch,
     await session.commit()
     await session.refresh(target)
     return _user_out(target)
+
+
+# ── dashboard & activity ────────────────────────────────────────
+
+def _activity_out(a, name):
+    return {
+        "id": a.id, "entity": a.entity, "action": a.action,
+        "entity_id": a.entity_id, "actor_id": a.actor_id, "actor_name": name,
+        "title": (a.payload or {}).get("title"),
+        "happened_at": a.happened_at.isoformat() if a.happened_at else None,
+    }
+
+
+@router.get("/activity")
+async def list_activity(limit: int = 20,
+                        user: dict = Depends(current_user), session=Depends(get_session)):
+    limit = max(1, min(limit, 100))
+    rows = (await session.execute(
+        select(ActivityEvent)
+        .order_by(ActivityEvent.happened_at.desc(), ActivityEvent.id.desc())
+        .limit(limit)
+    )).scalars().all()
+    names = await _names_for(session, [a.actor_id for a in rows])
+    return [_activity_out(a, names.get(a.actor_id)) for a in rows]
+
+
+@router.get("/dashboard")
+async def dashboard(user: dict = Depends(current_user), session=Depends(get_session)):
+    if user["role"] not in ("admin", "am"):
+        raise HTTPException(403, "dashboard is for admin / am only")
+
+    now = _now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    async def count(model, *where):
+        return (await session.scalar(
+            select(func.count()).select_from(model).where(*where))) or 0
+
+    open_tasks = await count(Task, Task.status.in_(("pending", "in_progress")))
+    active_blockers = await count(Blocker, Blocker.status == "active")
+    content_in_progress = await count(
+        ContentItem, ContentItem.pipeline_status.notin_(("done", "published")))
+    active_ideas = await count(Idea, Idea.status.in_(("new", "under_review")))
+
+    users = (await session.execute(
+        select(User).where(User.is_active.is_(True)).order_by(User.full_name)
+    )).scalars().all()
+    workload = []
+    for u in users:
+        workload.append({
+            "user_id": u.id,
+            "name": u.full_name,
+            "open_tasks": await count(
+                Task, Task.assignee_id == u.id,
+                Task.status.in_(("pending", "in_progress", "overdue"))),
+            "total_this_month": await count(
+                Task, Task.assignee_id == u.id, Task.created_at >= month_start),
+            "done_this_month": await count(
+                Task, Task.assignee_id == u.id, Task.created_at >= month_start,
+                Task.status == "done"),
+        })
+
+    rows = (await session.execute(
+        select(ContentItem.pipeline_status, func.count())
+        .group_by(ContentItem.pipeline_status)
+    )).all()
+    counts = {k: v for k, v in rows}
+    pipeline_breakdown = {step: counts.get(step, 0) for step in PIPELINE_ORDER}
+
+    acts = (await session.execute(
+        select(ActivityEvent)
+        .order_by(ActivityEvent.happened_at.desc(), ActivityEvent.id.desc())
+        .limit(10)
+    )).scalars().all()
+    anames = await _names_for(session, [a.actor_id for a in acts])
+    recent_activity = [_activity_out(a, anames.get(a.actor_id)) for a in acts]
+
+    return {
+        "open_tasks": open_tasks,
+        "active_blockers": active_blockers,
+        "content_in_progress": content_in_progress,
+        "active_ideas": active_ideas,
+        "team_workload": workload,
+        "pipeline_breakdown": pipeline_breakdown,
+        "recent_activity": recent_activity,
+    }
 
 
 # ── admin ───────────────────────────────────────────────────────
