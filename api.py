@@ -20,6 +20,20 @@ DB_PATH   = os.getenv("DB_PATH", "agency.db")
 app = FastAPI(title="WhyNot API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# ── WHY NOT? OS — Mini App static assets + REST API ─────────────
+_WEBAPP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webapp")
+try:
+    app.mount("/static", StaticFiles(directory=_WEBAPP_DIR), name="static")
+except Exception as e:  # directory missing at build time — non-fatal
+    print(f"⚠️ /static not mounted: {e}")
+
+try:
+    from routes_whynot import router as whynot_router
+    app.include_router(whynot_router)
+    print("✅ WHY NOT? OS routes mounted")
+except Exception as e:
+    print(f"⚠️ WHY NOT? OS routes not mounted: {e}")
+
 # ── DB helpers ───────────────────────────────────────────────────
 
 def get_db():
@@ -120,6 +134,7 @@ class TaskUpdate(BaseModel):
 # ── Routes ───────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/webapp", response_class=HTMLResponse)
 @app.get("/webapp/index.html", response_class=HTMLResponse)
 async def serve_app():
     from fastapi.responses import Response
@@ -141,7 +156,7 @@ async def list_companies():
     conn.close()
     return [dict(r) for r in rows]
 
-@app.get("/api/tasks")
+@app.get("/api/legacy/tasks")
 async def list_tasks(group_id: Optional[int] = None, status: Optional[str] = None):
     conn = get_db()
     q = "SELECT t.*, u.first_name as assignee_name FROM tasks t LEFT JOIN users u ON t.assignee_id=u.user_id WHERE 1=1"
@@ -155,7 +170,7 @@ async def list_tasks(group_id: Optional[int] = None, status: Optional[str] = Non
     conn.close()
     return [dict(r) for r in rows]
 
-@app.post("/api/tasks")
+@app.post("/api/legacy/tasks")
 async def create_task(task: TaskCreate, user: dict = Depends(get_current_user)):
     conn = get_db()
     cur = conn.execute(
@@ -206,7 +221,7 @@ async def _post_task_card(task_id, task, group, assignee, creator):
     except Exception as e:
         print(f"Error posting task card: {e}")
 
-@app.patch("/api/tasks/{task_id}")
+@app.patch("/api/legacy/tasks/{task_id}")
 async def update_task(task_id: int, update: TaskUpdate, user: dict = Depends(get_current_user)):
     conn = get_db()
     conn.execute(

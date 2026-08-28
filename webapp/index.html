@@ -3,498 +3,385 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>WhyNot Agency</title>
+<title>WHY NOT? OS</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-:root{
-  --bg:#f0f0f0;--surface:#fff;--surface2:#f7f7f7;
-  --text:#1a1a1a;--text2:#666;--text3:#999;
-  --accent:#2481cc;--accent-bg:#e8f2fb;
-  --border:#e0e0e0;--radius:12px;
-  --success:#27ae60;--warning:#f39c12;--danger:#e74c3c;
-  --blue:#2481cc;--yellow:#f39c12;--green:#27ae60;--red:#e74c3c;
-}
-@media(prefers-color-scheme:dark){
-  :root{--bg:#1a1a1a;--surface:#2a2a2a;--surface2:#222;--text:#f0f0f0;--text2:#aaa;--text3:#666;--border:#333;--accent-bg:#1a2d3d}
-}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+  :root{
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #0f0f0f);
+    --hint: var(--tg-theme-hint-color, #8a8a8e);
+    --link: var(--tg-theme-link-color, #2481cc);
+    --btn: var(--tg-theme-button-color, #2481cc);
+    --btn-text: var(--tg-theme-button-text-color, #ffffff);
+    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --sep: color-mix(in srgb, var(--hint) 25%, transparent);
+    --st-pending:#8a8a8e;
+    --st-in_progress:#2481cc;
+    --st-done:#34c759;
+    --st-overdue:#ff3b30;
+    --st-cancelled:#8a8a8e;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding-bottom:calc(64px + env(safe-area-inset-bottom));
+    -webkit-font-smoothing:antialiased;
+  }
+  header{
+    position:sticky; top:0; z-index:5;
+    background:var(--bg);
+    padding:14px 16px 10px; border-bottom:1px solid var(--sep);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  header h1{font-size:18px; font-weight:700; margin:0}
+  header .sub{font-size:12px; color:var(--hint); margin-top:2px}
+  .refresh{
+    background:none; border:none; color:var(--link);
+    font-size:22px; padding:4px 6px; cursor:pointer; line-height:1;
+  }
+  main{padding:14px 16px}
+  .section-title{font-size:13px; font-weight:600; color:var(--hint);
+    text-transform:uppercase; letter-spacing:.04em; margin:18px 2px 8px}
+  .section-title:first-child{margin-top:4px}
 
-/* Layout */
-#app{display:flex;flex-direction:column;height:100vh;max-height:100vh}
-.screen{display:none;flex:1;overflow-y:auto;padding:12px 12px 0}
-.screen.active{display:block}
+  .card{
+    background:var(--card); border-radius:14px; padding:13px 14px;
+    margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.08);
+  }
+  .card .row{display:flex; align-items:flex-start; justify-content:space-between; gap:10px}
+  .card .title{font-weight:600; font-size:15px; margin:0}
+  .card .desc{color:var(--hint); font-size:13px; margin:5px 0 0; white-space:pre-wrap}
+  .card .meta{color:var(--hint); font-size:12px; margin-top:7px; display:flex; gap:10px; flex-wrap:wrap}
 
-/* Nav */
-.nav{display:flex;background:var(--surface);border-top:1px solid var(--border);padding:4px 0 max(4px,env(safe-area-inset-bottom));flex-shrink:0}
-.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer;transition:color .15s}
-.nav-btn svg{width:22px;height:22px;stroke-width:1.8}
-.nav-btn.active{color:var(--accent)}
+  .pill{
+    display:inline-block; font-size:11px; font-weight:600; padding:3px 9px;
+    border-radius:999px; color:#fff; white-space:nowrap; text-transform:lowercase;
+  }
+  .pill.pending{background:var(--st-pending)}
+  .pill.in_progress{background:var(--st-in_progress)}
+  .pill.done{background:var(--st-done)}
+  .pill.overdue{background:var(--st-overdue)}
+  .pill.cancelled{background:var(--st-cancelled)}
+  .pill.stage{background:var(--link)}
 
-/* Cards */
-.card{background:var(--surface);border-radius:var(--radius);padding:14px;margin-bottom:10px}
-.card-title{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px}
+  button.act{
+    margin-top:11px; width:100%; border:none; border-radius:10px;
+    background:var(--btn); color:var(--btn-text);
+    font-size:14px; font-weight:600; padding:10px; cursor:pointer;
+  }
+  button.act:active{opacity:.7}
+  button.act.ghost{background:transparent; color:var(--link); border:1px solid var(--sep)}
+  button.act[disabled]{opacity:.45; cursor:default}
 
-/* Stats grid */
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.stat{background:var(--surface);border-radius:var(--radius);padding:12px}
-.stat-val{font-size:24px;font-weight:600;color:var(--text)}
-.stat-lbl{font-size:11px;color:var(--text2);margin-top:2px}
+  .vote{
+    display:flex; align-items:center; gap:6px; border:1px solid var(--sep);
+    background:transparent; color:var(--text); border-radius:999px;
+    padding:6px 12px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  .vote.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
 
-/* Task item */
-.task-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
-.task-item:last-child{border:none;padding-bottom:0}
-.task-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
-.task-name{font-size:14px;font-weight:500;color:var(--text)}
-.task-meta{font-size:12px;color:var(--text2);margin-top:2px}
-.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;margin-top:4px;font-weight:500}
+  .empty{color:var(--hint); text-align:center; padding:34px 10px; font-size:14px}
+  .loader{color:var(--hint); text-align:center; padding:34px 10px}
+  .err{
+    background:color-mix(in srgb, var(--st-overdue) 14%, transparent);
+    color:var(--st-overdue); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:10px;
+  }
 
-/* Status colors */
-.s-active    {background:#edf2fb;color:#2481cc}
-.s-in_progress{background:#fef5e4;color:#b7770d}
-.s-submitted {background:#eaf7ef;color:#1a7a3e}
-.s-revision  {background:#fdecea;color:#c0392b}
-.s-approved  {background:#eaf7ef;color:#1a7a3e}
-.s-published {background:#f0ebff;color:#6c3fd4}
+  nav{
+    position:fixed; left:0; right:0; bottom:0; z-index:10;
+    display:flex; background:var(--bg); border-top:1px solid var(--sep);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav button{
+    flex:1; background:none; border:none; cursor:pointer;
+    padding:8px 0 6px; color:var(--hint); font-size:11px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+  }
+  nav button .ic{font-size:21px; line-height:1}
+  nav button.active{color:var(--link)}
 
-/* Company selector */
-.company-card{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;cursor:pointer;border:2px solid transparent;transition:border .15s}
-.company-card.selected{border-color:var(--accent)}
-.company-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:20px;flex-shrink:0}
-.company-name{font-size:15px;font-weight:500;color:var(--text)}
-.company-sub{font-size:12px;color:var(--text2)}
-
-/* Form */
-.form-group{margin-bottom:14px}
-.form-label{font-size:12px;color:var(--text2);margin-bottom:6px;display:block}
-.form-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text);outline:none}
-.form-input:focus{border-color:var(--accent)}
-textarea.form-input{min-height:80px;resize:none}
-select.form-input{appearance:none}
-
-/* Type grid */
-.type-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.type-btn{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;cursor:pointer;font-size:13px;color:var(--text);transition:all .15s}
-.type-btn.selected{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
-
-/* Team */
-.exec-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
-.exec-row:last-child{border:none}
-.avatar{width:40px;height:40px;border-radius:50%;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--accent);flex-shrink:0}
-.exec-info{flex:1}
-.exec-name{font-size:14px;font-weight:500;color:var(--text)}
-.exec-sub{font-size:12px;color:var(--text2)}
-.rating-bar{height:4px;background:var(--border);border-radius:2px;margin-top:5px;overflow:hidden}
-.rating-fill{height:100%;border-radius:2px;background:var(--accent)}
-.rating-num{font-size:14px;font-weight:600;color:var(--text);min-width:32px;text-align:right}
-
-/* Primary btn */
-.btn-primary{width:100%;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;transition:opacity .15s}
-.btn-primary:active{opacity:.8}
-.btn-primary:disabled{opacity:.5}
-
-/* FAB */
-.fab{position:fixed;bottom:76px;right:16px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(36,129,204,.4);z-index:10}
-
-/* Loading / empty */
-.empty{text-align:center;padding:40px 20px;color:var(--text2);font-size:14px}
-.loader{text-align:center;padding:30px;color:var(--text3);font-size:13px}
-
-/* Section header */
-.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.section-title{font-size:16px;font-weight:600;color:var(--text)}
-
-/* Status selector modal overlay */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-end}
-.modal-overlay.hidden{display:none}
-.modal-sheet{background:var(--surface);border-radius:16px 16px 0 0;padding:16px;width:100%;padding-bottom:max(16px,env(safe-area-inset-bottom))}
-.modal-title{font-size:15px;font-weight:600;margin-bottom:12px;text-align:center;color:var(--text)}
-.status-option{padding:12px 16px;border-radius:8px;font-size:14px;cursor:pointer;margin-bottom:6px;background:var(--surface2)}
-.status-option:active{opacity:.7}
+  .toast{
+    position:fixed; left:50%; bottom:78px; transform:translateX(-50%);
+    background:#000; color:#fff; padding:9px 16px; border-radius:10px;
+    font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20;
+    max-width:88%;
+  }
+  .toast.show{opacity:.92}
 </style>
 </head>
 <body>
-
-<div id="app">
-
-  <!-- ══ HOME ══ -->
-  <div class="screen active" id="s-home">
-    <div style="padding:16px 0 6px">
-      <div class="section-title">Добро пожаловать 👋</div>
-      <div style="font-size:13px;color:var(--text2);margin-top:2px" id="user-greeting">WhyNot Agency</div>
-    </div>
-    <div class="stats" id="stats-grid">
-      <div class="stat"><div class="stat-val" id="st-active">—</div><div class="stat-lbl">Активных задач</div></div>
-      <div class="stat"><div class="stat-val" id="st-submitted">—</div><div class="stat-lbl">На проверке</div></div>
-      <div class="stat"><div class="stat-val" id="st-companies">—</div><div class="stat-lbl">Компаний</div></div>
-      <div class="stat"><div class="stat-val" id="st-rating">—</div><div class="stat-lbl">Рейтинг команды</div></div>
-    </div>
-    <div class="card">
-      <div class="card-title">Последние задачи</div>
-      <div id="home-tasks-list"><div class="loader">Загрузка...</div></div>
-    </div>
-    <div style="height:80px"></div>
+<header>
+  <div>
+    <h1 id="screenTitle">Главная</h1>
+    <div class="sub" id="whoami">…</div>
   </div>
+  <button class="refresh" id="refreshBtn" aria-label="Обновить">⟳</button>
+</header>
 
-  <!-- ══ TASKS ══ -->
-  <div class="screen" id="s-tasks">
-    <div style="padding:16px 0 6px">
-      <div class="section-title">Задачи</div>
-    </div>
-    <!-- Company selector -->
-    <div id="company-list"><div class="loader">Загрузка компаний...</div></div>
-    <!-- Task list for selected company -->
-    <div id="task-list-wrap" class="hidden">
-      <div class="section-header" style="margin-top:14px">
-        <div class="section-title" id="selected-company-name">Задачи</div>
-        <span style="font-size:13px;color:var(--accent);cursor:pointer" onclick="clearCompany()">Изменить</span>
-      </div>
-      <div class="card" style="padding:0 14px">
-        <div id="task-list"><div class="loader">Загрузка...</div></div>
-      </div>
-    </div>
-    <div style="height:80px"></div>
-    <button class="fab" onclick="goCreate()" title="Создать задачу">＋</button>
-  </div>
+<main id="view"><div class="loader">Загрузка…</div></main>
 
-  <!-- ══ CREATE ══ -->
-  <div class="screen" id="s-create">
-    <div style="padding:16px 0 6px">
-      <div class="section-title">Новая задача</div>
-    </div>
-    <div class="card">
-      <div class="form-group">
-        <label class="form-label">Тип контента</label>
-        <div class="type-grid" id="type-grid">
-          <div class="type-btn selected" data-val="reels"   onclick="selectType(this)">🎬 Рилс</div>
-          <div class="type-btn"          data-val="post"    onclick="selectType(this)">📸 Пост</div>
-          <div class="type-btn"          data-val="stories" onclick="selectType(this)">📱 Сторис</div>
-          <div class="type-btn"          data-val="shoot"   onclick="selectType(this)">🎥 Съемка</div>
-          <div class="type-btn"          data-val="design"  onclick="selectType(this)">🎨 Дизайн</div>
-          <div class="type-btn"          data-val="other"   onclick="selectType(this)">📌 Другое</div>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Компания</label>
-        <select class="form-input" id="create-company">
-          <option value="">Выбрать компанию...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Исполнитель</label>
-        <select class="form-input" id="create-assignee">
-          <option value="">Выбрать исполнителя...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Описание задачи</label>
-        <textarea class="form-input" id="create-desc" placeholder="Что нужно создать, детали, требования..."></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Референсы (ссылки)</label>
-        <input class="form-input" id="create-refs" placeholder="https://... или текстовое описание">
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Дедлайн</label>
-        <input type="date" class="form-input" id="create-deadline">
-      </div>
-      <button class="btn-primary" id="create-btn" onclick="submitTask()">Создать задачу → отправить в группу</button>
-    </div>
-    <div style="height:20px"></div>
-  </div>
+<nav>
+  <button data-tab="home"     class="active"><span class="ic">🏠</span>Главная</button>
+  <button data-tab="content"><span class="ic">📋</span>Контент</button>
+  <button data-tab="ideas"><span class="ic">💡</span>Идеи</button>
+  <button data-tab="blockers"><span class="ic">🚫</span>Блокеры</button>
+</nav>
 
-  <!-- ══ TEAM ══ -->
-  <div class="screen" id="s-team">
-    <div style="padding:16px 0 6px">
-      <div class="section-title">Команда</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Исполнители · рейтинг</div>
-      <div id="team-list"><div class="loader">Загрузка...</div></div>
-    </div>
-    <div style="height:20px"></div>
-  </div>
-
-  <!-- ══ NAV ══ -->
-  <nav class="nav">
-    <button class="nav-btn active" data-tab="home" onclick="nav('home',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      Главная
-    </button>
-    <button class="nav-btn" data-tab="tasks" onclick="nav('tasks',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      Задачи
-    </button>
-    <button class="nav-btn" data-tab="create" onclick="nav('create',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      Создать
-    </button>
-    <button class="nav-btn" data-tab="team" onclick="nav('team',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-      Команда
-    </button>
-  </nav>
-
-</div>
-
-<!-- Status update sheet -->
-<div class="modal-overlay hidden" id="status-modal" onclick="closeStatusModal(event)">
-  <div class="modal-sheet" onclick="event.stopPropagation()">
-    <div class="modal-title">Изменить статус</div>
-    <div id="status-options"></div>
-  </div>
-</div>
+<div class="toast" id="toast"></div>
 
 <script>
-// ── Config ────────────────────────────────────────────────────
-const API = '';  // same origin
-const tg  = window.Telegram?.WebApp;
-if (tg) { tg.ready(); tg.expand(); }
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
+const INIT_DATA = (tg && tg.initData) || "";
 
-const INIT_DATA = tg?.initData || '';
-const ME = tg?.initDataUnsafe?.user || {first_name:'Dev', id:0};
-
+const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры" };
+const PIPELINE_LABELS = {
+  idea:"Идея", approval:"Согласование", script:"Сценарий", shoot:"Съёмка",
+  edit:"Монтаж", review:"Ревью", client:"У клиента", revisions:"Правки",
+  done:"Готово", published:"Опубликовано", analytics:"Аналитика"
+};
 const STATUS_LABELS = {
-  active:'⚪ Ожидает', in_progress:'🔵 В процессе',
-  submitted:'🟡 На проверке', revision:'🔴 На доработку',
-  approved:'🟢 Принято', published:'✅ Опубликовано'
-};
-const STATUS_COLORS = {
-  active:'blue', in_progress:'yellow', submitted:'green',
-  revision:'red', approved:'green', published:'green'
-};
-const DOT_COLORS = {
-  active:'#2481cc', in_progress:'#f39c12', submitted:'#27ae60',
-  revision:'#e74c3c', approved:'#27ae60', published:'#9b59b6'
+  pending:"ожидает", in_progress:"в работе", done:"готово",
+  overdue:"просрочено", cancelled:"отменено"
 };
 
-// State
-let companies = [], teamMembers = [], selectedType = 'reels', selectedGroupId = null, editingTaskId = null;
+const view = document.getElementById("view");
+const screenTitle = document.getElementById("screenTitle");
+let currentTab = "home";
+let busy = false;
 
-// ── Helpers ───────────────────────────────────────────────────
-async function api(path, opts={}) {
-  const res = await fetch(API + '/api' + path, {
-    headers: {'X-Telegram-Init-Data': INIT_DATA, 'Content-Type':'application/json', ...opts.headers},
-    ...opts
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("show"), 2600);
+}
+function haptic(kind){ try{ tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(kind||"light"); }catch(e){} }
+
+async function api(path, opts){
+  opts = opts || {};
+  const res = await fetch(path, {
+    method: opts.method || "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Init-Data": INIT_DATA,
+      "X-Telegram-Init-Data": INIT_DATA,
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  let data = null;
+  try { data = await res.json(); } catch(e){}
+  if (!res.ok){
+    const msg = (data && (data.detail || data.message)) || ("Ошибка " + res.status);
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+  return data;
 }
 
-function initials(name) {
-  return (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => (
+  {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]
+));
+function fmtDate(v){
+  if(!v) return null;
+  const d = new Date(v);
+  if(isNaN(d)) return String(v);
+  return d.toLocaleDateString("ru-RU", {day:"2-digit", month:"short"});
+}
+function deadlineMeta(v){
+  const f = fmtDate(v);
+  return f ? `⏰ ${f}` : "⏰ без срока";
 }
 
-function formatDate(s) {
-  if (!s) return '—';
-  try { return new Date(s).toLocaleDateString('ru-RU',{day:'numeric',month:'short'}); } catch { return s; }
-}
-
-// ── Navigation ────────────────────────────────────────────────
-function nav(tab, btn) {
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('s-'+tab).classList.add('active');
-  btn.classList.add('active');
-  if (tab==='home')   loadHome();
-  if (tab==='tasks')  loadCompanies();
-  if (tab==='team')   loadTeam();
-  if (tab==='create') loadCreateForm();
-}
-
-function goCreate() {
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('s-create').classList.add('active');
-  document.querySelector('[data-tab="create"]').classList.add('active');
-  loadCreateForm();
-}
-
-// ── Home ──────────────────────────────────────────────────────
-async function loadHome() {
-  document.getElementById('user-greeting').textContent = ME.first_name || 'WhyNot Agency';
-  try {
-    const stats = await api('/stats');
-    document.getElementById('st-active').textContent    = stats.active_tasks;
-    document.getElementById('st-submitted').textContent  = stats.submitted;
-    document.getElementById('st-companies').textContent  = stats.companies;
-    document.getElementById('st-rating').textContent     = stats.avg_rating || '—';
-  } catch {}
-  try {
-    const tasks = await api('/tasks');
-    renderTaskList(document.getElementById('home-tasks-list'), tasks.slice(0,10), true);
-  } catch { document.getElementById('home-tasks-list').innerHTML = '<div class="empty">Нет задач</div>'; }
-}
-
-// ── Tasks ─────────────────────────────────────────────────────
-async function loadCompanies() {
-  const el = document.getElementById('company-list');
-  if (selectedGroupId) return;
-  el.innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    companies = await api('/companies');
-    if (!companies.length) { el.innerHTML = '<div class="empty">Компаний нет.<br>Добавь бота в группу клиента и напиши /start</div>'; return; }
-    el.innerHTML = companies.map(c => `
-      <div class="company-card" onclick="selectCompany(${c.group_id}, '${c.title.replace(/'/g,"\\'")}')">
-        <div class="company-icon">🏢</div>
-        <div>
-          <div class="company-name">${c.title}</div>
-          <div class="company-sub">Нажми чтобы открыть задачи</div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#aaa;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>
-    `).join('');
-  } catch { el.innerHTML = '<div class="empty">Ошибка загрузки</div>'; }
-}
-
-async function selectCompany(gid, title) {
-  selectedGroupId = gid;
-  document.getElementById('selected-company-name').textContent = title;
-  document.getElementById('company-list').classList.add('hidden');
-  document.getElementById('task-list-wrap').classList.remove('hidden');
-  await loadTasks(gid);
-}
-
-function clearCompany() {
-  selectedGroupId = null;
-  document.getElementById('company-list').classList.remove('hidden');
-  document.getElementById('task-list-wrap').classList.add('hidden');
-}
-
-async function loadTasks(gid) {
-  const el = document.getElementById('task-list');
-  el.innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    const tasks = await api('/tasks?group_id=' + gid);
-    renderTaskList(el, tasks, false);
-  } catch { el.innerHTML = '<div class="empty">Ошибка загрузки</div>'; }
-}
-
-function renderTaskList(el, tasks, compact) {
-  if (!tasks.length) { el.innerHTML = '<div class="empty">Нет задач</div>'; return; }
-  el.innerHTML = tasks.map(t => `
-    <div class="task-item" onclick="openStatusModal(${t.id}, '${t.status}')">
-      <div class="task-dot" style="background:${DOT_COLORS[t.status]||'#aaa'}"></div>
-      <div style="flex:1;min-width:0">
-        <div class="task-name">${t.type} · ${t.description.slice(0,40)}${t.description.length>40?'…':''}</div>
-        <div class="task-meta">${t.assignee_name||'Не назначен'} · ${formatDate(t.deadline)}</div>
-        <span class="badge s-${t.status}">${STATUS_LABELS[t.status]||t.status}</span>
-      </div>
+function taskCard(t, {withAction=true}={}){
+  const st = t.status || "pending";
+  const done = st === "done" || st === "cancelled";
+  return `
+  <div class="card" data-task="${t.id}">
+    <div class="row">
+      <p class="title">${esc(t.title || "Без названия")}</p>
+      <span class="pill ${esc(st)}">${esc(STATUS_LABELS[st] || st)}</span>
     </div>
-  `).join('');
+    ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ""}
+    <div class="meta">
+      <span>${deadlineMeta(t.deadline)}</span>
+      ${t.assignee_name ? `<span>👤 ${esc(t.assignee_name)}</span>` : ""}
+      ${t.priority && t.priority !== "normal" ? `<span>❗ ${esc(t.priority)}</span>` : ""}
+    </div>
+    ${withAction && !done ? `<button class="act" data-done="${t.id}">Готово</button>` : ""}
+  </div>`;
 }
 
-// ── Status modal ──────────────────────────────────────────────
-function openStatusModal(taskId, currentStatus) {
-  editingTaskId = taskId;
-  const opts = document.getElementById('status-options');
-  opts.innerHTML = Object.entries(STATUS_LABELS).map(([s,l]) =>
-    `<div class="status-option${s===currentStatus?' selected':''}" onclick="setStatus('${s}')">${l}</div>`
-  ).join('');
-  document.getElementById('status-modal').classList.remove('hidden');
+function blockerCard(b){
+  return `
+  <div class="card">
+    <div class="row">
+      <p class="title">🚫 ${esc(b.title || "Блокер")}</p>
+    </div>
+    ${b.description ? `<p class="desc">${esc(b.description)}</p>` : ""}
+    <div class="meta">
+      ${b.reported_by_name ? `<span>сообщил: ${esc(b.reported_by_name)}</span>` : ""}
+      ${b.assigned_to_name ? `<span>на: ${esc(b.assigned_to_name)}</span>` : ""}
+      ${b.created_at ? `<span>${esc(fmtDate(b.created_at))}</span>` : ""}
+    </div>
+  </div>`;
 }
 
-function closeStatusModal(e) {
-  document.getElementById('status-modal').classList.add('hidden');
+/* ── screens ─────────────────────────────────────────────── */
+
+async function renderHome(){
+  const d = await api("/api/home");
+  setWhoami(d.user);
+  const parts = [];
+
+  parts.push(`<div class="section-title">Мои задачи</div>`);
+  parts.push(d.my_tasks.length
+    ? d.my_tasks.map(t => taskCard(t)).join("")
+    : `<div class="empty">Нет активных задач 🎉</div>`);
+
+  parts.push(`<div class="section-title">Мои блокеры</div>`);
+  parts.push(d.my_blockers.length
+    ? d.my_blockers.map(blockerCard).join("")
+    : `<div class="empty">Блокеров нет</div>`);
+
+  if (d.my_content && d.my_content.length){
+    parts.push(`<div class="section-title">Мой контент</div>`);
+    parts.push(d.my_content.map(c => contentCard(c, {advance:false})).join(""));
+  }
+  view.innerHTML = parts.join("");
 }
 
-async function setStatus(status) {
-  closeStatusModal();
+function contentCard(c, {advance=true}={}){
+  const st = c.pipeline_status || "idea";
+  const isFinal = st === "analytics";
+  return `
+  <div class="card" data-content="${c.id}">
+    <div class="row">
+      <p class="title">${esc(c.topic || c.number || ("Контент #" + c.id))}</p>
+      <span class="pill stage">${esc(PIPELINE_LABELS[st] || st)}</span>
+    </div>
+    ${c.description ? `<p class="desc">${esc(c.description)}</p>` : ""}
+    <div class="meta">
+      ${c.format ? `<span>🎞 ${esc(c.format)}</span>` : ""}
+      ${c.publish_date ? `<span>📅 ${esc(fmtDate(c.publish_date))}</span>` : ""}
+      ${c.client_approved ? `<span>✅ клиент</span>` : ""}
+    </div>
+    ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">Продвинуть →</button>` : ""}
+    ${advance && isFinal ? `<button class="act ghost" disabled>Финальный этап</button>` : ""}
+  </div>`;
+}
+
+async function renderContent(){
+  const items = await api("/api/content");
+  if (!items.length){ view.innerHTML = `<div class="empty">Контента пока нет</div>`; return; }
+  const order = ["idea","approval","script","shoot","edit","review","client","revisions","done","published","analytics"];
+  const groups = {};
+  items.forEach(c => { (groups[c.pipeline_status] ||= []).push(c); });
+  const parts = [];
+  order.forEach(st => {
+    if (!groups[st]) return;
+    parts.push(`<div class="section-title">${PIPELINE_LABELS[st] || st} · ${groups[st].length}</div>`);
+    parts.push(groups[st].map(c => contentCard(c)).join(""));
+  });
+  view.innerHTML = parts.join("");
+}
+
+async function renderIdeas(){
+  const ideas = await api("/api/ideas");
+  if (!ideas.length){ view.innerHTML = `<div class="empty">Идей пока нет — предложи первую в боте</div>`; return; }
+  view.innerHTML = ideas.map(i => `
+    <div class="card">
+      <div class="row">
+        <p class="title">💡 ${esc(i.title || "Идея")}</p>
+        <button class="vote ${i.voted ? "on":""}" data-vote="${i.id}">👍 <span>${i.votes_count||0}</span></button>
+      </div>
+      ${i.description ? `<p class="desc">${esc(i.description)}</p>` : ""}
+      <div class="meta">
+        ${i.format ? `<span>🎞 ${esc(i.format)}</span>` : ""}
+        ${i.proposed_by_name ? `<span>от ${esc(i.proposed_by_name)}</span>` : ""}
+        ${i.status ? `<span>${esc(i.status)}</span>` : ""}
+      </div>
+    </div>`).join("");
+}
+
+async function renderBlockers(){
+  const list = await api("/api/blockers");
+  view.innerHTML = list.length
+    ? list.map(blockerCard).join("")
+    : `<div class="empty">Активных блокеров нет 👌</div>`;
+}
+
+const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers };
+
+function setWhoami(u){
+  const el = document.getElementById("whoami");
+  if(!u){ el.textContent = INIT_DATA ? "" : "dev-режим"; return; }
+  const bits = [u.full_name || "—"];
+  if (u.role) bits.push(u.role);
+  if (!u.registered) bits.push("не зарегистрирован");
+  el.textContent = bits.join(" · ");
+}
+
+async function load(tab){
+  currentTab = tab;
+  screenTitle.textContent = TITLES[tab];
+  document.querySelectorAll("nav button").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === tab));
+  view.innerHTML = `<div class="loader">Загрузка…</div>`;
   try {
-    await api('/tasks/'+editingTaskId, {method:'PATCH', body:JSON.stringify({status})});
-    if (selectedGroupId) await loadTasks(selectedGroupId);
-    await loadHome();
-    if (tg) tg.HapticFeedback?.notificationOccurred('success');
-  } catch { alert('Ошибка обновления статуса'); }
+    await RENDERERS[tab]();
+  } catch (e){
+    view.innerHTML = `<div class="err">${esc(e.message || "Не удалось загрузить")}</div>`;
+  }
 }
 
-// ── Create ────────────────────────────────────────────────────
-async function loadCreateForm() {
-  // Load companies
-  try {
-    if (!companies.length) companies = await api('/companies');
-    const sel = document.getElementById('create-company');
-    sel.innerHTML = '<option value="">Выбрать компанию...</option>' +
-      companies.map(c=>`<option value="${c.group_id}">${c.title}</option>`).join('');
-    if (selectedGroupId) sel.value = selectedGroupId;
-  } catch {}
-  // Load team
-  try {
-    if (!teamMembers.length) teamMembers = await api('/team');
-    const sel = document.getElementById('create-assignee');
-    sel.innerHTML = '<option value="">Выбрать исполнителя...</option>' +
-      teamMembers.map(u=>`<option value="${u.user_id}">${u.first_name}${u.last_name?' '+u.last_name:''}</option>`).join('');
-  } catch {}
-  // Default deadline = tomorrow
-  const tom = new Date(); tom.setDate(tom.getDate()+1);
-  document.getElementById('create-deadline').value = tom.toISOString().split('T')[0];
-}
+/* ── events ──────────────────────────────────────────────── */
 
-function selectType(btn) {
-  document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('selected'));
-  btn.classList.add('selected');
-  selectedType = btn.dataset.val;
-}
+document.querySelector("nav").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (b) { haptic(); load(b.dataset.tab); }
+});
+document.getElementById("refreshBtn").addEventListener("click", () => { haptic(); load(currentTab); });
 
-async function submitTask() {
-  const group_id  = parseInt(document.getElementById('create-company').value);
-  const desc      = document.getElementById('create-desc').value.trim();
-  const assignee  = parseInt(document.getElementById('create-assignee').value) || null;
-  const refs      = document.getElementById('create-refs').value.trim();
-  const deadline  = document.getElementById('create-deadline').value;
+view.addEventListener("click", async e => {
+  const doneBtn = e.target.closest("[data-done]");
+  const advBtn = e.target.closest("[data-advance]");
+  const voteBtn = e.target.closest("[data-vote]");
+  if (busy) return;
 
-  if (!group_id) { alert('Выбери компанию'); return; }
-  if (!desc)     { alert('Напиши описание задачи'); return; }
+  if (doneBtn){
+    busy = true; doneBtn.disabled = true; doneBtn.textContent = "…";
+    try {
+      await api(`/api/tasks/${doneBtn.dataset.done}`, {method:"PATCH", body:{status:"done"}});
+      haptic("medium"); toast("Задача закрыта");
+      await load(currentTab);
+    } catch(err){ toast(err.message); doneBtn.disabled = false; doneBtn.textContent = "Готово"; }
+    finally { busy = false; }
+  }
 
-  const btn = document.getElementById('create-btn');
-  btn.disabled = true; btn.textContent = 'Создание...';
-  try {
-    await api('/tasks', {method:'POST', body:JSON.stringify({
-      group_id, type: selectedType, description: desc,
-      refs, deadline, assignee_id: assignee
-    })});
-    if (tg) tg.HapticFeedback?.notificationOccurred('success');
-    // Reset form
-    document.getElementById('create-desc').value = '';
-    document.getElementById('create-refs').value = '';
-    document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('selected'));
-    document.querySelector('.type-btn[data-val="reels"]').classList.add('selected');
-    selectedType = 'reels';
-    // Go to tasks
-    nav('tasks', document.querySelector('[data-tab="tasks"]'));
-    if (selectedGroupId) loadTasks(selectedGroupId);
-  } catch(e) { alert('Ошибка: '+e.message); }
-  finally { btn.disabled=false; btn.textContent='Создать задачу → отправить в группу'; }
-}
+  if (advBtn){
+    busy = true; advBtn.disabled = true; advBtn.textContent = "…";
+    try {
+      const r = await api(`/api/content/${advBtn.dataset.advance}/advance`, {method:"POST"});
+      haptic("medium"); toast("→ " + (PIPELINE_LABELS[r.pipeline_status] || r.pipeline_status));
+      await load(currentTab);
+    } catch(err){ toast(err.message); advBtn.disabled = false; advBtn.textContent = "Продвинуть →"; }
+    finally { busy = false; }
+  }
 
-// ── Team ──────────────────────────────────────────────────────
-async function loadTeam() {
-  const el = document.getElementById('team-list');
-  el.innerHTML = '<div class="loader">Загрузка...</div>';
-  try {
-    const team = await api('/team');
-    if (!team.length) { el.innerHTML = '<div class="empty">Нет участников команды</div>'; return; }
-    const max = Math.max(...team.map(u=>u.avg_rating||0), 5);
-    el.innerHTML = team.map(u => {
-      const rating = u.avg_rating ? u.avg_rating.toFixed(1) : '—';
-      const pct    = u.avg_rating ? Math.round(u.avg_rating/max*100) : 0;
-      const role   = {director:'👑 �иректор', am:'📋 АМ', executor:'✂️ Исполнитель'}[u.role] || u.role;
-      return `
-      <div class="exec-row">
-        <div class="avatar">${initials(u.first_name+' '+(u.last_name||''))}</div>
-        <div class="exec-info">
-          <div class="exec-name">${u.first_name||''} ${u.last_name||''}</div>
-          <div class="exec-sub">${role} · ${u.task_count||0} задач</div>
-          <div class="rating-bar"><div class="rating-fill" style="width:${pct}%"></div></div>
-        </div>
-        <div class="rating-num">${rating}</div>
-      </div>`;
-    }).join('');
-  } catch { el.innerHTML = '<div class="empty">Ошибка загрузки</div>'; }
-}
+  if (voteBtn){
+    busy = true;
+    try {
+      const r = await api(`/api/ideas/${voteBtn.dataset.vote}/vote`, {method:"POST"});
+      haptic();
+      voteBtn.classList.toggle("on", r.voted);
+      voteBtn.querySelector("span").textContent = r.votes_count;
+    } catch(err){ toast(err.message); }
+    finally { busy = false; }
+  }
+});
 
-// ── Init ──────────────────────────────────────────────────────
-loadHome();
+load("home");
 </script>
 </body>
 </html>
