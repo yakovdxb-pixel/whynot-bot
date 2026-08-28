@@ -301,12 +301,12 @@ const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 const INIT_DATA = (tg && tg.initData) || "";
 
-/* ── PWA install banner ─────────────────────────────────── */
+/* ── install / add-to-home-screen banner ────────────────── */
 (function installBanner(){
   const isStandalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     window.navigator.standalone === true;
-  const inTelegram = !!(tg && tg.initData);       // can't install a PWA from inside Telegram
+  const inTelegram = !!(tg && tg.initData);
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
   const bar   = document.getElementById("installBanner");
@@ -317,15 +317,44 @@ const INIT_DATA = (tg && tg.initData) || "";
 
   function dismissed(){ try { return localStorage.getItem("wn_install_dismissed") === "1"; } catch(e){ return false; } }
   function hide(){ bar.hidden = true; }
-  function show(){ if (!isStandalone && !inTelegram && !dismissed()) bar.hidden = false; }
+  function show(){ if (!isStandalone && !dismissed()) bar.hidden = false; }
 
   close.addEventListener("click", () => {
     try { localStorage.setItem("wn_install_dismissed", "1"); } catch(e){}
     hide();
   });
 
-  if (isStandalone || inTelegram) return;   // nothing to offer
+  if (isStandalone) return;
 
+  // ── inside Telegram → use the native "Add to Home Screen" (Bot API 8.0+) ──
+  if (inTelegram){
+    const canAdd = tg && typeof tg.addToHomeScreen === "function" &&
+                   (!tg.isVersionAtLeast || tg.isVersionAtLeast("8.0"));
+    if (!canAdd) return;
+
+    const offer = () => {
+      txt.textContent = "Добавить WHY NOT? OS на главный экран";
+      btn.textContent = "📲 Добавить";
+      btn.hidden = false;
+      show();
+    };
+    btn.addEventListener("click", () => { btn.disabled = true; try { tg.addToHomeScreen(); } catch(e){} });
+    tg.onEvent && tg.onEvent("homeScreenAdded", hide);
+
+    if (typeof tg.checkHomeScreenStatus === "function"){
+      try {
+        tg.checkHomeScreenStatus((status) => {
+          if (status === "added" || status === "unsupported") hide();
+          else offer();
+        });
+      } catch(e){ offer(); }
+    } else {
+      offer();
+    }
+    return;
+  }
+
+  // ── plain browser → PWA install ──
   if (isIOS){
     txt.innerHTML = 'Установи как приложение: <b>Поделиться</b> ⬆️ → <b>На экран «Домой»</b>';
     btn.hidden = true;
