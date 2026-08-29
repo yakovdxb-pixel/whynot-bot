@@ -11,7 +11,7 @@ import os
 import struct
 import zlib
 
-BG = (0x33, 0x0A, 0x3A)      # deep plum  #330A3A
+BG = (0x1A, 0x08, 0x20)      # deep plum  #330A3A
 FG = (255, 255, 255)          # white
 ACCENT = (0x1E, 0xC8, 0x9A)   # mint       #1EC89A
 SIZES = (192, 512)

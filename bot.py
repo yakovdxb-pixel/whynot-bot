@@ -2150,21 +2150,23 @@ async def cancel_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _sched_delete(context.bot, gid, m.message_id, 4)
 
 
-INSTALL_URL = "https://worker-production-7137.up.railway.app/static/"
+WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://worker-production-7137.up.railway.app/webapp"
 
 
 async def install_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "📲 Установить WHY NOT? OS как приложение:\n\n"
-        "Открой эту ссылку в Safari:\n"
-        f"{INSTALL_URL}\n\n"
-        "Затем: Share → На экран «Домой» → Добавить"
+        "📲 *WHY NOT? OS на рабочий стол*\n\n"
+        "1. Открой приложение кнопкой ниже\n"
+        "2. Внутри: меню *⋮* (вверху справа) → «Добавить на главный экран»\n"
+        "3. Готово — иконка на экране, открывается сразу в приложение\n\n"
+        "_Так приложение работает с твоим Telegram-аккаунтом. "
+        "Не добавляй через Safari — там будет отдельная веб-версия без входа._"
     )
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Открыть в Safari", url=INSTALL_URL)]])
-    await update.message.reply_text(text, reply_markup=kb, disable_web_page_preview=True)
-
-
-WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://worker-production-7137.up.railway.app/webapp"
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))
+    ]])
+    await update.message.reply_text(text, reply_markup=kb, parse_mode="Markdown",
+                                    disable_web_page_preview=True)
 
 
 async def _post_init(app: Application):

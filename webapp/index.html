@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>WHY NOT? OS</title>
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#330a3a">
+<meta name="theme-color" content="#1a0820">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,33 +22,37 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root{
-    --bg: var(--tg-theme-bg-color, #ffffff);
-    --text: var(--tg-theme-text-color, #0f0f0f);
-    --hint: var(--tg-theme-hint-color, #8a8a8e);
-    --link: var(--tg-theme-link-color, #2481cc);
-    --btn: var(--tg-theme-button-color, #2481cc);
-    --btn-text: var(--tg-theme-button-text-color, #ffffff);
-    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
-    --sep: color-mix(in srgb, var(--hint) 25%, transparent);
-    --st-pending:#8a8a8e;
-    --st-in_progress:#2481cc;
-    --st-done:#34c759;
-    --st-overdue:#ff3b30;
-    --st-cancelled:#8a8a8e;
-    --fab:#1ec89a;   /* WHY NOT? brand mint */
+    /* WHY NOT? brand — fixed dark plum theme */
+    --bg:#1a0820;
+    --card:#2c1636;
+    --text:#f4eff7;
+    --hint:#a290ae;
+    --link:#25dcac;
+    --btn:#1ec89a;
+    --btn-text:#04231b;
+    --sep:rgba(255,255,255,.10);
+    --st-pending:#8f8f96;
+    --st-in_progress:#4aa3ff;
+    --st-done:#2ecb6a;
+    --st-overdue:#ff5147;
+    --st-cancelled:#8f8f96;
+    --fab:#1ec89a;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;padding:0}
+  html{height:100%}
   body{
+    margin:0; padding:0;
     background:var(--bg); color:var(--text);
     font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    padding-bottom:calc(64px + env(safe-area-inset-bottom));
     -webkit-font-smoothing:antialiased;
+    height:100vh; height:100dvh;
+    display:flex; flex-direction:column;
+    overflow:hidden; overscroll-behavior:none;
   }
   header{
-    position:sticky; top:0; z-index:5;
+    flex:0 0 auto;
     background:var(--bg);
-    padding:calc(14px + var(--safe-top, 0px)) 16px 10px; border-bottom:1px solid var(--sep);
+    padding:14px 16px 10px; border-bottom:1px solid var(--sep);
     display:flex; align-items:center; justify-content:space-between;
   }
   header h1{font-size:18px; font-weight:700; margin:0}
@@ -57,14 +61,18 @@
     background:none; border:none; color:var(--link);
     font-size:22px; padding:4px 6px; cursor:pointer; line-height:1;
   }
-  main{padding:14px 16px}
+  main#view{
+    flex:1 1 auto; min-height:0;
+    overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+    padding:14px 16px calc(96px + env(safe-area-inset-bottom));
+  }
   .section-title{font-size:13px; font-weight:600; color:var(--hint);
     text-transform:uppercase; letter-spacing:.04em; margin:18px 2px 8px}
   .section-title:first-child{margin-top:4px}
 
   .card{
-    background:var(--card); border-radius:14px; padding:13px 14px;
-    margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.08);
+    background:var(--card); border:1px solid rgba(255,255,255,.05); border-radius:14px;
+    padding:13px 14px; margin-bottom:10px; box-shadow:0 2px 8px rgba(0,0,0,.35);
   }
   .card .row{display:flex; align-items:flex-start; justify-content:space-between; gap:10px}
   .card .title{font-weight:600; font-size:15px; margin:0}
@@ -99,7 +107,8 @@
     flex:1; border:none; background:none; color:var(--hint); cursor:pointer;
     font-size:13px; font-weight:600; padding:7px 0; border-radius:8px;
   }
-  .seg button.on{background:var(--bg); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .seg{background:rgba(0,0,0,.28)}
+  .seg button.on{background:var(--card); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.4)}
 
   .done-mark{margin-top:10px; text-align:center; color:var(--st-done); font-weight:600; font-size:14px}
 
@@ -141,16 +150,17 @@
   }
 
   nav{
-    position:fixed; left:0; right:0; bottom:0; z-index:10;
+    flex:0 0 auto; z-index:10;
     display:flex; background:var(--bg); border-top:1px solid var(--sep);
     padding-bottom:env(safe-area-inset-bottom);
   }
   nav button{
-    flex:1; background:none; border:none; cursor:pointer;
-    padding:8px 1px 6px; color:var(--hint); font-size:9px; letter-spacing:-.2px;
+    flex:1 1 0; min-width:0; background:none; border:none; cursor:pointer;
+    padding:7px 2px 6px; color:var(--hint); font-size:10px;
     display:flex; flex-direction:column; align-items:center; gap:3px;
   }
-  nav button .ic{font-size:19px; line-height:1}
+  nav button span:last-child{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  nav button .ic{font-size:20px; line-height:1}
   nav button.active{color:var(--link)}
 
   .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px}
@@ -243,6 +253,9 @@
   }
   .field textarea{min-height:74px; resize:vertical}
   .field select{background-image:none}
+  .field input::placeholder, .field textarea::placeholder,
+  .proj-form input::placeholder, .proj-form textarea::placeholder{color:var(--hint)}
+  .field select option{background:var(--card); color:var(--text)}
   .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--link)}
   .field.bad input, .field.bad textarea, .field.bad select{border-color:var(--st-overdue)}
   .sheet .form-err{
@@ -275,12 +288,12 @@
 <main id="view"><div class="loader">Загрузка…</div></main>
 
 <nav>
-  <button data-tab="home"     class="active"><span class="ic">🏠</span>Главная</button>
-  <button data-tab="content"><span class="ic">📋</span>Контент</button>
-  <button data-tab="ideas"><span class="ic">💡</span>Идеи</button>
-  <button data-tab="blockers"><span class="ic">🚫</span>Блокеры</button>
-  <button data-tab="team"><span class="ic">👥</span>Команда</button>
-  <button data-tab="dash"><span class="ic">📊</span>Обзор</button>
+  <button data-tab="home" class="active"><span class="ic">🏠</span><span>Главная</span></button>
+  <button data-tab="content"><span class="ic">📋</span><span>Контент</span></button>
+  <button data-tab="ideas"><span class="ic">💡</span><span>Идеи</span></button>
+  <button data-tab="blockers"><span class="ic">🚫</span><span>Блокеры</span></button>
+  <button data-tab="team"><span class="ic">👥</span><span>Команда</span></button>
+  <button data-tab="dash"><span class="ic">📊</span><span>Обзор</span></button>
 </nav>
 
 <button class="fab" id="fab" aria-label="Создать">+</button>
@@ -300,34 +313,17 @@
 const tg = window.Telegram && window.Telegram.WebApp;
 const INIT_DATA = (tg && tg.initData) || "";
 
-/* make the Mini App feel like a standalone app inside Telegram */
+/* make the Mini App feel solid inside Telegram */
 (function tgChrome(){
   if (!tg) return;
   const atLeast = (v) => !tg.isVersionAtLeast || tg.isVersionAtLeast(v);
   try { tg.ready(); } catch(e){}
   try { tg.expand(); } catch(e){}
-  // stop the swipe-down gesture that collapses / minimises the app (Bot API 7.7+)
+  // stop the swipe-down gesture that collapses / drags the app (Bot API 7.7+)
   try { if (atLeast("7.7") && tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch(e){}
-  // blend Telegram's top bar into the app
-  try { tg.setHeaderColor && tg.setHeaderColor("#330a3a"); } catch(e){}
-  try { tg.setBackgroundColor && tg.setBackgroundColor(
-    getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#ffffff"); } catch(e){}
-
-  function applySafeTop(){
-    const t = (tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) ||
-              (tg.safeAreaInset && tg.safeAreaInset.top) || 0;
-    document.documentElement.style.setProperty("--safe-top", t ? t + "px" : "0px");
-  }
-  // go truly fullscreen where supported (Bot API 8.0+) and keep the header clear of the notch
-  try {
-    if (atLeast("8.0") && tg.requestFullscreen){
-      tg.onEvent && tg.onEvent("fullscreenChanged", applySafeTop);
-      tg.onEvent && tg.onEvent("safeAreaChanged", applySafeTop);
-      tg.onEvent && tg.onEvent("contentSafeAreaChanged", applySafeTop);
-      tg.requestFullscreen();
-      applySafeTop();
-    }
-  } catch(e){}
+  // paint Telegram's top bar in the brand colour so it blends in
+  try { if (tg.setHeaderColor) tg.setHeaderColor("#1a0820"); } catch(e){}
+  try { if (tg.setBackgroundColor) tg.setBackgroundColor("#1a0820"); } catch(e){}
 })();
 
 /* ── install / add-to-home-screen banner ────────────────── */
