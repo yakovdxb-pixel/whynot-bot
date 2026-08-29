@@ -689,9 +689,9 @@ async def list_team(user: dict = Depends(member), session=Depends(get_session)):
 @router.patch("/team/{user_id}/role")
 async def set_team_role(user_id: int, body: TeamRolePatch,
                         user: dict = Depends(member), session=Depends(get_session)):
-    """Change a teammate's role. Caller must be admin (via init-data, no secret)."""
-    if user["role"] != "admin":
-        raise HTTPException(403, "only an admin can change roles")
+    """Change a teammate's role. admin / am."""
+    if user["role"] not in ("admin", "am"):
+        raise HTTPException(403, "only admin / am can change roles")
     if body.role not in USER_ROLES:
         raise HTTPException(422, f"role must be one of {sorted(USER_ROLES)}")
     target = (await session.execute(
@@ -699,6 +699,11 @@ async def set_team_role(user_id: int, body: TeamRolePatch,
     )).scalar_one_or_none()
     if not target:
         raise HTTPException(404, "user not found")
+    is_self = target.id == user["id"]
+    if is_self and body.role not in ("admin", "am"):
+        raise HTTPException(400, "нельзя понизить свою роль ниже управляющей")
+    if user["role"] == "am" and (target.role == "admin" or body.role == "admin") and not is_self:
+        raise HTTPException(403, "роль admin может назначать только admin")
     target.role = body.role
     target.updated_at = _now()
     await session.commit()
@@ -743,9 +748,9 @@ async def add_team_member(body: TeamMemberCreate,
 @router.delete("/team/{user_id}")
 async def remove_team_member(user_id: int,
                              user: dict = Depends(member), session=Depends(get_session)):
-    """Revoke a teammate's access (soft delete). admin only."""
-    if user["role"] != "admin":
-        raise HTTPException(403, "only an admin can remove members")
+    """Revoke a teammate's access (soft delete). admin / am."""
+    if user["role"] not in ("admin", "am"):
+        raise HTTPException(403, "only admin / am can remove members")
     if user_id == user["id"]:
         raise HTTPException(400, "нельзя удалить себя")
     target = (await session.execute(
@@ -753,6 +758,8 @@ async def remove_team_member(user_id: int,
     )).scalar_one_or_none()
     if not target:
         raise HTTPException(404, "user not found")
+    if user["role"] == "am" and target.role == "admin":
+        raise HTTPException(403, "am не может удалить admin")
     target.is_active = False
     target.updated_at = _now()
     await session.commit()

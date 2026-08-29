@@ -219,18 +219,15 @@
   .act-row:last-child{border-bottom:none}
   .act-row .ago{color:var(--hint); font-size:11px; margin-left:4px}
 
-  .tc-controls{display:flex; gap:8px; margin-top:10px; align-items:center}
-  .role-select{
-    flex:1 1 auto; font:14px inherit; color:var(--text);
-    background:var(--bg); border:1px solid var(--sep); border-radius:9px;
-    padding:8px 10px; -webkit-appearance:none; appearance:none;
+  .card.tappable{cursor:pointer}
+  .card.tappable:active{opacity:.75}
+  #memberSheet select{
+    width:100%; font:15px inherit; color:var(--text);
+    background:var(--card); border:1px solid var(--sep); border-radius:10px;
+    padding:10px 12px; -webkit-appearance:none; appearance:none;
   }
-  .tc-del{
-    flex:0 0 auto; border:1px solid color-mix(in srgb, var(--st-overdue) 45%, transparent);
-    background:transparent; color:var(--st-overdue); border-radius:9px;
-    padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer;
-  }
-  .tc-del[disabled]{opacity:.5}
+  #memberSheet #memberDelete{color:var(--st-overdue); border-color:color-mix(in srgb, var(--st-overdue) 45%, transparent)}
+  #memberSheet #memberDelete[hidden]{display:none}
 
   #installBanner{
     display:flex; align-items:center; gap:10px;
@@ -345,6 +342,15 @@
   <div class="form-err" id="formErr" style="display:none"></div>
   <div id="formFields"></div>
   <button class="submit" id="formSubmit">Создать</button>
+</div>
+
+<div class="sheet-backdrop" id="memberBackdrop"></div>
+<div class="sheet" id="memberSheet" role="dialog" aria-modal="true">
+  <div class="grabber"></div>
+  <h2 id="memberName"></h2>
+  <div class="field"><label>Роль</label><select id="memberRole"></select></div>
+  <button class="submit" id="memberSave">Сохранить</button>
+  <button class="act ghost" id="memberDelete" style="margin-top:10px">Удалить из команды</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -702,20 +708,14 @@ async function renderBlockers(){
     : `<div class="empty">Активных блокеров нет 👌</div>`;
 }
 
-function teamCard(u, isAdmin){
+let teamById = {};
+
+function teamCard(u, canManage){
   const label = ROLE_LABELS[u.role] || u.role;
   const color = ROLE_COLORS[u.role] || "#8a8a8e";
-  const self = ME && u.id === ME.id;
-  const controls = isAdmin ? `
-    <div class="tc-controls">
-      <select class="role-select" data-user="${u.id}"${self ? " disabled" : ""}>
-        ${Object.keys(ROLE_LABELS).map(r =>
-          `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r]}</option>`).join("")}
-      </select>
-      ${self ? "" : `<button class="tc-del" data-remove-user="${u.id}" data-name="${esc(u.full_name || "")}">Удалить</button>`}
-    </div>` : "";
+  teamById[u.id] = u;
   return `
-  <div class="card">
+  <div class="card${canManage ? " tappable" : ""}"${canManage ? ` data-member="${u.id}"` : ""}>
     <div class="row">
       <p class="title">${esc(u.full_name || "—")}</p>
       <span class="pill" style="background:${color}">${esc(label)}</span>
@@ -723,8 +723,8 @@ function teamCard(u, isAdmin){
     <div class="meta">
       ${u.username ? `<span>@${esc(u.username)}</span>` : ""}
       ${u.telegram_id ? `<span>ID ${esc(String(u.telegram_id))}</span>` : ""}
+      ${canManage ? `<span>изменить ›</span>` : ""}
     </div>
-    ${controls}
   </div>`;
 }
 
@@ -781,9 +781,9 @@ async function renderTeam(){
   if (teamSub === "team"){
     try {
       const team = await api("/api/team");
-      const isAdmin = !!(ME && ME.role === "admin");
+      teamById = {};
       body = team.length
-        ? team.map(u => teamCard(u, isAdmin)).join("")
+        ? team.map(u => teamCard(u, isManager())).join("")
         : `<div class="empty">В команде пока никого</div>`;
     } catch(e){
       body = `<div class="empty">${esc(e.message || "Список команды — только для админов и AM")}</div>`;
@@ -967,25 +967,10 @@ view.addEventListener("click", async e => {
     return;
   }
 
-  const delUser = e.target.closest("[data-remove-user]");
-  if (delUser){
-    if (busy) return;
-    const name = delUser.dataset.name || "этого человека";
-    const ok = await new Promise(res => {
-      const q = `Убрать «${name}» из команды? Доступ пропадёт.`;
-      if (tg && tg.initData && tg.showConfirm){
-        try { tg.showConfirm(q, v => res(!!v)); return; } catch(e){}
-      }
-      res(window.confirm(q));
-    });
-    if (!ok) return;
-    busy = true; delUser.disabled = true; delUser.textContent = "…";
-    try {
-      await api(`/api/team/${delUser.dataset.removeUser}`, {method:"DELETE"});
-      haptic("medium"); toast("Удалён");
-      await load("team");
-    } catch(err){ toast(err.message); delUser.disabled = false; delUser.textContent = "Удалить"; }
-    finally { busy = false; }
+  const memberCard = e.target.closest("[data-member]");
+  if (memberCard){
+    haptic();
+    openMemberSheet(+memberCard.dataset.member);
     return;
   }
 
@@ -1074,21 +1059,68 @@ view.addEventListener("click", async e => {
   }
 });
 
-view.addEventListener("change", async e => {
-  const sel = e.target.closest(".role-select");
-  if (!sel || busy) return;
-  const prev = sel.dataset.prev || sel.value;
-  busy = true; sel.disabled = true;
+/* ── member action sheet (tap a Команда card) ───────────── */
+const memberSheet = document.getElementById("memberSheet");
+const memberBackdrop = document.getElementById("memberBackdrop");
+let editingMemberId = null;
+
+function askConfirm(q){
+  return new Promise(res => {
+    if (tg && tg.initData && tg.showConfirm){
+      try { tg.showConfirm(q, v => res(!!v)); return; } catch(e){}
+    }
+    res(window.confirm(q));
+  });
+}
+function closeMemberSheet(){
+  memberSheet.classList.remove("open");
+  memberBackdrop.classList.remove("open");
+  editingMemberId = null;
+}
+function openMemberSheet(id){
+  const u = teamById[id];
+  if (!u) return;
+  editingMemberId = id;
+  const self = ME && id === ME.id;
+  document.getElementById("memberName").textContent = u.full_name || ("ID " + u.telegram_id);
+  const sel = document.getElementById("memberRole");
+  const roles = self ? ["admin", "am"] : Object.keys(ROLE_LABELS);
+  sel.innerHTML = roles.map(r =>
+    `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r] || r}</option>`).join("");
+  document.getElementById("memberDelete").hidden = self;
+  document.getElementById("memberSave").disabled = false;
+  memberBackdrop.classList.add("open");
+  memberSheet.classList.add("open");
+}
+
+document.getElementById("memberSave").addEventListener("click", async () => {
+  if (editingMemberId == null || busy) return;
+  const role = document.getElementById("memberRole").value;
+  busy = true; document.getElementById("memberSave").disabled = true;
   try {
-    await api(`/api/team/${sel.dataset.user}/role`, {method:"PATCH", body:{role: sel.value}});
+    await api(`/api/team/${editingMemberId}/role`, {method:"PATCH", body:{role}});
     haptic("medium"); toast("Роль обновлена");
+    closeMemberSheet();
     await load("team");
-  } catch(err){
-    toast(err.message); sel.value = prev; sel.disabled = false; busy = false;
-    return;
-  }
-  busy = false;
+  } catch(err){ toast(err.message); document.getElementById("memberSave").disabled = false; }
+  finally { busy = false; }
 });
+
+document.getElementById("memberDelete").addEventListener("click", async () => {
+  if (editingMemberId == null || busy) return;
+  const u = teamById[editingMemberId] || {};
+  if (!(await askConfirm(`Убрать «${u.full_name || "этого человека"}» из команды? Доступ пропадёт.`))) return;
+  busy = true;
+  try {
+    await api(`/api/team/${editingMemberId}`, {method:"DELETE"});
+    haptic("medium"); toast("Удалён из команды");
+    closeMemberSheet();
+    await load("team");
+  } catch(err){ toast(err.message); }
+  finally { busy = false; }
+});
+
+memberBackdrop.addEventListener("click", closeMemberSheet);
 
 /* ── creation forms (bottom-sheet) ───────────────────────── */
 
