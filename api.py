@@ -342,7 +342,11 @@ async def health():
         from db.models import engine as _pg_engine
         async with _pg_engine.connect() as conn:
             await conn.execute(_sql_text("SELECT 1"))
-        return {"db": "ok"}
+            tbls = (await conn.execute(_sql_text(
+                "SELECT count(*) FROM information_schema.tables "
+                "WHERE table_name IN ('task_assignees','reference_items')"
+            ))).scalar()
+        return {"db": "ok", "new_tables": int(tbls)}
     except Exception as e:
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content={"db": "error", "detail": str(e)})
