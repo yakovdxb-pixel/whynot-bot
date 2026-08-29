@@ -239,12 +239,28 @@
   .mp-opt.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
 
   /* references */
-  .ref-row{display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap}
-  .ref-mini{width:40px; height:40px; object-fit:cover; border-radius:8px; cursor:pointer; flex:0 0 auto}
-  .ref-open{
-    flex:1 1 auto; min-width:80px; border:1px dashed var(--sep); background:transparent;
-    color:var(--hint); border-radius:10px; padding:8px; font-size:13px; font-weight:600; cursor:pointer;
+  .ref-row{display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap}
+  .ref-thumb{position:relative; flex:0 0 auto; line-height:0}
+  .ref-mini{width:44px; height:44px; object-fit:cover; border-radius:8px; cursor:pointer; display:block; background:var(--sep)}
+  .ref-x{
+    position:absolute; top:-7px; right:-7px; width:19px; height:19px; padding:0;
+    border:2px solid var(--bg); border-radius:50%; background:#d23a2e; color:#fff;
+    font-size:11px; line-height:15px; cursor:pointer; z-index:2;
   }
+  .ref-open{
+    flex:0 0 auto; border:1px dashed var(--sep); background:transparent;
+    color:var(--hint); border-radius:10px; padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  /* refs widget inside the create form */
+  .refs-field .rf-list{display:flex; flex-direction:column; gap:6px; margin-bottom:8px}
+  .refs-field .rf-list:empty{display:none}
+  .rf-item{display:flex; align-items:center; gap:8px; background:var(--card);
+    border:1px solid var(--sep); border-radius:8px; padding:8px 10px; font-size:13px}
+  .rf-item .rf-t{flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .rf-item button{border:none; background:none; color:var(--st-overdue,#d23a2e); font-size:14px; cursor:pointer; flex:0 0 auto}
+  .rf-row{display:flex; gap:6px}
+  .rf-row input{flex:1 1 auto}
+  .rf-actions{display:flex; gap:8px; margin-top:6px}
   #refSheet #refList{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
   #refSheet #refList:empty{display:none}
   .ref-item{
@@ -682,11 +698,15 @@ let taskById = {};
 let contentById = {};
 
 function refStrip(kind, id, count, thumbs){
+  if (!count) return "";
   const t = (thumbs || []).map(x =>
-    `<img class="ref-mini" src="${esc(x.download)}?ia=${encodeURIComponent(INIT_DATA)}" alt="" data-refs="${kind}:${id}">`).join("");
+    `<span class="ref-thumb">
+       <img class="ref-mini" src="${esc(x.download)}?ia=${encodeURIComponent(INIT_DATA)}" alt="" data-refs="${kind}:${id}">
+       <button class="ref-x" data-ref-del-card="${x.id}" aria-label="Удалить">✕</button>
+     </span>`).join("");
   return `<div class="ref-row" data-refs="${kind}:${id}">
     ${t}
-    <button class="ref-open" data-refs="${kind}:${id}">📎${count ? " " + count : " Референсы"}</button>
+    <button class="ref-open" data-refs="${kind}:${id}">📎 ${count}</button>
   </div>`;
 }
 
@@ -706,8 +726,8 @@ function taskCard(t){
       <span>${deadlineMeta(t.deadline)}</span>
       ${who ? `<span>${who}</span>` : ""}
       ${t.priority && t.priority !== "normal" ? `<span>❗ ${esc(t.priority)}</span>` : ""}
-      ${t.refs_count ? `<span>📎 ${t.refs_count}</span>` : ""}
     </div>
+    ${refStrip("task", t.id, t.refs_count || 0, t.ref_thumbs)}
     ${next
       ? `<button class="act" data-task-to="${next.to}" data-task-id="${t.id}">${next.label}</button>`
       : st === "done" ? `<div class="done-mark">✅ Выполнено</div>` : ""}
@@ -791,10 +811,10 @@ function contentCard(c, {advance=true}={}){
       ${when ? `<span>📅 ${esc(when)}</span>` : ""}
       ${c.project_name ? `<span>📁 ${esc(c.project_name)}</span>` : ""}
       ${c.client_approved ? `<span>✅ клиент</span>` : ""}
-      ${c.refs_count ? `<span>📎 ${c.refs_count}</span>` : ""}
     </div>
     ${c.hook ? `<p class="desc">${esc(c.hook)}</p>` : ""}
     ${people.length ? `<div class="meta">${people.map(p => `<span>${esc(p)}</span>`).join("")}</div>` : ""}
+    ${refStrip("content", c.id, c.refs_count || 0, c.ref_thumbs)}
     ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">Продвинуть →</button>` : ""}
     ${advance && isFinal ? `<button class="act ghost" disabled>Финальный этап</button>` : ""}
   </div>`;
@@ -1218,6 +1238,20 @@ view.addEventListener("click", async e => {
     return;
   }
 
+  const refX = e.target.closest("[data-ref-del-card]");
+  if (refX){
+    e.stopPropagation();
+    const rid = +refX.dataset.refDelCard;
+    if (!busy) askConfirm("Удалить этот референс?").then(async ok => {
+      if (!ok) return;
+      busy = true;
+      try { await api("/api/references/" + rid, { method:"DELETE" }); haptic(); await load(currentTab); }
+      catch(err){ toast(err.message); }
+      finally { busy = false; }
+    });
+    return;
+  }
+
   const refBtn = e.target.closest("[data-refs]");
   if (refBtn){
     const [kind, id] = refBtn.dataset.refs.split(":");
@@ -1567,7 +1601,7 @@ const FORMS = {
         dynamic:"clients", options:[["","—"]] },
       { name:"project_id",   label:"Проект (необяз.)", type:"select", value:"", coerce:"int",
         dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
-      { name:"reference_url", label:"Референс — ссылка (необяз.)", type:"text" },
+      { name:"refs", label:"Референсы — ссылки и файлы", type:"refs" },
     ],
   },
   content: {
@@ -1593,6 +1627,7 @@ const FORMS = {
       { name:"copywriter_id", label:"Сценарист / копирайтер", type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
       { name:"editor_id",     label:"Монтажёр",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
       { name:"designer_id",   label:"Дизайнер",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"refs", label:"Референсы — ссылки и файлы", type:"refs" },
     ],
   },
   shoots: {
@@ -1728,7 +1763,7 @@ function openTaskEdit(t){
     method: "PATCH",
     submitLabel: "Сохранить",
     extraFields: [{ name:"status", label:"Статус", type:"select", options: STATUS_OPTS }],
-    omitFields: ["reference_url"],
+    omitFields: ["refs"],
     refsFor: { kind: "task", id: t.id },
     prefill: {
       title: t.title || "",
@@ -1752,6 +1787,7 @@ function openContentEdit(c){
     method: "PATCH",
     submitLabel: "Сохранить",
     extraFields: [{ name:"pipeline_status", label:"Этап", type:"select", options: PIPELINE_OPTS }],
+    omitFields: ["refs"],
     refsFor: { kind: "content", id: c.id },
     prefill: {
       topic: c.topic || "", rubric: c.rubric || "",
@@ -1788,6 +1824,57 @@ function openShootEdit(s){
     },
   };
   openSheet();
+}
+
+let pendingRefs = [];   // refs collected in a create form, flushed after the item exists
+
+function renderPendingRefs(box){
+  const list = box.querySelector(".rf-list");
+  list.innerHTML = pendingRefs.map((r, i) =>
+    `<div class="rf-item"><span class="rf-t">${r.kind === "link" ? "🔗 " + esc(r.url) : "📎 " + esc(r.file.name)}</span><button type="button" data-rfi="${i}">✕</button></div>`).join("");
+}
+function wirePendingRefs(box){
+  renderPendingRefs(box);
+  box.querySelector(".rf-add-link").addEventListener("click", () => {
+    const inp = box.querySelector(".rf-url");
+    let u = (inp.value || "").trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    pendingRefs.push({ kind: "link", url: u });
+    inp.value = ""; haptic(); renderPendingRefs(box);
+  });
+  box.querySelector(".rf-add-file").addEventListener("click", () => box.querySelector(".rf-file").click());
+  box.querySelector(".rf-file").addEventListener("change", e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 20 * 1024 * 1024){ toast("Файл больше 20 МБ"); return; }
+    pendingRefs.push({ kind: "file", file: f });
+    haptic(); renderPendingRefs(box);
+  });
+  box.querySelector(".rf-list").addEventListener("click", e => {
+    const b = e.target.closest("[data-rfi]");
+    if (b){ pendingRefs.splice(+b.dataset.rfi, 1); renderPendingRefs(box); }
+  });
+}
+async function flushPendingRefs(scopeKey, id){
+  for (const r of pendingRefs){
+    try {
+      if (r.kind === "link"){
+        await api("/api/references", { method:"POST", body:{ [scopeKey]: id, url: r.url } });
+      } else {
+        const fd = new FormData();
+        fd.append("file", r.file);
+        fd.append(scopeKey, String(id));
+        await fetch("/api/references/upload", {
+          method:"POST",
+          headers:{ "X-Init-Data": INIT_DATA, "X-Telegram-Init-Data": INIT_DATA },
+          body: fd,
+        });
+      }
+    } catch(err){ /* best-effort */ }
+  }
+  pendingRefs = [];
 }
 
 function applyPrefill(pf){
@@ -1828,6 +1915,18 @@ async function openSheet(){
       control = `<select id="${id}">${_baseOptions(f)}</select>`;
     } else if (f.type === "mpick"){
       control = `<div class="mpick" id="${id}"></div>`;
+    } else if (f.type === "refs"){
+      control = `<div class="refs-field" id="${id}">
+        <div class="rf-list"></div>
+        <div class="rf-row">
+          <input type="url" class="rf-url" placeholder="https://… ссылка">
+          <button type="button" class="act ghost rf-add-link">＋</button>
+        </div>
+        <div class="rf-actions">
+          <button type="button" class="act ghost rf-add-file">📎 Прикрепить файл</button>
+        </div>
+        <input type="file" class="rf-file" hidden accept="image/*,video/*,application/pdf">
+      </div>`;
     } else {
       const t = f.type === "number" ? "number"
               : f.type === "date" ? "date"
@@ -1844,6 +1943,9 @@ async function openSheet(){
       `<button type="button" class="act ghost" id="editRefsBtn" style="margin-top:4px">📎 Референсы</button>`);
     document.getElementById("editRefsBtn").addEventListener("click", () => openRefSheet(r.kind, r.id));
   }
+  pendingRefs = [];
+  const rfBox = formFields.querySelector(".refs-field");
+  if (rfBox) wirePendingRefs(rfBox);
   formSubmit.disabled = false;
   formSubmit.textContent = editState ? editState.submitLabel : "Создать";
   sheetBackdrop.classList.add("open");
@@ -1872,6 +1974,7 @@ function closeSheet(){
   sheet.classList.remove("open");
   sheetBackdrop.classList.remove("open");
   editState = null;
+  pendingRefs = [];
   sheetBackOff();
 }
 
@@ -1884,6 +1987,7 @@ async function submitForm(){
   let valid = true;
   formFields.querySelectorAll(".field").forEach(w => w.classList.remove("bad"));
   for (const f of sheetFields){
+    if (f.type === "refs") continue;
     const el = document.getElementById("f_" + f.name);
     if (f.type === "mpick"){
       body[f.name] = [...el.querySelectorAll(".mp-opt.on")].map(b => +b.dataset.id);
@@ -1908,8 +2012,13 @@ async function submitForm(){
   formSubmit.disabled = true; formSubmit.textContent = "Сохранение…";
   setFormError("");
   const wasEdit = isEdit;
+  const formKey = activeFormKey();
   try {
-    await api(endpoint, { method, body });
+    const saved = await api(endpoint, { method, body });
+    if (!wasEdit && pendingRefs.length && saved && saved.id){
+      formSubmit.textContent = "Загрузка референсов…";
+      await flushPendingRefs(formKey === "content" ? "content_id" : "task_id", saved.id);
+    }
     haptic("medium");
     closeSheet();
     toast(wasEdit ? "Сохранено" : "Создано");
