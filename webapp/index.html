@@ -190,11 +190,11 @@
   }
   nav button{
     flex:1 1 0; min-width:0; background:none; border:none; cursor:pointer;
-    padding:7px 2px 6px; color:var(--hint); font-size:10px;
+    padding:7px 1px 6px; color:var(--hint); font-size:9px;
     display:flex; flex-direction:column; align-items:center; gap:3px;
   }
   nav button span:last-child{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  nav button .ic{font-size:20px; line-height:1}
+  nav button .ic{font-size:19px; line-height:1}
   nav button.active{color:var(--link)}
 
   .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px}
@@ -383,6 +383,7 @@
   <button data-tab="content"><span class="ic">📋</span><span>Контент</span></button>
   <button data-tab="ideas"><span class="ic">💡</span><span>Идеи</span></button>
   <button data-tab="blockers"><span class="ic">🚫</span><span>Блокеры</span></button>
+  <button data-tab="shoots"><span class="ic">🎬</span><span>Съёмки</span></button>
   <button data-tab="team"><span class="ic">👥</span><span>Команда</span></button>
   <button data-tab="dash"><span class="ic">📊</span><span>Обзор</span></button>
 </nav>
@@ -554,7 +555,10 @@ const INIT_DATA = (tg && tg.initData) || "";
   });
 })();
 
-const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры", team:"Команда", dash:"Обзор" };
+const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры", shoots:"Съёмки", team:"Команда", dash:"Обзор" };
+const PLATFORM_OPTS = [["","—"],["instagram","Instagram"],["tiktok","TikTok"],["youtube","YouTube"],["telegram","Telegram"],["vk","VK"],["other","Другое"]];
+const SHOOT_STATUS_OPTS = [["planned","Запланирована"],["done","Отснята"],["cancelled","Отменена"]];
+const PIPELINE_OPTS = [["idea","Идея"],["approval","Согласование"],["script","Сценарий"],["shoot","Съёмка"],["edit","Монтаж"],["review","Ревью"],["client","У клиента"],["revisions","Правки"],["done","Готово"],["published","Опубликовано"],["analytics","Аналитика"]];
 const ENTITY_NOUN = { task:"задачу", content:"контент", idea:"идею", blocker:"блокер", project:"проект", client:"клиента", user:"пользователя" };
 const ACTION_VERB = { created:"создал", updated:"обновил", completed:"завершил", moved:"продвинул", voted:"проголосовал за", vote_changed:"переголосовал за", assigned:"назначил", resolved:"закрыл" };
 const ROLE_LABELS = {
@@ -586,7 +590,8 @@ const screenTitle = document.getElementById("screenTitle");
 let currentTab = "home";
 let homeScope = "mine";   // "mine" | "all" — Главная tasks filter
 let teamSub = "team";     // "team" | "clients" — Команда sub-section
-let contentClientId = ""; // "" = all — Контент client filter
+let contentClientId = ""; // "" = all — Контент client filter (legacy)
+let contentProjectId = ""; // "" = all — Контент project filter
 let expandedClient = null;
 let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
@@ -633,6 +638,20 @@ function fmtDate(v){
   const d = new Date(v);
   if(isNaN(d)) return String(v);
   return d.toLocaleDateString("ru-RU", {day:"2-digit", month:"short"});
+}
+function fmtDateTime(v){
+  if(!v) return null;
+  const d = new Date(v);
+  if(isNaN(d)) return String(v);
+  return d.toLocaleString("ru-RU", {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"});
+}
+function toLocalInput(v){
+  // ISO -> "YYYY-MM-DDTHH:MM" for <input type=datetime-local>
+  if(!v) return "";
+  const d = new Date(v);
+  if(isNaN(d)) return "";
+  const p = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function deadlineMeta(v){
   const f = fmtDate(v);
@@ -731,43 +750,61 @@ async function renderHome(){
   view.innerHTML = parts.join("");
 }
 
+const PLATFORM_LABEL = Object.fromEntries(PLATFORM_OPTS);
+
 function contentCard(c, {advance=true}={}){
+  contentById[c.id] = c;
   const st = c.pipeline_status || "idea";
   const isFinal = st === "analytics";
+  const when = c.publish_at ? fmtDateTime(c.publish_at)
+             : c.publish_date ? fmtDate(c.publish_date) : null;
+  const people = [
+    c.smm_name && "SMM: " + c.smm_name,
+    c.copywriter_name && "Сценарий: " + c.copywriter_name,
+    c.editor_name && "Монтаж: " + c.editor_name,
+    c.designer_name && "Дизайн: " + c.designer_name,
+  ].filter(Boolean);
   return `
-  <div class="card" data-content="${c.id}">
+  <div class="card tappable" data-content-edit="${c.id}">
     <div class="row">
       <p class="title">${esc(c.topic || c.number || ("Контент #" + c.id))}</p>
       <span class="pill stage">${esc(PIPELINE_LABELS[st] || st)}</span>
     </div>
-    ${c.description ? `<p class="desc">${esc(c.description)}</p>` : ""}
     <div class="meta">
+      ${c.rubric ? `<span>🏷 ${esc(c.rubric)}</span>` : ""}
+      ${c.platform ? `<span>${esc(PLATFORM_LABEL[c.platform] || c.platform)}</span>` : ""}
       ${c.format ? `<span>🎞 ${esc(c.format)}</span>` : ""}
-      ${c.publish_date ? `<span>📅 ${esc(fmtDate(c.publish_date))}</span>` : ""}
+      ${when ? `<span>📅 ${esc(when)}</span>` : ""}
+      ${c.project_name ? `<span>📁 ${esc(c.project_name)}</span>` : ""}
       ${c.client_approved ? `<span>✅ клиент</span>` : ""}
       ${c.refs_count ? `<span>📎 ${c.refs_count}</span>` : ""}
     </div>
+    ${c.hook ? `<p class="desc">${esc(c.hook)}</p>` : ""}
+    ${people.length ? `<div class="meta">${people.map(p => `<span>${esc(p)}</span>`).join("")}</div>` : ""}
     ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">Продвинуть →</button>` : ""}
     ${advance && isFinal ? `<button class="act ghost" disabled>Финальный этап</button>` : ""}
   </div>`;
 }
 
 async function renderContent(){
-  const [clients, items] = await Promise.all([
-    api("/api/clients").catch(() => []),
-    api("/api/content" + (contentClientId ? "?client_id=" + encodeURIComponent(contentClientId) : "")),
+  contentById = {};
+  const [projects, items] = await Promise.all([
+    api("/api/projects").catch(() => []),
+    api("/api/content" + (contentProjectId ? "?project_id=" + encodeURIComponent(contentProjectId) : "")),
   ]);
-  const pills = `<div class="pills-row">
-    <button class="pill-btn ${contentClientId === "" ? "on" : ""}" data-cfilter="">Все</button>
-    ${clients.map(c => `<button class="pill-btn ${String(contentClientId) === String(c.id) ? "on" : ""}" data-cfilter="${c.id}">${esc(c.name)}</button>`).join("")}
+  const filter = `<div class="field" style="margin:2px 0 12px">
+    <select id="contentProjFilter">
+      <option value="">Все проекты</option>
+      ${projects.map(p => `<option value="${p.id}"${String(contentProjectId) === String(p.id) ? " selected" : ""}>${esc(p.label || p.name)}</option>`).join("")}
+    </select>
   </div>`;
 
   const order = ["idea","approval","script","shoot","edit","review","client","revisions","done","published","analytics"];
   const groups = {};
   items.forEach(c => { (groups[c.pipeline_status] ||= []).push(c); });
-  const parts = [pills];
+  const parts = [filter];
   if (!items.length){
-    parts.push(`<div class="empty">${contentClientId ? "У клиента нет контента" : "Контента пока нет"}</div>`);
+    parts.push(`<div class="empty">${contentProjectId ? "У проекта нет контента" : "Контента пока нет"}</div>`);
   } else {
     order.forEach(st => {
       if (!groups[st]) return;
@@ -776,6 +813,46 @@ async function renderContent(){
     });
   }
   view.innerHTML = parts.join("");
+}
+
+/* ── Съёмки ──────────────────────────────────────────────── */
+let shootById = {};
+let shootUpcomingOnly = false;
+const SHOOT_STATUS_LABEL = Object.fromEntries(SHOOT_STATUS_OPTS);
+
+function shootCard(s){
+  shootById[s.id] = s;
+  const when = s.shoot_at ? fmtDateTime(s.shoot_at) : "дата не задана";
+  const team = (s.participants || []).map(p => p.name).filter(Boolean).join(", ");
+  const stCls = s.status === "done" ? "done" : s.status === "cancelled" ? "cancelled" : "in_progress";
+  return `
+  <div class="card tappable" data-shoot-edit="${s.id}">
+    <div class="row">
+      <p class="title">🎬 ${esc(s.title || "Съёмка")}</p>
+      <span class="pill ${stCls}">${esc(SHOOT_STATUS_LABEL[s.status] || s.status)}</span>
+    </div>
+    <div class="meta">
+      <span>🗓 ${esc(when)}</span>
+      ${s.location ? `<span>📍 ${esc(s.location)}</span>` : ""}
+      ${s.project_name ? `<span>📁 ${esc(s.project_name)}</span>` : (s.client_name ? `<span>🏢 ${esc(s.client_name)}</span>` : "")}
+    </div>
+    ${team ? `<div class="meta"><span>👥 ${esc(team)}</span></div>` : ""}
+    ${s.notes ? `<p class="desc">${esc(s.notes)}</p>` : ""}
+  </div>`;
+}
+
+async function renderShoots(){
+  shootById = {};
+  const list = await api("/api/shoots" + (shootUpcomingOnly ? "?upcoming=true" : ""));
+  const filter = `<div class="field" style="margin:2px 0 12px">
+    <select id="shootScopeFilter">
+      <option value="all"${shootUpcomingOnly ? "" : " selected"}>Все съёмки</option>
+      <option value="upcoming"${shootUpcomingOnly ? " selected" : ""}>Только предстоящие</option>
+    </select>
+  </div>`;
+  view.innerHTML = filter + (list.length
+    ? list.map(shootCard).join("")
+    : `<div class="empty">Съёмок пока нет — добавь через «+»</div>`);
 }
 
 async function renderIdeas(){
@@ -978,7 +1055,7 @@ function statCard(n, label){
   return `<div class="stat"><div class="n">${n ?? 0}</div><div class="l">${esc(label)}</div></div>`;
 }
 
-const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, team:renderTeam, dash:renderDashboard };
+const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, shoots:renderShoots, team:renderTeam, dash:renderDashboard };
 
 function setWhoami(u){
   document.getElementById("whoami").textContent = (u && u.role) ? u.role : "";
@@ -1039,6 +1116,17 @@ document.querySelector("nav").addEventListener("click", e => {
   if (b) { haptic(); load(b.dataset.tab); }
 });
 
+view.addEventListener("change", e => {
+  if (e.target.id === "contentProjFilter"){
+    contentProjectId = e.target.value;
+    haptic(); load("content");
+  }
+  if (e.target.id === "shootScopeFilter"){
+    shootUpcomingOnly = e.target.value === "upcoming";
+    haptic(); load("shoots");
+  }
+});
+
 view.addEventListener("click", async e => {
   const naCopy = e.target.closest("#naCopy");
   if (naCopy){
@@ -1081,6 +1169,20 @@ view.addEventListener("click", async e => {
   if (taskEditCard && !e.target.closest("button, a")){
     const t = taskById[+taskEditCard.dataset.taskEdit];
     if (t){ haptic(); openTaskEdit(t); }
+    return;
+  }
+
+  const contentEditCard = e.target.closest("[data-content-edit]");
+  if (contentEditCard && !e.target.closest("button, a")){
+    const c = contentById[+contentEditCard.dataset.contentEdit];
+    if (c){ haptic(); openContentEdit(c); }
+    return;
+  }
+
+  const shootEditCard = e.target.closest("[data-shoot-edit]");
+  if (shootEditCard && !e.target.closest("button, a")){
+    const s = shootById[+shootEditCard.dataset.shootEdit];
+    if (s){ haptic(); openShootEdit(s); }
     return;
   }
 
@@ -1410,16 +1512,40 @@ const FORMS = {
   content: {
     title: "Новый контент", endpoint: "/api/content",
     fields: [
+      { name:"topic",        label:"Тема / название",   type:"text", required:true },
+      { name:"rubric",       label:"Рубрика",           type:"text" },
       { name:"format", label:"Формат", type:"select", required:true,
         options:[["post","Пост"],["reels","Reels"],["story","Сторис"],
                  ["carousel","Карусель"],["tiktok","TikTok"],
                  ["youtube_long","YouTube"],["other","Другое"]] },
-      { name:"topic",        label:"Тема",              type:"text" },
-      { name:"publish_date", label:"Дата публикации",   type:"date" },
+      { name:"platform",     label:"Площадка",          type:"select", value:"", options: PLATFORM_OPTS },
+      { name:"publish_at",   label:"Дата и время публикации", type:"datetime" },
       { name:"client_id",    label:"Клиент", type:"select", value:"", coerce:"int",
         dynamic:"clients", options:[["","—"]] },
       { name:"project_id",   label:"Проект", type:"select", value:"", coerce:"int",
         dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
+      { name:"hook",         label:"Заголовок / хук",   type:"text" },
+      { name:"script",       label:"Сценарий",          type:"textarea" },
+      { name:"caption",      label:"Подпись к посту",    type:"textarea" },
+      { name:"hashtags",     label:"Хэштеги",            type:"text" },
+      { name:"smm_id",        label:"SMM",        type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"copywriter_id", label:"Сценарист / копирайтер", type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"editor_id",     label:"Монтажёр",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"designer_id",   label:"Дизайнер",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+    ],
+  },
+  shoots: {
+    title: "Новая съёмка", endpoint: "/api/shoots",
+    fields: [
+      { name:"title",     label:"Название",        type:"text", required:true },
+      { name:"shoot_at",  label:"Дата и время",    type:"datetime" },
+      { name:"location",  label:"Локация / адрес", type:"text" },
+      { name:"client_id", label:"Клиент", type:"select", value:"", coerce:"int",
+        dynamic:"clients", options:[["","—"]] },
+      { name:"project_id", label:"Проект", type:"select", value:"", coerce:"int",
+        dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
+      { name:"participant_ids", label:"Команда на съёмке", type:"mpick", dynamic:"members" },
+      { name:"notes",     label:"Заметки",         type:"textarea" },
     ],
   },
   ideas: {
@@ -1501,14 +1627,16 @@ async function fillDynamic(f){
     let items = [];
     if (f.dynamic === "team"){
       items = (await api("/api/team")).map(u => [u.id, `${u.full_name} (${ROLE_LABELS[u.role] || u.role})`]);
+    } else if (f.dynamic === "members"){
+      items = (await api("/api/members")).map(u => [u.id, `${u.full_name}${u.role ? " · " + (ROLE_LABELS[u.role] || u.role) : ""}`]);
     } else if (f.dynamic === "clients"){
       items = (await api("/api/clients")).map(c => [c.id, c.name]);
     } else if (f.dynamic === "projects"){
       const dep = f.dependsOn ? document.getElementById("f_" + f.dependsOn) : null;
       const cid = dep && dep.value;
-      if (!cid){ sel.disabled = true; return; }
       sel.disabled = false;
-      items = (await api("/api/projects?client_id=" + encodeURIComponent(cid))).map(p => [p.id, p.name]);
+      const q = cid ? "?client_id=" + encodeURIComponent(cid) : "";
+      items = (await api("/api/projects" + q)).map(p => [p.id, p.label || p.name]);
     }
     if (!sel.isConnected) return;
     items.forEach(([v,l]) => {
@@ -1555,6 +1683,52 @@ function openTaskEdit(t){
   openSheet();
 }
 
+function openContentEdit(c){
+  editState = {
+    formKey: "content",
+    title: "Изменить контент",
+    endpoint: "/api/content/" + c.id,
+    method: "PATCH",
+    submitLabel: "Сохранить",
+    extraFields: [{ name:"pipeline_status", label:"Этап", type:"select", options: PIPELINE_OPTS }],
+    refsFor: { kind: "content", id: c.id },
+    prefill: {
+      topic: c.topic || "", rubric: c.rubric || "",
+      format: c.format || "post",
+      platform: c.platform || "",
+      publish_at: toLocalInput(c.publish_at) || (c.publish_date ? String(c.publish_date).slice(0,10) + "T12:00" : ""),
+      client_id: c.client_id || "", project_id: c.project_id || "",
+      hook: c.hook || "", script: c.script || "", caption: c.caption || "",
+      hashtags: c.hashtags || "",
+      smm_id: c.smm_id || "", copywriter_id: c.copywriter_id || "",
+      editor_id: c.editor_id || "", designer_id: c.designer_id || "",
+      pipeline_status: c.pipeline_status || "idea",
+    },
+  };
+  openSheet();
+}
+
+function openShootEdit(s){
+  editState = {
+    formKey: "shoots",
+    title: "Изменить съёмку",
+    endpoint: "/api/shoots/" + s.id,
+    method: "PATCH",
+    submitLabel: "Сохранить",
+    extraFields: [{ name:"status", label:"Статус", type:"select", options: SHOOT_STATUS_OPTS }],
+    prefill: {
+      title: s.title || "",
+      shoot_at: toLocalInput(s.shoot_at),
+      location: s.location || "",
+      client_id: s.client_id || "", project_id: s.project_id || "",
+      participant_ids: (s.participants || []).map(p => p.id),
+      notes: s.notes || "",
+      status: s.status || "planned",
+    },
+  };
+  openSheet();
+}
+
 function applyPrefill(pf){
   for (const f of sheetFields){
     if (!(f.name in pf)) continue;
@@ -1594,7 +1768,9 @@ async function openSheet(){
     } else if (f.type === "mpick"){
       control = `<div class="mpick" id="${id}"></div>`;
     } else {
-      const t = f.type === "number" ? "number" : (f.type === "date" ? "date" : "text");
+      const t = f.type === "number" ? "number"
+              : f.type === "date" ? "date"
+              : f.type === "datetime" ? "datetime-local" : "text";
       control = `<input id="${id}" type="${t}"${f.type === "number" ? ' inputmode="numeric"' : ""}>`;
     }
     return `<div class="field" data-field="${f.name}">

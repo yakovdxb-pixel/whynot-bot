@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from db.models import (
     AsyncSessionLocal, User, Task, ContentItem, Idea, IdeaVote, Blocker,
     Client, Project, ActivityEvent, TaskAssignee, ReferenceItem,
+    ProjectChat, ShootSession, ShootParticipant,
     PIPELINE_SEQUENCE, task_status_enum, user_role_enum,
     content_format_enum, task_priority_enum,
 )
@@ -156,6 +157,8 @@ CONTENT_FORMATS = set(content_format_enum.enums)
 # tolerate the labels the Mini App form uses
 PRIORITY_ALIASES = {"critical": "urgent", "medium": "normal"}
 FORMAT_ALIASES = {"reel": "reels", "video": "youtube_long", "article": "other"}
+STATUS_RU = {"pending": "Ожидает", "in_progress": "В работе", "done": "Готово",
+             "overdue": "Просрочено", "cancelled": "Отменено"}
 
 
 class TaskPatch(BaseModel):
@@ -215,8 +218,40 @@ class ContentCreate(BaseModel):
     format: str
     topic: str | None = None
     publish_date: str | None = None
+    publish_at: str | None = None
     project_id: int | None = None
     client_id: int | None = None
+    rubric: str | None = None
+    platform: str | None = None
+    hook: str | None = None
+    script: str | None = None
+    caption: str | None = None
+    hashtags: str | None = None
+    smm_id: int | None = None
+    copywriter_id: int | None = None
+    editor_id: int | None = None
+    designer_id: int | None = None
+
+
+class ContentPatch(BaseModel):
+    topic: str | None = None
+    format: str | None = None
+    pipeline_status: str | None = None
+    publish_date: str | None = None
+    publish_at: str | None = None
+    project_id: int | None = None
+    client_id: int | None = None
+    client_approved: bool | None = None
+    rubric: str | None = None
+    platform: str | None = None
+    hook: str | None = None
+    script: str | None = None
+    caption: str | None = None
+    hashtags: str | None = None
+    smm_id: int | None = None
+    copywriter_id: int | None = None
+    editor_id: int | None = None
+    designer_id: int | None = None
 
 
 class IdeaCreate(BaseModel):
@@ -229,6 +264,30 @@ class BlockerCreate(BaseModel):
     title: str
     description: str | None = None
     assigned_to: int | None = None
+
+
+class ShootCreate(BaseModel):
+    title: str
+    shoot_at: str | None = None
+    location: str | None = None
+    client_id: int | None = None
+    project_id: int | None = None
+    notes: str | None = None
+    participant_ids: list[int] | None = None
+
+
+class ShootPatch(BaseModel):
+    title: str | None = None
+    shoot_at: str | None = None
+    location: str | None = None
+    client_id: int | None = None
+    project_id: int | None = None
+    notes: str | None = None
+    status: str | None = None
+    participant_ids: list[int] | None = None
+
+
+SHOOT_STATUSES = {"planned", "done", "cancelled"}
 
 
 def _clean(s):
@@ -253,10 +312,13 @@ def _parse_dt(v):
     if not v:
         return None
     try:
-        return datetime.fromisoformat(v + "T00:00:00+00:00") if len(v) == 10 \
+        dt = datetime.fromisoformat(v + "T00:00:00+00:00") if len(v) == 10 \
             else datetime.fromisoformat(v)
     except ValueError:
         raise HTTPException(422, f"bad datetime: {v!r}")
+    if dt.tzinfo is None:                      # datetime-local inputs have no tz
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 # ── helpers ─────────────────────────────────────────────────────
@@ -446,29 +508,61 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
         tg = await _telegram_id_for(session, a)
         if tg:
             bg.add_task(_tg_send, tg, f"📋 Тебе назначена задача: {task.title}")
+    if new_notify:
+        who = ", ".join(filter(None, (await _names_for(session, new_notify)).values()))
+        await _notify_project(bg, session, task.project_id,
+                              f"📋 {task.title}\nНазначено: {who}")
+    if patch.status:
+        await _notify_project(bg, session, task.project_id,
+                              f"✏️ Задача «{task.title}» → {STATUS_RU.get(patch.status, patch.status)}")
 
     result = await _attach_assignees(session, [task])
     return result[0]
 
 
+CONTENT_PEOPLE = ("smm_id", "copywriter_id", "editor_id", "designer_id",
+                  "producer_id", "author_id", "am_id")
+
+
+def _content_out(c, names, projects, refs):
+    d = row_to_dict(c)
+    for col in CONTENT_PEOPLE:
+        d[col.replace("_id", "_name")] = names.get(getattr(c, col, None))
+    d["project_name"] = projects.get(c.project_id)
+    d["publish_at"] = c.publish_at.isoformat() if c.publish_at else None
+    s = refs.get(c.id, {})
+    d["refs_count"] = s.get("count", 0)
+    d["ref_thumbs"] = s.get("thumbs", [])
+    return d
+
+
+async def _projects_map(session, ids):
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (await session.execute(
+        select(Project.id, Project.name).where(Project.id.in_(ids)))).all()
+    return {i: n for i, n in rows}
+
+
 @router.get("/content")
-async def list_content(client_id: int | None = None,
+async def list_content(client_id: int | None = None, project_id: int | None = None,
                        user: dict = Depends(member), session=Depends(get_session)):
     q = select(ContentItem)
     if client_id:
         q = q.where(ContentItem.client_id == client_id)
-    q = q.order_by(ContentItem.pipeline_status, ContentItem.publish_date.is_(None),
-                   ContentItem.publish_date, ContentItem.id.desc()).limit(300)
+    if project_id:
+        q = q.where(ContentItem.project_id == project_id)
+    q = q.order_by(ContentItem.pipeline_status,
+                   ContentItem.publish_at.is_(None), ContentItem.publish_at,
+                   ContentItem.publish_date.is_(None), ContentItem.publish_date,
+                   ContentItem.id.desc()).limit(300)
     rows = (await session.execute(q)).scalars().all()
     refs = await _ref_summaries(session, content_ids=[c.id for c in rows])
-    out = []
-    for c in rows:
-        d = row_to_dict(c)
-        s = refs.get(c.id, {})
-        d["refs_count"] = s.get("count", 0)
-        d["ref_thumbs"] = s.get("thumbs", [])
-        out.append(d)
-    return out
+    uids = {getattr(c, col, None) for c in rows for col in CONTENT_PEOPLE}
+    names = await _names_for(session, uids)
+    projects = await _projects_map(session, [c.project_id for c in rows])
+    return [_content_out(c, names, projects, refs) for c in rows]
 
 
 @router.post("/content/{content_id}/advance")
@@ -488,7 +582,59 @@ async def advance_content(content_id: int,
     await session.commit()
     await session.refresh(item)
     await _log(session, "content", "moved", item.id, user["id"], item.topic)
-    return row_to_dict(item)
+    return await _one_content(session, item)
+
+
+PIPELINE_STEPS = set(PIPELINE_ORDER)
+
+
+async def _one_content(session, item):
+    refs = await _ref_summaries(session, content_ids=[item.id])
+    names = await _names_for(session, {getattr(item, c, None) for c in CONTENT_PEOPLE})
+    projects = await _projects_map(session, [item.project_id])
+    return _content_out(item, names, projects, refs)
+
+
+@router.patch("/content/{content_id}")
+async def update_content(content_id: int, patch: ContentPatch,
+                         user: dict = Depends(member), session=Depends(get_session)):
+    item = (await session.execute(
+        select(ContentItem).where(ContentItem.id == content_id)
+    )).scalar_one_or_none()
+    if not item:
+        raise HTTPException(404, "Content not found")
+    data = patch.model_dump(exclude_unset=True)
+    if "format" in data and data["format"]:
+        fmt = FORMAT_ALIASES.get(data["format"].lower(), data["format"].lower())
+        if fmt not in CONTENT_FORMATS:
+            raise HTTPException(422, f"format must be one of {sorted(CONTENT_FORMATS)}")
+        item.format = fmt
+    if "pipeline_status" in data and data["pipeline_status"]:
+        if data["pipeline_status"] not in PIPELINE_STEPS:
+            raise HTTPException(422, f"status must be one of {sorted(PIPELINE_STEPS)}")
+        item.pipeline_status = data["pipeline_status"]
+    if "publish_date" in data:
+        item.publish_date = _parse_date(data["publish_date"])
+    if "publish_at" in data:
+        item.publish_at = _parse_dt(data["publish_at"])
+    if "client_approved" in data and data["client_approved"] is not None:
+        item.client_approved = bool(data["client_approved"])
+    for f in ("topic", "rubric", "platform", "hook", "script", "caption", "hashtags"):
+        if f in data:
+            setattr(item, f, _clean(data[f]))
+    for f in ("project_id", "client_id", "smm_id", "copywriter_id",
+              "editor_id", "designer_id"):
+        if f in data:
+            setattr(item, f, data[f] or None)
+    item.updated_at = _now()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "ссылка на несуществующий id")
+    await session.refresh(item)
+    await _log(session, "content", "updated", item.id, user["id"], item.topic)
+    return await _one_content(session, item)
 
 
 @router.get("/ideas")
@@ -585,20 +731,38 @@ async def _log(session, entity, action, entity_id, actor_id, title=None):
         print(f"activity log failed ({entity}/{action}): {e}")
 
 
-async def _tg_send(telegram_id: int, text: str):
-    """Fire a Telegram DM. Best-effort — never raises into the request."""
-    if not (BOT_TOKEN and telegram_id):
+async def _tg_send(chat_id: int, text: str, thread_id: int | None = None):
+    """Fire a Telegram message (DM or group/topic). Best-effort — never raises."""
+    if not (BOT_TOKEN and chat_id):
         return
+    payload = {"chat_id": chat_id, "text": text}
+    if thread_id:
+        payload["message_thread_id"] = thread_id
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={"chat_id": telegram_id, "text": text},
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload,
             )
         if r.status_code != 200:
-            print(f"notify {telegram_id}: telegram {r.status_code} {r.text[:200]}")
+            print(f"notify {chat_id}: telegram {r.status_code} {r.text[:200]}")
     except Exception as e:  # noqa: BLE001
-        print(f"notify {telegram_id} failed: {e}")
+        print(f"notify {chat_id} failed: {e}")
+
+
+async def _project_chats(session, project_id):
+    """[(chat_id, thread_id), ...] bound to this project."""
+    if not project_id:
+        return []
+    rows = (await session.execute(
+        select(ProjectChat.chat_id, ProjectChat.thread_id)
+        .where(ProjectChat.project_id == project_id)
+    )).all()
+    return [(c, t) for c, t in rows]
+
+
+async def _notify_project(bg: BackgroundTasks, session, project_id, text: str):
+    for chat_id, thread_id in await _project_chats(session, project_id):
+        bg.add_task(_tg_send, chat_id, text, thread_id)
 
 
 async def _telegram_id_for(session, user_id):
@@ -655,6 +819,10 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
         if tg:
             bg.add_task(_tg_send, tg,
                         f"📋 Тебе назначена задача: {title}\nПриоритет: {prio}\nДедлайн: {dl}")
+    who = ", ".join(filter(None, (await _names_for(session, aids)).values())) or "—"
+    await _notify_project(
+        bg, session, obj.project_id,
+        f"📋 Новая задача: {title}\nИсполнители: {who}\nДедлайн: {dl}")
     result = await _attach_assignees(session, [obj])
     return result[0]
 
@@ -671,15 +839,26 @@ async def create_content(body: ContentCreate,
         format=fmt,
         topic=_clean(body.topic),
         publish_date=_parse_date(body.publish_date),
+        publish_at=_parse_dt(body.publish_at),
         project_id=body.project_id,
         client_id=body.client_id,
         pipeline_status="idea",
         created_by=uid,
         author_id=uid,
+        rubric=_clean(body.rubric),
+        platform=_clean(body.platform),
+        hook=_clean(body.hook),
+        script=_clean(body.script),
+        caption=_clean(body.caption),
+        hashtags=_clean(body.hashtags),
+        smm_id=body.smm_id,
+        copywriter_id=body.copywriter_id,
+        editor_id=body.editor_id,
+        designer_id=body.designer_id,
     )
-    result = await _commit_new(session, obj)
+    await _commit_new(session, obj)
     await _log(session, "content", "created", obj.id, uid, obj.topic)
-    return result
+    return await _one_content(session, obj)
 
 
 @router.post("/ideas", status_code=201)
@@ -737,8 +916,11 @@ def _client_out(c, am_name=None):
             "am_id": c.am_id, "am_name": am_name, "is_active": c.is_active}
 
 
-def _project_out(p):
+def _project_out(p, client_name=None, bound=0):
     return {"id": p.id, "client_id": p.client_id, "name": p.name,
+            "client_name": client_name,
+            "label": f"{client_name} — {p.name}" if client_name else p.name,
+            "bound_chats": bound,
             "description": p.description, "is_active": p.is_active}
 
 
@@ -778,7 +960,23 @@ async def list_projects(client_id: int | None = None, active: bool = True,
         q = q.where(Project.is_active.is_(True))
     q = q.order_by(Project.name)
     rows = (await session.execute(q)).scalars().all()
-    return [_project_out(p) for p in rows]
+    cnames = await _client_names(session, [p.client_id for p in rows])
+    bcount = {}
+    if rows:
+        for pid, n in (await session.execute(
+            select(ProjectChat.project_id, func.count())
+            .where(ProjectChat.project_id.in_([p.id for p in rows]))
+            .group_by(ProjectChat.project_id))).all():
+            bcount[pid] = n
+    return [_project_out(p, cnames.get(p.client_id), bcount.get(p.id, 0)) for p in rows]
+
+
+async def _client_names(session, ids):
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    return {i: n for i, n in (await session.execute(
+        select(Client.id, Client.name).where(Client.id.in_(ids)))).all()}
 
 
 @router.post("/projects", status_code=201)
@@ -809,6 +1007,141 @@ async def list_members(user: dict = Depends(member), session=Depends(get_session
         select(User).where(User.is_active.is_(True)).order_by(User.full_name)
     )).scalars().all()
     return [{"id": u.id, "full_name": u.full_name, "role": u.role} for u in rows]
+
+
+# ── shoots (Съёмки) ────────────────────────────────────────────
+
+async def _attach_shoot(session, shoots):
+    if not shoots:
+        return []
+    ids = [s.id for s in shoots]
+    parts = (await session.execute(
+        select(ShootParticipant.shoot_id, ShootParticipant.user_id)
+        .where(ShootParticipant.shoot_id.in_(ids)))).all()
+    by_shoot = {}
+    for sid, uid in parts:
+        by_shoot.setdefault(sid, []).append(uid)
+    names = await _names_for(session, {u for lst in by_shoot.values() for u in lst})
+    cnames = await _client_names(session, [s.client_id for s in shoots])
+    pnames = await _projects_map(session, [s.project_id for s in shoots])
+    out = []
+    for s in shoots:
+        d = row_to_dict(s)
+        d["shoot_at"] = s.shoot_at.isoformat() if s.shoot_at else None
+        d["participants"] = [{"id": i, "name": names.get(i)}
+                             for i in by_shoot.get(s.id, [])]
+        d["client_name"] = cnames.get(s.client_id)
+        d["project_name"] = pnames.get(s.project_id)
+        out.append(d)
+    return out
+
+
+@router.get("/shoots")
+async def list_shoots(upcoming: bool = False,
+                      user: dict = Depends(member), session=Depends(get_session)):
+    q = select(ShootSession)
+    if upcoming:
+        q = q.where(or_(ShootSession.shoot_at.is_(None), ShootSession.shoot_at >= _now()),
+                    ShootSession.status == "planned")
+    q = q.order_by(ShootSession.shoot_at.is_(None), ShootSession.shoot_at, ShootSession.id.desc()).limit(200)
+    rows = (await session.execute(q)).scalars().all()
+    return await _attach_shoot(session, rows)
+
+
+async def _sync_shoot_participants(session, shoot_id, ids):
+    ids = list(dict.fromkeys(ids or []))
+    await session.execute(sa_delete(ShootParticipant).where(ShootParticipant.shoot_id == shoot_id))
+    for uid in ids:
+        session.add(ShootParticipant(shoot_id=shoot_id, user_id=uid))
+    return ids
+
+
+@router.post("/shoots", status_code=201)
+async def create_shoot(body: ShootCreate, bg: BackgroundTasks,
+                       user: dict = Depends(member), session=Depends(get_session)):
+    title = _clean(body.title)
+    if not title:
+        raise HTTPException(422, "title is required")
+    obj = ShootSession(
+        title=title,
+        shoot_at=_parse_dt(body.shoot_at),
+        location=_clean(body.location),
+        client_id=body.client_id or None,
+        project_id=body.project_id or None,
+        notes=_clean(body.notes),
+        status="planned",
+        created_by=user["id"] or None,
+    )
+    session.add(obj)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "ссылка на несуществующий id")
+    await session.refresh(obj)
+    pids = await _sync_shoot_participants(session, obj.id, body.participant_ids)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "участник не найден")
+    await _log(session, "task", "created", obj.id, user["id"], f"Съёмка: {title}")
+    when = obj.shoot_at.strftime("%d.%m %H:%M") if obj.shoot_at else "дата не задана"
+    for uid in pids:
+        tg = await _telegram_id_for(session, uid)
+        if tg:
+            bg.add_task(_tg_send, tg,
+                        f"🎬 Съёмка: {title}\nКогда: {when}\nМесто: {obj.location or '—'}")
+    await _notify_project(bg, session, obj.project_id,
+                          f"🎬 Съёмка запланирована: {title}\nКогда: {when}")
+    return (await _attach_shoot(session, [obj]))[0]
+
+
+@router.patch("/shoots/{shoot_id}")
+async def update_shoot(shoot_id: int, patch: ShootPatch, bg: BackgroundTasks,
+                       user: dict = Depends(member), session=Depends(get_session)):
+    obj = (await session.execute(
+        select(ShootSession).where(ShootSession.id == shoot_id))).scalar_one_or_none()
+    if not obj:
+        raise HTTPException(404, "Shoot not found")
+    data = patch.model_dump(exclude_unset=True)
+    if "title" in data and _clean(data["title"]):
+        obj.title = _clean(data["title"])
+    if "shoot_at" in data:
+        obj.shoot_at = _parse_dt(data["shoot_at"])
+    if "location" in data:
+        obj.location = _clean(data["location"])
+    if "notes" in data:
+        obj.notes = _clean(data["notes"])
+    for f in ("client_id", "project_id"):
+        if f in data:
+            setattr(obj, f, data[f] or None)
+    if "status" in data and data["status"]:
+        if data["status"] not in SHOOT_STATUSES:
+            raise HTTPException(422, f"status must be one of {sorted(SHOOT_STATUSES)}")
+        obj.status = data["status"]
+    obj.updated_at = _now()
+    if "participant_ids" in data:
+        await _sync_shoot_participants(session, obj.id, data["participant_ids"])
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "ссылка на несуществующий id")
+    await session.refresh(obj)
+    return (await _attach_shoot(session, [obj]))[0]
+
+
+# ── project ↔ chat bindings (read-only; writes come from the bot /bind) ─
+
+@router.get("/project-chats")
+async def list_project_chats(user: dict = Depends(member), session=Depends(get_session)):
+    rows = (await session.execute(select(ProjectChat))).scalars().all()
+    pnames = await _projects_map(session, [r.project_id for r in rows])
+    return [{"id": r.id, "project_id": r.project_id,
+             "project_name": pnames.get(r.project_id),
+             "chat_id": r.chat_id, "thread_id": r.thread_id, "title": r.title}
+            for r in rows]
 
 
 # ── references (links + files) ──────────────────────────────────

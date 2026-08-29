@@ -2153,6 +2153,123 @@ async def cancel_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
 WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://worker-production-7137.up.railway.app/webapp"
 
 
+async def _pg_role(telegram_id: int):
+    """Look up a user's WHY NOT? OS (Postgres) role. None if not registered."""
+    try:
+        from db.models import AsyncSessionLocal, User
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as s:
+            row = (await s.execute(
+                select(User.role, User.is_active).where(User.telegram_id == telegram_id)
+            )).first()
+        if row and row[1]:
+            return row[0]
+    except Exception as e:
+        logger.warning(f"_pg_role failed: {e}")
+    return None
+
+
+async def bind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/bind — inside a group topic: attach this topic to a project so task
+    notifications land here. admin / am only."""
+    msg = update.effective_message
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await msg.reply_text("Команду /bind нужно писать в нужной теме супергруппы проекта.")
+        return
+    role = await _pg_role(update.effective_user.id)
+    if role not in ("admin", "am"):
+        await msg.reply_text("Привязывать темы к проектам может только админ или АМ.")
+        return
+    try:
+        from db.models import AsyncSessionLocal, Project, Client
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as s:
+            rows = (await s.execute(
+                select(Project.id, Project.name, Client.name)
+                .join(Client, Client.id == Project.client_id, isouter=True)
+                .where(Project.is_active.is_(True))
+                .order_by(Client.name, Project.name)
+            )).all()
+    except Exception as e:
+        logger.warning(f"bind_cmd list failed: {e}")
+        await msg.reply_text("Не получилось загрузить проекты. Попробуй позже.")
+        return
+    if not rows:
+        await msg.reply_text("Сначала добавь проект в приложении (Команда → Клиенты).")
+        return
+    thread_id = getattr(msg, "message_thread_id", None) or 0
+    kb = [[InlineKeyboardButton(
+        (f"{cl} — {pn}" if cl else pn)[:60],
+        callback_data=f"pcbind_{pid}_{thread_id}")] for pid, pn, cl in rows[:60]]
+    await msg.reply_text(
+        "К какому проекту привязать эту тему?\n"
+        "Уведомления по задачам проекта будут приходить сюда (и в личку исполнителю).",
+        reply_markup=InlineKeyboardMarkup(kb))
+
+
+async def bind_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    try:
+        _, pid, thread_id = q.data.split("_")
+        pid, thread_id = int(pid), int(thread_id)
+    except ValueError:
+        return
+    chat = update.effective_chat
+    role = await _pg_role(update.effective_user.id)
+    if role not in ("admin", "am"):
+        await q.edit_message_text("Нет прав.")
+        return
+    try:
+        from db.models import AsyncSessionLocal, Project, ProjectChat
+        from sqlalchemy import select, delete as sa_delete
+        async with AsyncSessionLocal() as s:
+            proj = (await s.execute(
+                select(Project.name).where(Project.id == pid))).scalar_one_or_none()
+            if not proj:
+                await q.edit_message_text("Проект не найден.")
+                return
+            await s.execute(sa_delete(ProjectChat).where(
+                ProjectChat.chat_id == chat.id,
+                ProjectChat.thread_id == (thread_id or None)))
+            s.add(ProjectChat(project_id=pid, chat_id=chat.id,
+                              thread_id=thread_id or None,
+                              title=chat.title,
+                              bound_by=None))
+            await s.commit()
+    except Exception as e:
+        logger.warning(f"bind_pick_cb failed: {e}")
+        await q.edit_message_text("Не получилось сохранить привязку.")
+        return
+    await q.edit_message_text(
+        f"✅ Тема привязана к проекту «{proj}».\n"
+        f"Новые задачи этого проекта будут падать сюда. Отвязать: /unbind")
+
+
+async def unbind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        return
+    role = await _pg_role(update.effective_user.id)
+    if role not in ("admin", "am"):
+        await msg.reply_text("Только админ или АМ.")
+        return
+    thread_id = getattr(msg, "message_thread_id", None)
+    try:
+        from db.models import AsyncSessionLocal, ProjectChat
+        from sqlalchemy import delete as sa_delete
+        async with AsyncSessionLocal() as s:
+            res = await s.execute(sa_delete(ProjectChat).where(
+                ProjectChat.chat_id == chat.id,
+                ProjectChat.thread_id == (thread_id or None)))
+            await s.commit()
+        await msg.reply_text("🔌 Привязка снята." if res.rowcount else "Тут ничего не было привязано.")
+    except Exception as e:
+        logger.warning(f"unbind failed: {e}")
+
+
 async def install_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "📲 *WHY NOT? OS на рабочий стол*\n\n"
@@ -2182,6 +2299,7 @@ async def _post_init(app: Application):
             BotCommand("my",      "Мои задачи"),
             BotCommand("join",    "Регистрация в компании"),
             BotCommand("history", "История"),
+            BotCommand("bind",    "Привязать тему группы к проекту"),
         ])
         logger.info("✅ menu button + commands set")
     except Exception as e:
@@ -2287,6 +2405,9 @@ def main():
     # Commands
     app.add_handler(CommandHandler("start",   start))
     app.add_handler(CommandHandler("install", install_cmd))
+    app.add_handler(CommandHandler("bind",    bind_cmd))
+    app.add_handler(CommandHandler("unbind",  unbind_cmd))
+    app.add_handler(CallbackQueryHandler(bind_pick_cb, pattern=r"^pcbind_\d+_\d+$"))
     app.add_handler(CommandHandler("join",    join))
     app.add_handler(CommandHandler("my",      my_tasks))
     app.add_handler(CommandHandler("history", history))
