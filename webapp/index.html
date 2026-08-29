@@ -336,7 +336,7 @@
     --st-overdue:#d23a2e;
     position:fixed; left:0; right:0; bottom:0; z-index:31;
     background:var(--bg); color:var(--text);
-    border-radius:16px 16px 0 0; padding:8px 16px calc(20px + env(safe-area-inset-bottom));
+    border-radius:16px 16px 0 0; padding:0 16px calc(20px + env(safe-area-inset-bottom));
     transform:translateY(100%); transition:transform .26s cubic-bezier(.32,.72,0,1);
     max-height:88vh; overflow-y:auto;
   }
@@ -345,13 +345,13 @@
   .sheet-head{
     position:sticky; top:0; z-index:3; background:var(--bg);
     display:flex; align-items:center; justify-content:center;
-    padding:12px 0 10px; margin:-8px 0 0; cursor:pointer;
+    padding:14px 0 8px; margin:0; cursor:pointer;
     touch-action:none;
   }
   .sheet .grabber{width:40px; height:5px; border-radius:3px; background:var(--sep);
     margin:0 auto; transition:width .15s, background .15s}
   .sheet-head:active .grabber{width:52px; background:var(--hint)}
-  .sheet h2{font-size:17px; font-weight:700; margin:0 0 14px}
+  .sheet h2{font-size:17px; font-weight:700; margin:6px 0 14px; line-height:1.35; padding-top:2px}
   .field{margin-bottom:12px}
   .field label{display:block; font-size:12px; color:var(--hint); margin-bottom:5px}
   .field input, .field textarea, .field select{
@@ -402,12 +402,11 @@
 <main id="view"><div class="loader">Загрузка…</div></main>
 
 <nav>
-  <button data-tab="home" class="active"><span class="ic">🏠</span><span>Главная</span></button>
-  <button data-tab="content"><span class="ic">📋</span><span>Контент</span></button>
-  <button data-tab="ideas"><span class="ic">💡</span><span>Идеи</span></button>
-  <button data-tab="blockers"><span class="ic">🚫</span><span>Блокеры</span></button>
-  <button data-tab="shoots"><span class="ic">🎬</span><span>Съёмки</span></button>
-  <button id="navMore" hidden><span class="ic">⋯</span><span>Ещё</span></button>
+  <button data-tab="home" class="active"><span class="ic">🏠</span><span data-i18n="nav.home">Главная</span></button>
+  <button data-tab="content"><span class="ic">📋</span><span data-i18n="nav.content">Контент</span></button>
+  <button data-tab="ideas"><span class="ic">💡</span><span data-i18n="nav.ideas">Идеи</span></button>
+  <button data-tab="shoots"><span class="ic">🎬</span><span data-i18n="nav.shoots">Съёмки</span></button>
+  <button id="navMore"><span class="ic">⋯</span><span data-i18n="nav.more">Ещё</span></button>
 </nav>
 
 <button class="fab" id="fab" aria-label="Создать">+</button>
@@ -425,33 +424,44 @@
 <div class="sheet" id="memberSheet" role="dialog" aria-modal="true">
   <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
   <h2 id="memberName"></h2>
-  <div class="field"><label>Имя</label><input id="memberFullName" type="text"></div>
-  <div class="field"><label>Роль</label><select id="memberRole"></select></div>
-  <button class="submit" id="memberSave">Сохранить</button>
-  <button class="act ghost" id="memberDelete" style="margin-top:10px">Удалить из команды</button>
+  <div class="field"><label data-i18n="field.full_name">Имя</label><input id="memberFullName" type="text"></div>
+  <div class="field"><label data-i18n="field.role">Роль</label><select id="memberRole"></select></div>
+  <button class="submit" id="memberSave" data-i18n="btn.save">Сохранить</button>
+  <button class="act ghost" id="memberDelete" style="margin-top:10px" data-i18n="member.delete">Удалить из команды</button>
 </div>
 
 <div class="sheet-backdrop" id="moreBackdrop"></div>
 <div class="sheet" id="moreSheet" role="dialog" aria-modal="true">
   <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
-  <h2>Ещё</h2>
-  <button class="more-item" data-goto="team"><span>👥</span> Команда и клиенты</button>
-  <button class="more-item" data-goto="dash"><span>📊</span> Обзор</button>
+  <h2 data-i18n="nav.more">Ещё</h2>
+  <button class="more-item" data-goto="blockers"><span>🚫</span> <span data-i18n="nav.blockers">Блокеры</span></button>
+  <button class="more-item mgr-only" data-goto="team"><span>👥</span> <span data-i18n="more.team">Команда и клиенты</span></button>
+  <button class="more-item mgr-only" data-goto="dash"><span>📊</span> <span data-i18n="nav.dash">Обзор</span></button>
+  <button class="more-item" id="moreLang"><span>🌐</span> <span>Язык · Til · Language</span></button>
+</div>
+
+<div class="sheet-backdrop" id="langBackdrop"></div>
+<div class="sheet" id="langSheet" role="dialog" aria-modal="true">
+  <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
+  <h2 data-i18n="more.lang">Язык</h2>
+  <button class="more-item" data-lang="ru"><span>🇷🇺</span> Русский</button>
+  <button class="more-item" data-lang="uz"><span>🇺🇿</span> Oʻzbekcha</button>
+  <button class="more-item" data-lang="en"><span>🇬🇧</span> English</button>
 </div>
 
 <div class="sheet-backdrop" id="refBackdrop"></div>
 <div class="sheet" id="refSheet" role="dialog" aria-modal="true">
   <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
-  <h2>Референсы</h2>
+  <h2 data-i18n="btn.refs">Референсы</h2>
   <div id="refList"></div>
   <div id="refLinkForm" hidden>
-    <div class="field"><label>Ссылка</label><input id="refUrl" type="url" placeholder="https://..."></div>
-    <div class="field"><label>Название (необяз.)</label><input id="refTitle" type="text"></div>
-    <button class="submit" id="refLinkSave">Добавить ссылку</button>
+    <div class="field"><label data-i18n="refsheet.addLink">Ссылка</label><input id="refUrl" type="url" placeholder="https://..."></div>
+    <div class="field"><label data-i18n="field.title">Название</label><input id="refTitle" type="text"></div>
+    <button class="submit" id="refLinkSave" data-i18n="btn.save">Добавить ссылку</button>
   </div>
   <div class="ref-actions">
-    <button class="act ghost" id="refAddLink">＋ Ссылка</button>
-    <button class="act ghost" id="refAddFile">＋ Файл</button>
+    <button class="act ghost" id="refAddLink" data-i18n="refsheet.addLink">＋ Ссылка</button>
+    <button class="act ghost" id="refAddFile" data-i18n="refsheet.addFile">＋ Файл</button>
     <input type="file" id="refFileInput" hidden>
   </div>
 </div>
@@ -585,34 +595,211 @@ const INIT_DATA = (tg && tg.initData) || "";
   });
 })();
 
-const TITLES = { home:"Главная", content:"Контент", ideas:"Идеи", blockers:"Блокеры", shoots:"Съёмки", team:"Команда", dash:"Обзор" };
-const PLATFORM_OPTS = [["","—"],["instagram","Instagram"],["tiktok","TikTok"],["youtube","YouTube"],["telegram","Telegram"],["vk","VK"],["other","Другое"]];
-const SHOOT_STATUS_OPTS = [["planned","Запланирована"],["done","Отснята"],["cancelled","Отменена"]];
-const PIPELINE_OPTS = [["idea","Идея"],["approval","Согласование"],["script","Сценарий"],["shoot","Съёмка"],["edit","Монтаж"],["review","Ревью"],["client","У клиента"],["revisions","Правки"],["done","Готово"],["published","Опубликовано"],["analytics","Аналитика"]];
+/* ── i18n ────────────────────────────────────────────────── */
+const I18N = {
+  ru: {
+    "nav.home":"Главная","nav.content":"Контент","nav.ideas":"Идеи","nav.blockers":"Блокеры",
+    "nav.shoots":"Съёмки","nav.more":"Ещё","nav.dash":"Обзор","nav.team":"Команда",
+    "more.team":"Команда и клиенты","more.lang":"Язык",
+    "form.newTask":"Новая задача","form.editTask":"Изменить задачу",
+    "form.newContent":"Новый контент","form.editContent":"Изменить контент",
+    "form.newShoot":"Новая съёмка","form.editShoot":"Изменить съёмку",
+    "form.newIdea":"Новая идея","form.newBlocker":"Новый блокер",
+    "form.newClient":"Новый клиент","form.addTeam":"Добавить в команду",
+    "btn.create":"Создать","btn.save":"Сохранить","btn.saving":"Сохранение…","btn.cancel":"Отмена",
+    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.uploadingRefs":"Загрузка референсов…",
+    "field.title":"Название","field.description":"Описание","field.priority":"Приоритет","field.deadline":"Дедлайн",
+    "field.assignee_ids":"Исполнители","field.client_id":"Клиент","field.project_id":"Проект",
+    "field.refs":"Референсы — ссылки и файлы","field.topic":"Тема / название","field.rubric":"Рубрика",
+    "field.format":"Формат","field.platform":"Площадка","field.publish_at":"Дата и время публикации",
+    "field.hook":"Заголовок / хук","field.script":"Сценарий","field.caption":"Подпись к посту","field.hashtags":"Хэштеги",
+    "field.smm_id":"SMM","field.copywriter_id":"Сценарист / копирайтер","field.editor_id":"Монтажёр","field.designer_id":"Дизайнер",
+    "field.status":"Статус","field.pipeline_status":"Этап","field.shoot_at":"Дата и время","field.location":"Локация / адрес",
+    "field.participant_ids":"Команда на съёмке","field.notes":"Заметки","field.name":"Название","field.contact":"Контакт",
+    "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
+    "sec.tasks":"Задачи","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
+    "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
+    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — предложи первую в боте",
+    "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
+    "empty.shoots":"Съёмок пока нет — добавь через «+»",
+    "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
+    "toast.created":"Создано","toast.saved":"Сохранено","toast.added":"Добавлено",
+    "toast.fileTooBig":"Файл больше 20 МБ","toast.fillRequired":"Заполни обязательные поля",
+    "confirm.refDelete":"Удалить этот референс?","err.load":"Не удалось загрузить","err.save":"Не удалось сохранить",
+    "role.admin":"Админ","role.am":"AM","role.producer":"Продюсер","role.smm":"SMM","role.photographer":"Фотограф",
+    "role.editor":"Монтажёр","role.designer":"Дизайнер","role.copywriter":"Копирайтер","role.intern":"Стажёр",
+    "st.pending":"ожидает","st.in_progress":"в работе","st.done":"готово","st.overdue":"просрочено","st.cancelled":"отменено",
+    "pipe.idea":"Идея","pipe.approval":"Согласование","pipe.script":"Сценарий","pipe.shoot":"Съёмка","pipe.edit":"Монтаж",
+    "pipe.review":"Ревью","pipe.client":"У клиента","pipe.revisions":"Правки","pipe.done":"Готово","pipe.published":"Опубликовано","pipe.analytics":"Аналитика",
+    "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Другое","pf.none":"—",
+    "ss.planned":"Запланирована","ss.done":"Отснята","ss.cancelled":"Отменена",
+    "pr.normal":"Обычный","pr.high":"Высокий","pr.urgent":"Срочный",
+    "fmt.post":"Пост","fmt.reels":"Reels","fmt.story":"Сторис","fmt.carousel":"Карусель","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Другое",
+    "tn.toWork":"▶ В работу","tn.toDone":"✅ Готово","tn.doneMark":"✅ Выполнено",
+    "misc.loading":"Загрузка…","misc.noDeadline":"без срока","misc.editArrow":"изменить ›",
+    "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
+    "content.advance":"Продвинуть →","content.final":"Финальный этап",
+    "blocker.word":"Блокер","blocker.by":"сообщил","blocker.to":"на",
+    "member.save":"Сохранить","member.delete":"Удалить из команды",
+    "refsheet.title":"Референсы","refsheet.addLink":"＋ Ссылка","refsheet.addFile":"＋ Файл",
+  },
+  uz: {
+    "nav.home":"Bosh sahifa","nav.content":"Kontent","nav.ideas":"Gʻoyalar","nav.blockers":"Toʻsiqlar",
+    "nav.shoots":"Suratga olish","nav.more":"Yana","nav.dash":"Umumiy","nav.team":"Jamoa",
+    "more.team":"Jamoa va mijozlar","more.lang":"Til",
+    "form.newTask":"Yangi vazifa","form.editTask":"Vazifani tahrirlash",
+    "form.newContent":"Yangi kontent","form.editContent":"Kontentni tahrirlash",
+    "form.newShoot":"Yangi suratga olish","form.editShoot":"Suratga olishni tahrirlash",
+    "form.newIdea":"Yangi gʻoya","form.newBlocker":"Yangi toʻsiq",
+    "form.newClient":"Yangi mijoz","form.addTeam":"Jamoaga qoʻshish",
+    "btn.create":"Yaratish","btn.save":"Saqlash","btn.saving":"Saqlanmoqda…","btn.cancel":"Bekor qilish",
+    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.uploadingRefs":"Namunalar yuklanmoqda…",
+    "field.title":"Nomi","field.description":"Tavsif","field.priority":"Muhimlik","field.deadline":"Muddat",
+    "field.assignee_ids":"Ijrochilar","field.client_id":"Mijoz","field.project_id":"Loyiha",
+    "field.refs":"Namunalar — havolalar va fayllar","field.topic":"Mavzu / nomi","field.rubric":"Rubrika",
+    "field.format":"Format","field.platform":"Platforma","field.publish_at":"Chop etish sanasi va vaqti",
+    "field.hook":"Sarlavha / huk","field.script":"Ssenariy","field.caption":"Post matni","field.hashtags":"Xeshteglar",
+    "field.smm_id":"SMM","field.copywriter_id":"Ssenariynavis / kopirayter","field.editor_id":"Montajchi","field.designer_id":"Dizayner",
+    "field.status":"Holat","field.pipeline_status":"Bosqich","field.shoot_at":"Sana va vaqt","field.location":"Manzil",
+    "field.participant_ids":"Suratga olish jamoasi","field.notes":"Eslatmalar","field.name":"Nomi","field.contact":"Kontakt",
+    "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
+    "sec.tasks":"Vazifalar","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
+    "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
+    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — botda birinchisini taklif qiling",
+    "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
+    "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
+    "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
+    "toast.created":"Yaratildi","toast.saved":"Saqlandi","toast.added":"Qoʻshildi",
+    "toast.fileTooBig":"Fayl 20 MB dan katta","toast.fillRequired":"Majburiy maydonlarni toʻldiring",
+    "confirm.refDelete":"Ushbu namunani oʻchirasizmi?","err.load":"Yuklab boʻlmadi","err.save":"Saqlab boʻlmadi",
+    "role.admin":"Admin","role.am":"AM","role.producer":"Prodyuser","role.smm":"SMM","role.photographer":"Fotograf",
+    "role.editor":"Montajchi","role.designer":"Dizayner","role.copywriter":"Kopirayter","role.intern":"Stajyor",
+    "st.pending":"kutilmoqda","st.in_progress":"ishda","st.done":"tayyor","st.overdue":"muddati oʻtgan","st.cancelled":"bekor qilingan",
+    "pipe.idea":"Gʻoya","pipe.approval":"Kelishuv","pipe.script":"Ssenariy","pipe.shoot":"Suratga olish","pipe.edit":"Montaj",
+    "pipe.review":"Koʻrib chiqish","pipe.client":"Mijozda","pipe.revisions":"Tuzatishlar","pipe.done":"Tayyor","pipe.published":"Chop etilgan","pipe.analytics":"Analitika",
+    "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Boshqa","pf.none":"—",
+    "ss.planned":"Rejalashtirilgan","ss.done":"Suratga olingan","ss.cancelled":"Bekor qilingan",
+    "pr.normal":"Oddiy","pr.high":"Yuqori","pr.urgent":"Shoshilinch",
+    "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Storis","fmt.carousel":"Karusel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Boshqa",
+    "tn.toWork":"▶ Ishga","tn.toDone":"✅ Tayyor","tn.doneMark":"✅ Bajarildi",
+    "misc.loading":"Yuklanmoqda…","misc.noDeadline":"muddatsiz","misc.editArrow":"tahrirlash ›",
+    "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
+    "content.advance":"Keyingi bosqich →","content.final":"Yakuniy bosqich",
+    "blocker.word":"Toʻsiq","blocker.by":"xabar berdi","blocker.to":"kimga",
+    "member.save":"Saqlash","member.delete":"Jamoadan chiqarish",
+    "refsheet.title":"Namunalar","refsheet.addLink":"＋ Havola","refsheet.addFile":"＋ Fayl",
+  },
+  en: {
+    "nav.home":"Home","nav.content":"Content","nav.ideas":"Ideas","nav.blockers":"Blockers",
+    "nav.shoots":"Shoots","nav.more":"More","nav.dash":"Overview","nav.team":"Team",
+    "more.team":"Team & clients","more.lang":"Language",
+    "form.newTask":"New task","form.editTask":"Edit task",
+    "form.newContent":"New content","form.editContent":"Edit content",
+    "form.newShoot":"New shoot","form.editShoot":"Edit shoot",
+    "form.newIdea":"New idea","form.newBlocker":"New blocker",
+    "form.newClient":"New client","form.addTeam":"Add to team",
+    "btn.create":"Create","btn.save":"Save","btn.saving":"Saving…","btn.cancel":"Cancel",
+    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.uploadingRefs":"Uploading references…",
+    "field.title":"Title","field.description":"Description","field.priority":"Priority","field.deadline":"Deadline",
+    "field.assignee_ids":"Assignees","field.client_id":"Client","field.project_id":"Project",
+    "field.refs":"References — links & files","field.topic":"Topic / title","field.rubric":"Rubric",
+    "field.format":"Format","field.platform":"Platform","field.publish_at":"Publish date & time",
+    "field.hook":"Headline / hook","field.script":"Script","field.caption":"Caption","field.hashtags":"Hashtags",
+    "field.smm_id":"SMM","field.copywriter_id":"Scriptwriter / copywriter","field.editor_id":"Editor","field.designer_id":"Designer",
+    "field.status":"Status","field.pipeline_status":"Stage","field.shoot_at":"Date & time","field.location":"Location / address",
+    "field.participant_ids":"Shoot crew","field.notes":"Notes","field.name":"Name","field.contact":"Contact",
+    "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
+    "sec.tasks":"Tasks","sec.myBlockers":"My blockers","sec.myContent":"My content",
+    "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
+    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — suggest the first one in the bot",
+    "empty.content":"No content yet","empty.contentProj":"No content for this project",
+    "empty.shoots":"No shoots yet — add one with “+”",
+    "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
+    "toast.created":"Created","toast.saved":"Saved","toast.added":"Added",
+    "toast.fileTooBig":"File over 20 MB","toast.fillRequired":"Fill in the required fields",
+    "confirm.refDelete":"Delete this reference?","err.load":"Could not load","err.save":"Could not save",
+    "role.admin":"Admin","role.am":"AM","role.producer":"Producer","role.smm":"SMM","role.photographer":"Photographer",
+    "role.editor":"Editor","role.designer":"Designer","role.copywriter":"Copywriter","role.intern":"Intern",
+    "st.pending":"pending","st.in_progress":"in progress","st.done":"done","st.overdue":"overdue","st.cancelled":"cancelled",
+    "pipe.idea":"Idea","pipe.approval":"Approval","pipe.script":"Script","pipe.shoot":"Shoot","pipe.edit":"Editing",
+    "pipe.review":"Review","pipe.client":"With client","pipe.revisions":"Revisions","pipe.done":"Done","pipe.published":"Published","pipe.analytics":"Analytics",
+    "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Other","pf.none":"—",
+    "ss.planned":"Planned","ss.done":"Shot","ss.cancelled":"Cancelled",
+    "pr.normal":"Normal","pr.high":"High","pr.urgent":"Urgent",
+    "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Story","fmt.carousel":"Carousel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Other",
+    "tn.toWork":"▶ Start","tn.toDone":"✅ Done","tn.doneMark":"✅ Completed",
+    "misc.loading":"Loading…","misc.noDeadline":"no deadline","misc.editArrow":"edit ›",
+    "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
+    "content.advance":"Advance →","content.final":"Final stage",
+    "blocker.word":"Blocker","blocker.by":"reported by","blocker.to":"for",
+    "member.save":"Save","member.delete":"Remove from team",
+    "refsheet.title":"References","refsheet.addLink":"＋ Link","refsheet.addFile":"＋ File",
+  },
+};
+let LANG = "ru";
+try {
+  const saved = localStorage.getItem("wn_lang");
+  if (saved && I18N[saved]) LANG = saved;
+  else {
+    const lc = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code || "").slice(0,2);
+    if (I18N[lc]) LANG = lc;
+  }
+} catch(e){}
+function t(k){ return (I18N[LANG] && I18N[LANG][k] != null ? I18N[LANG][k] : (I18N.ru[k] != null ? I18N.ru[k] : k)); }
+function opts(prefix, keys){ return keys.map(k => [k, t(prefix + k)]); }
+
+let TITLES = {}, ROLE_LABELS = {}, PIPELINE_LABELS = {}, STATUS_LABELS = {},
+    TASK_NEXT = {}, PLATFORM_LABEL = {}, SHOOT_STATUS_LABEL = {};
+// these arrays keep a stable identity (FORMS fields capture them by reference) — mutated in place
+const PLATFORM_OPTS = [], SHOOT_STATUS_OPTS = [], PIPELINE_OPTS = [], STATUS_OPTS = [],
+      PRIORITY_OPTS = [], FORMAT_OPTS = [], FORMATOPT_OPTS = [], ROLE_OPTS = [];
+const _PIPE = ["idea","approval","script","shoot","edit","review","client","revisions","done","published","analytics"];
+const _ROLES = ["admin","am","producer","smm","photographer","editor","designer","copywriter","intern"];
+const _FMT = ["post","reels","story","carousel","tiktok","youtube_long","other"];
+function _setArr(a, v){ a.length = 0; v.forEach(x => a.push(x)); }
+
+function buildLabels(){
+  TITLES = { home:t("nav.home"), content:t("nav.content"), ideas:t("nav.ideas"),
+             blockers:t("nav.blockers"), shoots:t("nav.shoots"), team:t("nav.team"), dash:t("nav.dash") };
+  _setArr(PLATFORM_OPTS, [["","—"], ...opts("pf.", ["instagram","tiktok","youtube","telegram","vk","other"])]);
+  _setArr(SHOOT_STATUS_OPTS, opts("ss.", ["planned","done","cancelled"]));
+  _setArr(STATUS_OPTS, opts("st.", ["pending","in_progress","done","overdue","cancelled"]));
+  _setArr(PIPELINE_OPTS, opts("pipe.", _PIPE));
+  _setArr(PRIORITY_OPTS, opts("pr.", ["normal","high","urgent"]));
+  _setArr(FORMAT_OPTS, opts("fmt.", _FMT));
+  _setArr(FORMATOPT_OPTS, [["","—"], ...opts("fmt.", ["post","reels","story","carousel","other"])]);
+  _setArr(ROLE_OPTS, _ROLES.map(r => [r, t("role."+r)]));
+  ROLE_LABELS = {}; _ROLES.forEach(r => ROLE_LABELS[r] = t("role."+r));
+  PIPELINE_LABELS = {}; _PIPE.forEach(p => PIPELINE_LABELS[p] = t("pipe."+p));
+  STATUS_LABELS = {}; ["pending","in_progress","done","overdue","cancelled"].forEach(s => STATUS_LABELS[s] = t("st."+s));
+  PLATFORM_LABEL = Object.fromEntries(PLATFORM_OPTS);
+  SHOOT_STATUS_LABEL = Object.fromEntries(SHOOT_STATUS_OPTS);
+  TASK_NEXT = {
+    pending:     { to:"in_progress", label:t("tn.toWork") },
+    overdue:     { to:"in_progress", label:t("tn.toWork") },
+    in_progress: { to:"done",        label:t("tn.toDone") },
+  };
+}
+buildLabels();
+
+function applyI18n(){
+  buildLabels();
+  document.documentElement.lang = LANG;
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+}
+function setLang(l){
+  if (!I18N[l]) return;
+  LANG = l;
+  try { localStorage.setItem("wn_lang", l); } catch(e){}
+  applyI18n();
+  load(currentTab);
+}
+
 const ENTITY_NOUN = { task:"задачу", content:"контент", idea:"идею", blocker:"блокер", project:"проект", client:"клиента", user:"пользователя" };
 const ACTION_VERB = { created:"создал", updated:"обновил", completed:"завершил", moved:"продвинул", voted:"проголосовал за", vote_changed:"переголосовал за", assigned:"назначил", resolved:"закрыл" };
-const ROLE_LABELS = {
-  admin:"Админ", am:"AM", producer:"Продюсер", smm:"SMM", photographer:"Фотограф",
-  editor:"Монтажёр", designer:"Дизайнер", copywriter:"Копирайтер", intern:"Стажёр"
-};
 const ROLE_COLORS = {
   admin:"#8e44ad", am:"#2481cc", smm:"#34c759", designer:"#ff9500",
   photographer:"#ffcc00", editor:"#1abc9c", intern:"#8a8a8e"
-};
-const PIPELINE_LABELS = {
-  idea:"Идея", approval:"Согласование", script:"Сценарий", shoot:"Съёмка",
-  edit:"Монтаж", review:"Ревью", client:"У клиента", revisions:"Правки",
-  done:"Готово", published:"Опубликовано", analytics:"Аналитика"
-};
-const STATUS_LABELS = {
-  pending:"ожидает", in_progress:"в работе", done:"готово",
-  overdue:"просрочено", cancelled:"отменено"
-};
-// which status button a task card shows, keyed by current status
-const TASK_NEXT = {
-  pending:     { to:"in_progress", label:"▶ В работу" },
-  overdue:     { to:"in_progress", label:"▶ В работу" },
-  in_progress: { to:"done",        label:"✅ Готово" },
 };
 
 const view = document.getElementById("view");
@@ -710,27 +897,27 @@ function refStrip(kind, id, count, thumbs){
   </div>`;
 }
 
-function taskCard(t){
-  taskById[t.id] = t;
-  const st = t.status || "pending";
+function taskCard(tk){
+  taskById[tk.id] = tk;
+  const st = tk.status || "pending";
   const next = TASK_NEXT[st];
-  const who = assigneesLabel(t);
+  const who = assigneesLabel(tk);
   return `
-  <div class="card tappable" data-task-edit="${t.id}">
+  <div class="card tappable" data-task-edit="${tk.id}">
     <div class="row">
-      <p class="title">${esc(t.title || "Без названия")}</p>
+      <p class="title">${esc(tk.title || "—")}</p>
       <span class="pill ${esc(st)}">${esc(STATUS_LABELS[st] || st)}</span>
     </div>
-    ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ""}
+    ${tk.description ? `<p class="desc">${esc(tk.description)}</p>` : ""}
     <div class="meta">
-      <span>${deadlineMeta(t.deadline)}</span>
+      <span>${deadlineMeta(tk.deadline)}</span>
       ${who ? `<span>${who}</span>` : ""}
-      ${t.priority && t.priority !== "normal" ? `<span>❗ ${esc(t.priority)}</span>` : ""}
+      ${tk.priority && tk.priority !== "normal" ? `<span>❗ ${esc(t("pr." + tk.priority) || tk.priority)}</span>` : ""}
     </div>
-    ${refStrip("task", t.id, t.refs_count || 0, t.ref_thumbs)}
+    ${refStrip("task", tk.id, tk.refs_count || 0, tk.ref_thumbs)}
     ${next
-      ? `<button class="act" data-task-to="${next.to}" data-task-id="${t.id}">${next.label}</button>`
-      : st === "done" ? `<div class="done-mark">✅ Выполнено</div>` : ""}
+      ? `<button class="act" data-task-to="${next.to}" data-task-id="${tk.id}">${next.label}</button>`
+      : st === "done" ? `<div class="done-mark">${esc(t("tn.doneMark"))}</div>` : ""}
   </div>`;
 }
 
@@ -738,12 +925,12 @@ function blockerCard(b){
   return `
   <div class="card">
     <div class="row">
-      <p class="title">🚫 ${esc(b.title || "Блокер")}</p>
+      <p class="title">🚫 ${esc(b.title || t("blocker.word"))}</p>
     </div>
     ${b.description ? `<p class="desc">${esc(b.description)}</p>` : ""}
     <div class="meta">
-      ${b.reported_by_name ? `<span>сообщил: ${esc(b.reported_by_name)}</span>` : ""}
-      ${b.assigned_to_name ? `<span>на: ${esc(b.assigned_to_name)}</span>` : ""}
+      ${b.reported_by_name ? `<span>${esc(t("blocker.by"))}: ${esc(b.reported_by_name)}</span>` : ""}
+      ${b.assigned_to_name ? `<span>${esc(t("blocker.to"))}: ${esc(b.assigned_to_name)}</span>` : ""}
       ${b.created_at ? `<span>${esc(fmtDate(b.created_at))}</span>` : ""}
     </div>
   </div>`;
@@ -763,28 +950,27 @@ async function renderHome(){
 
   parts.push(`
     <div class="seg" id="scopeSeg">
-      <button data-scope="mine" class="${homeScope === "mine" ? "on" : ""}">Мои</button>
-      <button data-scope="all"  class="${homeScope === "all"  ? "on" : ""}">Все</button>
+      <button data-scope="mine" class="${homeScope === "mine" ? "on" : ""}">${esc(t("scope.mine"))}</button>
+      <button data-scope="all"  class="${homeScope === "all"  ? "on" : ""}">${esc(t("scope.all"))}</button>
     </div>`);
 
-  parts.push(`<div class="section-title">Задачи</div>`);
+  parts.push(`<div class="section-title">${esc(t("sec.tasks"))}</div>`);
   parts.push(tasks.length
     ? tasks.map(taskCard).join("")
-    : `<div class="empty">${homeScope === "mine" ? "Нет задач 🎉" : "Задач нет"}</div>`);
+    : `<div class="empty">${homeScope === "mine" ? esc(t("empty.tasks")) : esc(t("empty.tasksAll"))}</div>`);
 
-  parts.push(`<div class="section-title">Мои блокеры</div>`);
+  parts.push(`<div class="section-title">${esc(t("sec.myBlockers"))}</div>`);
   parts.push(d.my_blockers.length
     ? d.my_blockers.map(blockerCard).join("")
-    : `<div class="empty">Блокеров нет</div>`);
+    : `<div class="empty">${esc(t("empty.blockers"))}</div>`);
 
   if (d.my_content && d.my_content.length){
-    parts.push(`<div class="section-title">Мой контент</div>`);
+    parts.push(`<div class="section-title">${esc(t("sec.myContent"))}</div>`);
     parts.push(d.my_content.map(c => contentCard(c, {advance:false})).join(""));
   }
   view.innerHTML = parts.join("");
 }
 
-const PLATFORM_LABEL = Object.fromEntries(PLATFORM_OPTS);
 
 function contentCard(c, {advance=true}={}){
   contentById[c.id] = c;
@@ -815,8 +1001,8 @@ function contentCard(c, {advance=true}={}){
     ${c.hook ? `<p class="desc">${esc(c.hook)}</p>` : ""}
     ${people.length ? `<div class="meta">${people.map(p => `<span>${esc(p)}</span>`).join("")}</div>` : ""}
     ${refStrip("content", c.id, c.refs_count || 0, c.ref_thumbs)}
-    ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">Продвинуть →</button>` : ""}
-    ${advance && isFinal ? `<button class="act ghost" disabled>Финальный этап</button>` : ""}
+    ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">${esc(t("content.advance"))}</button>` : ""}
+    ${advance && isFinal ? `<button class="act ghost" disabled>${esc(t("content.final"))}</button>` : ""}
   </div>`;
 }
 
@@ -828,17 +1014,17 @@ async function renderContent(){
   ]);
   const filter = `<div class="field" style="margin:2px 0 12px">
     <select id="contentProjFilter">
-      <option value="">Все проекты</option>
+      <option value="">${esc(LANG === "ru" ? "Все проекты" : LANG === "uz" ? "Barcha loyihalar" : "All projects")}</option>
       ${projects.map(p => `<option value="${p.id}"${String(contentProjectId) === String(p.id) ? " selected" : ""}>${esc(p.label || p.name)}</option>`).join("")}
     </select>
   </div>`;
 
-  const order = ["idea","approval","script","shoot","edit","review","client","revisions","done","published","analytics"];
+  const order = _PIPE;
   const groups = {};
   items.forEach(c => { (groups[c.pipeline_status] ||= []).push(c); });
   const parts = [filter];
   if (!items.length){
-    parts.push(`<div class="empty">${contentProjectId ? "У проекта нет контента" : "Контента пока нет"}</div>`);
+    parts.push(`<div class="empty">${esc(contentProjectId ? t("empty.contentProj") : t("empty.content"))}</div>`);
   } else {
     order.forEach(st => {
       if (!groups[st]) return;
@@ -852,17 +1038,16 @@ async function renderContent(){
 /* ── Съёмки ──────────────────────────────────────────────── */
 let shootById = {};
 let shootUpcomingOnly = false;
-const SHOOT_STATUS_LABEL = Object.fromEntries(SHOOT_STATUS_OPTS);
 
 function shootCard(s){
   shootById[s.id] = s;
-  const when = s.shoot_at ? fmtDateTime(s.shoot_at) : "дата не задана";
+  const when = s.shoot_at ? fmtDateTime(s.shoot_at) : t("field.shoot_at");
   const team = (s.participants || []).map(p => p.name).filter(Boolean).join(", ");
   const stCls = s.status === "done" ? "done" : s.status === "cancelled" ? "cancelled" : "in_progress";
   return `
   <div class="card tappable" data-shoot-edit="${s.id}">
     <div class="row">
-      <p class="title">🎬 ${esc(s.title || "Съёмка")}</p>
+      <p class="title">🎬 ${esc(s.title || t("nav.shoots"))}</p>
       <span class="pill ${stCls}">${esc(SHOOT_STATUS_LABEL[s.status] || s.status)}</span>
     </div>
     <div class="meta">
@@ -878,31 +1063,32 @@ function shootCard(s){
 async function renderShoots(){
   shootById = {};
   const list = await api("/api/shoots" + (shootUpcomingOnly ? "?upcoming=true" : ""));
+  const L = (r,u,e) => LANG === "ru" ? r : LANG === "uz" ? u : e;
   const filter = `<div class="field" style="margin:2px 0 12px">
     <select id="shootScopeFilter">
-      <option value="all"${shootUpcomingOnly ? "" : " selected"}>Все съёмки</option>
-      <option value="upcoming"${shootUpcomingOnly ? " selected" : ""}>Только предстоящие</option>
+      <option value="all"${shootUpcomingOnly ? "" : " selected"}>${esc(L("Все съёмки","Barcha suratga olishlar","All shoots"))}</option>
+      <option value="upcoming"${shootUpcomingOnly ? " selected" : ""}>${esc(L("Только предстоящие","Faqat kelgusi","Upcoming only"))}</option>
     </select>
   </div>`;
   view.innerHTML = filter + (list.length
     ? list.map(shootCard).join("")
-    : `<div class="empty">Съёмок пока нет — добавь через «+»</div>`);
+    : `<div class="empty">${esc(t("empty.shoots"))}</div>`);
 }
 
 async function renderIdeas(){
   const ideas = await api("/api/ideas");
-  if (!ideas.length){ view.innerHTML = `<div class="empty">Идей пока нет — предложи первую в боте</div>`; return; }
+  if (!ideas.length){ view.innerHTML = `<div class="empty">${esc(t("empty.ideas"))}</div>`; return; }
+  const fromW = LANG === "ru" ? "от" : LANG === "uz" ? "muallif:" : "by";
   view.innerHTML = ideas.map(i => `
     <div class="card">
       <div class="row">
-        <p class="title">💡 ${esc(i.title || "Идея")}</p>
+        <p class="title">💡 ${esc(i.title || t("nav.ideas"))}</p>
         <button class="vote ${i.voted ? "on":""}" data-vote="${i.id}">👍 <span>${i.votes_count||0}</span></button>
       </div>
       ${i.description ? `<p class="desc">${esc(i.description)}</p>` : ""}
       <div class="meta">
-        ${i.format ? `<span>🎞 ${esc(i.format)}</span>` : ""}
-        ${i.proposed_by_name ? `<span>от ${esc(i.proposed_by_name)}</span>` : ""}
-        ${i.status ? `<span>${esc(i.status)}</span>` : ""}
+        ${i.format ? `<span>🎞 ${esc(t("fmt." + i.format) || i.format)}</span>` : ""}
+        ${i.proposed_by_name ? `<span>${fromW} ${esc(i.proposed_by_name)}</span>` : ""}
       </div>
     </div>`).join("");
 }
@@ -911,7 +1097,7 @@ async function renderBlockers(){
   const list = await api("/api/blockers");
   view.innerHTML = list.length
     ? list.map(blockerCard).join("")
-    : `<div class="empty">Активных блокеров нет 👌</div>`;
+    : `<div class="empty">${esc(t("empty.blockersActive"))}</div>`;
 }
 
 let teamById = {};
@@ -1096,27 +1282,22 @@ function setWhoami(u){
   applyRoleUI();
 }
 
-// "Команда" + "Обзор" live in the ⋯ menu, not the tab bar — managers only
+// "Ещё" menu: Блокеры + Язык for everyone; Команда + Обзор for managers only
 function applyRoleUI(){
   const mgr = isManager();
-  const nm = document.getElementById("navMore");
-  if (nm) nm.hidden = !mgr;
+  document.querySelectorAll("#moreSheet .mgr-only").forEach(el => { el.hidden = !mgr; });
   try {
     if (tg && tg.SettingsButton){
-      if (mgr){
-        tg.SettingsButton.show();
-        if (!setWhoami._sbWired){
-          tg.SettingsButton.onClick(openMoreSheet);
-          setWhoami._sbWired = true;
-        }
-      } else {
-        tg.SettingsButton.hide();
+      tg.SettingsButton.show();
+      if (!setWhoami._sbWired){
+        tg.SettingsButton.onClick(openMoreSheet);
+        setWhoami._sbWired = true;
       }
     }
   } catch(e){}
 }
 
-let moreSheet, moreBackdrop;
+let moreSheet, moreBackdrop, langSheet, langBackdrop;
 function openMoreSheet(){
   moreSheet = moreSheet || document.getElementById("moreSheet");
   moreBackdrop = moreBackdrop || document.getElementById("moreBackdrop");
@@ -1128,6 +1309,20 @@ function openMoreSheet(){
 function closeMoreSheet(){
   if (moreSheet) moreSheet.classList.remove("open");
   if (moreBackdrop) moreBackdrop.classList.remove("open");
+  sheetBackOff();
+}
+function openLangSheet(){
+  langSheet = langSheet || document.getElementById("langSheet");
+  langBackdrop = langBackdrop || document.getElementById("langBackdrop");
+  closeMoreSheet();
+  haptic();
+  langBackdrop.classList.add("open");
+  langSheet.classList.add("open");
+  sheetBackOn(closeLangSheet);
+}
+function closeLangSheet(){
+  if (langSheet) langSheet.classList.remove("open");
+  if (langBackdrop) langBackdrop.classList.remove("open");
   sheetBackOff();
 }
 
@@ -1152,9 +1347,9 @@ async function load(tab){
   document.querySelectorAll("nav button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
   const nm = document.getElementById("navMore");
-  if (nm) nm.classList.toggle("active", tab === "team" || tab === "dash");
+  if (nm) nm.classList.toggle("active", tab === "team" || tab === "dash" || tab === "blockers");
   updateFab();
-  view.innerHTML = `<div class="loader">Загрузка…</div>`;
+  view.innerHTML = `<div class="loader">${esc(t("misc.loading"))}</div>`;
   try {
     await RENDERERS[tab]();
     accessDenied = false;
@@ -1163,7 +1358,7 @@ async function load(tab){
       accessDenied = true;
       view.innerHTML = noAccessScreen(e.detail);
     } else {
-      view.innerHTML = `<div class="err">${esc(e.message || "Не удалось загрузить")}</div>`;
+      view.innerHTML = `<div class="err">${esc(e.message || t("err.load"))}</div>`;
     }
   }
   updateFab();
@@ -1174,10 +1369,10 @@ function noAccessScreen(d){
   return `
   <div class="no-access">
     <div class="na-emoji">🔒</div>
-    <p class="na-title">Доступ закрыт</p>
-    <p class="na-sub">Приложение только для команды. Передай администратору свой Telegram ID:</p>
+    <p class="na-title">${esc(t("na.title"))}</p>
+    <p class="na-sub">${esc(t("na.sub"))}</p>
     <button class="na-id" id="naCopy">${esc(tgid)}</button>
-    <p class="na-hint">Нажми, чтобы скопировать</p>
+    <p class="na-hint">${esc(t("na.copy"))}</p>
   </div>`;
 }
 
@@ -1190,12 +1385,21 @@ document.querySelector("nav").addEventListener("click", e => {
 });
 
 document.getElementById("moreSheet").addEventListener("click", e => {
+  if (e.target.closest("#moreLang")){ openLangSheet(); return; }
   const g = e.target.closest("[data-goto]");
   if (g){ closeMoreSheet(); haptic(); load(g.dataset.goto); }
 });
 moreBackdrop = document.getElementById("moreBackdrop");
 moreBackdrop.addEventListener("click", closeMoreSheet);
 attachSheetDismiss(document.getElementById("moreSheet"), closeMoreSheet);
+
+langBackdrop = document.getElementById("langBackdrop");
+langBackdrop.addEventListener("click", closeLangSheet);
+attachSheetDismiss(document.getElementById("langSheet"), closeLangSheet);
+document.getElementById("langSheet").addEventListener("click", e => {
+  const b = e.target.closest("[data-lang]");
+  if (b){ closeLangSheet(); setLang(b.dataset.lang); }
+});
 
 view.addEventListener("change", e => {
   if (e.target.id === "contentProjFilter"){
@@ -1242,7 +1446,7 @@ view.addEventListener("click", async e => {
   if (refX){
     e.stopPropagation();
     const rid = +refX.dataset.refDelCard;
-    if (!busy) askConfirm("Удалить этот референс?").then(async ok => {
+    if (!busy) askConfirm(t("confirm.refDelete")).then(async ok => {
       if (!ok) return;
       busy = true;
       try { await api("/api/references/" + rid, { method:"DELETE" }); haptic(); await load(currentTab); }
@@ -1350,7 +1554,7 @@ view.addEventListener("click", async e => {
       const r = await api(`/api/content/${advBtn.dataset.advance}/advance`, {method:"POST"});
       haptic("medium"); toast("→ " + (PIPELINE_LABELS[r.pipeline_status] || r.pipeline_status));
       await load(currentTab);
-    } catch(err){ toast(err.message); advBtn.disabled = false; advBtn.textContent = "Продвинуть →"; }
+    } catch(err){ toast(err.message); advBtn.disabled = false; advBtn.textContent = t("content.advance"); }
     finally { busy = false; }
   }
 
@@ -1445,7 +1649,7 @@ document.getElementById("memberSave").addEventListener("click", async () => {
   busy = true; document.getElementById("memberSave").disabled = true;
   try {
     await api(`/api/team/${editingMemberId}/role`, {method:"PATCH", body:{role, full_name}});
-    haptic("medium"); toast("Сохранено");
+    haptic("medium"); toast(t("toast.saved"));
     closeMemberSheet();
     await load("team");
   } catch(err){ toast(err.message); document.getElementById("memberSave").disabled = false; }
@@ -1541,7 +1745,7 @@ document.getElementById("refLinkSave").addEventListener("click", async () => {
     if (title) body.title = title;
     body[refScope.kind === "task" ? "task_id" : "content_id"] = refScope.id;
     await api("/api/references", { method:"POST", body });
-    haptic("medium"); toast("Добавлено");
+    haptic("medium"); toast(t("toast.added"));
     document.getElementById("refLinkForm").hidden = true;
     await renderRefList(); refDirty = true;
   } catch(e){ toast(e.message); }
@@ -1552,8 +1756,8 @@ document.getElementById("refFileInput").addEventListener("change", async (e) => 
   const file = e.target.files && e.target.files[0];
   e.target.value = "";
   if (!file || busy || !refScope) return;
-  if (file.size > 20 * 1024 * 1024){ toast("Файл больше 20 МБ"); return; }
-  busy = true; toast("Загрузка…");
+  if (file.size > 20 * 1024 * 1024){ toast(t("toast.fileTooBig")); return; }
+  busy = true; toast(t("misc.loading"));
   try {
     const fd = new FormData();
     fd.append("file", file);
@@ -1567,7 +1771,7 @@ document.getElementById("refFileInput").addEventListener("change", async (e) => 
       const j = await res.json().catch(() => ({}));
       throw new Error((j.detail && (j.detail.message || j.detail)) || ("Ошибка " + res.status));
     }
-    haptic("medium"); toast("Файл добавлен");
+    haptic("medium"); toast(t("toast.added"));
     await renderRefList(); refDirty = true;
   } catch(err){ toast(err.message); }
   finally { busy = false; }
@@ -1576,7 +1780,7 @@ document.getElementById("refList").addEventListener("click", async e => {
   const del = e.target.closest("[data-ref-del]");
   if (!del || busy) return;
   e.preventDefault();
-  if (!(await askConfirm("Удалить референс?"))) return;
+  if (!(await askConfirm(t("confirm.refDelete")))) return;
   busy = true;
   try {
     await api("/api/references/" + del.dataset.refDel, { method:"DELETE" });
@@ -1587,98 +1791,88 @@ document.getElementById("refList").addEventListener("click", async e => {
 
 /* ── creation forms (bottom-sheet) ───────────────────────── */
 
+const FORM_TITLE_KEY = { home:"form.newTask", content:"form.newContent", shoots:"form.newShoot",
+  ideas:"form.newIdea", blockers:"form.newBlocker", clients:"form.newClient", team:"form.addTeam" };
+const OPTS_BY_KEY = { platform:PLATFORM_OPTS, status:STATUS_OPTS, pipeline:PIPELINE_OPTS,
+  shootStatus:SHOOT_STATUS_OPTS, priority:PRIORITY_OPTS, format:FORMAT_OPTS, formatOpt:FORMATOPT_OPTS, role:ROLE_OPTS };
+
 const FORMS = {
   home: {
-    title: "Новая задача", endpoint: "/api/tasks",
+    endpoint: "/api/tasks",
     fields: [
-      { name:"title",       label:"Название",  type:"text", required:true },
-      { name:"description",  label:"Описание",  type:"textarea" },
-      { name:"priority",     label:"Приоритет", type:"select", value:"normal",
-        options:[["normal","Обычный"],["high","Высокий"],["urgent","Срочный"]] },
-      { name:"deadline",     label:"Дедлайн",   type:"date" },
-      { name:"assignee_ids", label:"Исполнители", type:"mpick", dynamic:"members" },
-      { name:"client_id",    label:"Клиент (необяз.)", type:"select", value:"", coerce:"int",
-        dynamic:"clients", options:[["","—"]] },
-      { name:"project_id",   label:"Проект (необяз.)", type:"select", value:"", coerce:"int",
-        dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
-      { name:"refs", label:"Референсы — ссылки и файлы", type:"refs" },
+      { name:"title",       type:"text", required:true },
+      { name:"description",  type:"textarea" },
+      { name:"priority",     type:"select", value:"normal", optsKey:"priority" },
+      { name:"deadline",     type:"date" },
+      { name:"assignee_ids", type:"mpick", dynamic:"members" },
+      { name:"client_id",    type:"select", value:"", coerce:"int", dynamic:"clients", options:[["","—"]] },
+      { name:"project_id",   type:"select", value:"", coerce:"int", dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
+      { name:"refs", type:"refs" },
     ],
   },
   content: {
-    title: "Новый контент", endpoint: "/api/content",
+    endpoint: "/api/content",
     fields: [
-      { name:"topic",        label:"Тема / название",   type:"text", required:true },
-      { name:"rubric",       label:"Рубрика",           type:"text" },
-      { name:"format", label:"Формат", type:"select", required:true,
-        options:[["post","Пост"],["reels","Reels"],["story","Сторис"],
-                 ["carousel","Карусель"],["tiktok","TikTok"],
-                 ["youtube_long","YouTube"],["other","Другое"]] },
-      { name:"platform",     label:"Площадка",          type:"select", value:"", options: PLATFORM_OPTS },
-      { name:"publish_at",   label:"Дата и время публикации", type:"datetime" },
-      { name:"client_id",    label:"Клиент", type:"select", value:"", coerce:"int",
-        dynamic:"clients", options:[["","—"]] },
-      { name:"project_id",   label:"Проект", type:"select", value:"", coerce:"int",
-        dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
-      { name:"hook",         label:"Заголовок / хук",   type:"text" },
-      { name:"script",       label:"Сценарий",          type:"textarea" },
-      { name:"caption",      label:"Подпись к посту",    type:"textarea" },
-      { name:"hashtags",     label:"Хэштеги",            type:"text" },
-      { name:"smm_id",        label:"SMM",        type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
-      { name:"copywriter_id", label:"Сценарист / копирайтер", type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
-      { name:"editor_id",     label:"Монтажёр",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
-      { name:"designer_id",   label:"Дизайнер",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
-      { name:"refs", label:"Референсы — ссылки и файлы", type:"refs" },
+      { name:"topic",        type:"text", required:true },
+      { name:"rubric",       type:"text" },
+      { name:"format",       type:"select", required:true, optsKey:"format" },
+      { name:"platform",     type:"select", value:"", optsKey:"platform" },
+      { name:"publish_at",   type:"datetime" },
+      { name:"client_id",    type:"select", value:"", coerce:"int", dynamic:"clients", options:[["","—"]] },
+      { name:"project_id",   type:"select", value:"", coerce:"int", dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
+      { name:"hook",         type:"text" },
+      { name:"script",       type:"textarea" },
+      { name:"caption",      type:"textarea" },
+      { name:"hashtags",     type:"text" },
+      { name:"smm_id",        type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"copywriter_id", type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"editor_id",     type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"designer_id",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
+      { name:"refs", type:"refs" },
     ],
   },
   shoots: {
-    title: "Новая съёмка", endpoint: "/api/shoots",
+    endpoint: "/api/shoots",
     fields: [
-      { name:"title",     label:"Название",        type:"text", required:true },
-      { name:"shoot_at",  label:"Дата и время",    type:"datetime" },
-      { name:"location",  label:"Локация / адрес", type:"text" },
-      { name:"client_id", label:"Клиент", type:"select", value:"", coerce:"int",
-        dynamic:"clients", options:[["","—"]] },
-      { name:"project_id", label:"Проект", type:"select", value:"", coerce:"int",
-        dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
-      { name:"participant_ids", label:"Команда на съёмке", type:"mpick", dynamic:"members" },
-      { name:"notes",     label:"Заметки",         type:"textarea" },
+      { name:"title",     type:"text", required:true },
+      { name:"shoot_at",  type:"datetime" },
+      { name:"location",  type:"text" },
+      { name:"client_id", type:"select", value:"", coerce:"int", dynamic:"clients", options:[["","—"]] },
+      { name:"project_id", type:"select", value:"", coerce:"int", dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
+      { name:"participant_ids", type:"mpick", dynamic:"members" },
+      { name:"notes",     type:"textarea" },
     ],
   },
   ideas: {
-    title: "Новая идея", endpoint: "/api/ideas",
+    endpoint: "/api/ideas",
     fields: [
-      { name:"title",       label:"Название", type:"text", required:true },
-      { name:"description", label:"Описание", type:"textarea" },
-      { name:"format",      label:"Формат (необяз.)", type:"select", value:"",
-        options:[["","—"],["post","Пост"],["reels","Reels"],["story","Сторис"],
-                 ["carousel","Карусель"],["other","Другое"]] },
+      { name:"title",       type:"text", required:true },
+      { name:"description", type:"textarea" },
+      { name:"format",      type:"select", value:"", optsKey:"formatOpt" },
     ],
   },
   blockers: {
-    title: "Новый блокер", endpoint: "/api/blockers",
+    endpoint: "/api/blockers",
     fields: [
-      { name:"title",       label:"Что блокирует", type:"text", required:true },
-      { name:"description", label:"Подробнее",     type:"textarea" },
-      { name:"assigned_to", label:"ID исполнителя (уведомить)", type:"number" },
+      { name:"title",       type:"text", required:true },
+      { name:"description", type:"textarea" },
+      { name:"assigned_to", type:"number" },
     ],
   },
   clients: {
-    title: "Новый клиент", endpoint: "/api/clients",
+    endpoint: "/api/clients",
     fields: [
-      { name:"name",    label:"Название",  type:"text", required:true },
-      { name:"contact", label:"Контакт",   type:"text" },
-      { name:"notes",   label:"Заметки",   type:"textarea" },
+      { name:"name",    type:"text", required:true },
+      { name:"contact", type:"text" },
+      { name:"notes",   type:"textarea" },
     ],
   },
   team: {
-    title: "Добавить в команду", endpoint: "/api/team",
+    endpoint: "/api/team",
     fields: [
-      { name:"telegram_id", label:"Telegram ID", type:"number", required:true, coerce:"int" },
-      { name:"full_name",   label:"Имя",         type:"text",   required:true },
-      { name:"role",        label:"Роль",        type:"select", value:"smm",
-        options:[["admin","Админ"],["am","AM"],["producer","Продюсер"],["smm","SMM"],
-                 ["photographer","Фотограф"],["editor","Монтажёр"],["designer","Дизайнер"],
-                 ["copywriter","Копирайтер"],["intern","Стажёр"]] },
+      { name:"telegram_id", type:"number", required:true, coerce:"int" },
+      { name:"full_name",   type:"text",   required:true },
+      { name:"role",        type:"select", value:"smm", optsKey:"role" },
     ],
   },
 };
@@ -1694,9 +1888,18 @@ function setFormError(msg){
   formErr.textContent = msg; formErr.style.display = "block";
 }
 
+function _fieldOpts(f){
+  if (f.optsKey && OPTS_BY_KEY[f.optsKey]) return OPTS_BY_KEY[f.optsKey];
+  return f.options || [["",""]];
+}
 function _baseOptions(f){
-  return (f.options || [["",""]]).map(([v,l]) =>
+  return _fieldOpts(f).map(([v,l]) =>
     `<option value="${esc(v)}"${v === (f.value ?? "") ? " selected" : ""}>${esc(l)}</option>`).join("");
+}
+function fieldLabel(f){
+  const k = "field." + f.name;
+  const s = t(k);
+  return s === k ? (f.label || f.name) : s;
 }
 
 async function fillMpick(f){
@@ -1752,17 +1955,13 @@ async function fillDynamic(f){
 let editState = null;   // {formKey, title, endpoint, method, submitLabel, prefill, extraFields}
 let sheetFields = [];
 
-const STATUS_OPTS = [["pending","Ожидает"],["in_progress","В работе"],["done","Готово"],
-                     ["overdue","Просрочено"],["cancelled","Отменено"]];
-
 function openTaskEdit(t){
   editState = {
     formKey: "home",
-    title: "Изменить задачу",
+    titleKey: "form.editTask",
     endpoint: "/api/tasks/" + t.id,
     method: "PATCH",
-    submitLabel: "Сохранить",
-    extraFields: [{ name:"status", label:"Статус", type:"select", options: STATUS_OPTS }],
+    extraFields: [{ name:"status", type:"select", optsKey:"status" }],
     omitFields: ["refs"],
     refsFor: { kind: "task", id: t.id },
     prefill: {
@@ -1782,11 +1981,10 @@ function openTaskEdit(t){
 function openContentEdit(c){
   editState = {
     formKey: "content",
-    title: "Изменить контент",
+    titleKey: "form.editContent",
     endpoint: "/api/content/" + c.id,
     method: "PATCH",
-    submitLabel: "Сохранить",
-    extraFields: [{ name:"pipeline_status", label:"Этап", type:"select", options: PIPELINE_OPTS }],
+    extraFields: [{ name:"pipeline_status", type:"select", optsKey:"pipeline" }],
     omitFields: ["refs"],
     refsFor: { kind: "content", id: c.id },
     prefill: {
@@ -1808,11 +2006,10 @@ function openContentEdit(c){
 function openShootEdit(s){
   editState = {
     formKey: "shoots",
-    title: "Изменить съёмку",
+    titleKey: "form.editShoot",
     endpoint: "/api/shoots/" + s.id,
     method: "PATCH",
-    submitLabel: "Сохранить",
-    extraFields: [{ name:"status", label:"Статус", type:"select", options: SHOOT_STATUS_OPTS }],
+    extraFields: [{ name:"status", type:"select", optsKey:"shootStatus" }],
     prefill: {
       title: s.title || "",
       shoot_at: toLocalInput(s.shoot_at),
@@ -1848,7 +2045,7 @@ function wirePendingRefs(box){
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!f) return;
-    if (f.size > 20 * 1024 * 1024){ toast("Файл больше 20 МБ"); return; }
+    if (f.size > 20 * 1024 * 1024){ toast(t("toast.fileTooBig")); return; }
     pendingRefs.push({ kind: "file", file: f });
     haptic(); renderPendingRefs(box);
   });
@@ -1904,7 +2101,9 @@ async function openSheet(){
     sheetFields = editState && editState.extraFields
       ? base.concat(editState.extraFields) : base;
   }
-  document.getElementById("sheetTitle").textContent = editState ? editState.title : cfg.title;
+  document.getElementById("sheetTitle").textContent = editState
+    ? t(editState.titleKey || "form.editTask")
+    : t(FORM_TITLE_KEY[activeFormKey()] || "btn.create");
   setFormError("");
   formFields.innerHTML = sheetFields.map(f => {
     const id = "f_" + f.name;
@@ -1919,35 +2118,35 @@ async function openSheet(){
       control = `<div class="refs-field" id="${id}">
         <div class="rf-list"></div>
         <div class="rf-row">
-          <input type="url" class="rf-url" placeholder="https://… ссылка">
+          <input type="url" class="rf-url" placeholder="https://…">
           <button type="button" class="act ghost rf-add-link">＋</button>
         </div>
         <div class="rf-actions">
-          <button type="button" class="act ghost rf-add-file">📎 Прикрепить файл</button>
+          <button type="button" class="act ghost rf-add-file">${esc(t("btn.attachFile"))}</button>
         </div>
         <input type="file" class="rf-file" hidden accept="image/*,video/*,application/pdf">
       </div>`;
     } else {
-      const t = f.type === "number" ? "number"
+      const it = f.type === "number" ? "number"
               : f.type === "date" ? "date"
               : f.type === "datetime" ? "datetime-local" : "text";
-      control = `<input id="${id}" type="${t}"${f.type === "number" ? ' inputmode="numeric"' : ""}>`;
+      control = `<input id="${id}" type="${it}"${f.type === "number" ? ' inputmode="numeric"' : ""}>`;
     }
     return `<div class="field" data-field="${f.name}">
-      <label for="${id}">${esc(f.label)}${f.required ? " *" : ""}</label>${control}
+      <label for="${id}">${esc(fieldLabel(f))}${f.required ? " *" : ""}</label>${control}
     </div>`;
   }).join("");
   if (editState && editState.refsFor){
     const r = editState.refsFor;
     formFields.insertAdjacentHTML("beforeend",
-      `<button type="button" class="act ghost" id="editRefsBtn" style="margin-top:4px">📎 Референсы</button>`);
+      `<button type="button" class="act ghost" id="editRefsBtn" style="margin-top:4px">${esc(t("btn.refs"))}</button>`);
     document.getElementById("editRefsBtn").addEventListener("click", () => openRefSheet(r.kind, r.id));
   }
   pendingRefs = [];
   const rfBox = formFields.querySelector(".refs-field");
   if (rfBox) wirePendingRefs(rfBox);
   formSubmit.disabled = false;
-  formSubmit.textContent = editState ? editState.submitLabel : "Создать";
+  formSubmit.textContent = editState ? t("btn.save") : t("btn.create");
   sheetBackdrop.classList.add("open");
   sheet.classList.add("open");
   sheetBackOn(closeSheet);
@@ -2006,27 +2205,27 @@ async function submitForm(){
       body[f.name] = raw;
     }
   }
-  if (!valid){ setFormError("Заполни обязательные поля"); return; }
+  if (!valid){ setFormError(t("toast.fillRequired")); return; }
 
   busy = true;
-  formSubmit.disabled = true; formSubmit.textContent = "Сохранение…";
+  formSubmit.disabled = true; formSubmit.textContent = t("btn.saving");
   setFormError("");
   const wasEdit = isEdit;
   const formKey = activeFormKey();
   try {
     const saved = await api(endpoint, { method, body });
     if (!wasEdit && pendingRefs.length && saved && saved.id){
-      formSubmit.textContent = "Загрузка референсов…";
+      formSubmit.textContent = t("btn.uploadingRefs");
       await flushPendingRefs(formKey === "content" ? "content_id" : "task_id", saved.id);
     }
     haptic("medium");
     closeSheet();
-    toast(wasEdit ? "Сохранено" : "Создано");
+    toast(wasEdit ? t("toast.saved") : t("toast.created"));
     await load(currentTab);
   } catch(e){
-    setFormError(e.message || "Не удалось сохранить");
+    setFormError(e.message || t("err.save"));
     formSubmit.disabled = false;
-    formSubmit.textContent = wasEdit ? "Сохранить" : "Создать";
+    formSubmit.textContent = wasEdit ? t("btn.save") : t("btn.create");
   } finally {
     busy = false;
   }
@@ -2084,6 +2283,7 @@ formFields.addEventListener("click", e => {
   view.addEventListener("touchcancel", end, {passive:true});
 })();
 
+applyI18n();
 load("home");
 </script>
 </body>
