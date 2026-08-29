@@ -360,6 +360,13 @@
     padding:13px; cursor:pointer;
   }
   .sheet .submit[disabled]{opacity:.55; cursor:default}
+  .more-item{
+    display:flex; align-items:center; gap:12px; width:100%;
+    background:var(--card); border:1px solid var(--sep); border-radius:12px;
+    color:var(--text); font:15px inherit; font-weight:600;
+    padding:14px 16px; margin-bottom:10px; cursor:pointer; text-align:left;
+  }
+  .more-item span{font-size:19px}
 </style>
 </head>
 <body>
@@ -384,8 +391,7 @@
   <button data-tab="ideas"><span class="ic">💡</span><span>Идеи</span></button>
   <button data-tab="blockers"><span class="ic">🚫</span><span>Блокеры</span></button>
   <button data-tab="shoots"><span class="ic">🎬</span><span>Съёмки</span></button>
-  <button data-tab="team"><span class="ic">👥</span><span>Команда</span></button>
-  <button data-tab="dash"><span class="ic">📊</span><span>Обзор</span></button>
+  <button id="navMore" hidden><span class="ic">⋯</span><span>Ещё</span></button>
 </nav>
 
 <button class="fab" id="fab" aria-label="Создать">+</button>
@@ -407,6 +413,14 @@
   <div class="field"><label>Роль</label><select id="memberRole"></select></div>
   <button class="submit" id="memberSave">Сохранить</button>
   <button class="act ghost" id="memberDelete" style="margin-top:10px">Удалить из команды</button>
+</div>
+
+<div class="sheet-backdrop" id="moreBackdrop"></div>
+<div class="sheet" id="moreSheet" role="dialog" aria-modal="true">
+  <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
+  <h2>Ещё</h2>
+  <button class="more-item" data-goto="team"><span>👥</span> Команда и клиенты</button>
+  <button class="more-item" data-goto="dash"><span>📊</span> Обзор</button>
 </div>
 
 <div class="sheet-backdrop" id="refBackdrop"></div>
@@ -1059,6 +1073,42 @@ const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, b
 
 function setWhoami(u){
   document.getElementById("whoami").textContent = (u && u.role) ? u.role : "";
+  applyRoleUI();
+}
+
+// "Команда" + "Обзор" live in the ⋯ menu, not the tab bar — managers only
+function applyRoleUI(){
+  const mgr = isManager();
+  const nm = document.getElementById("navMore");
+  if (nm) nm.hidden = !mgr;
+  try {
+    if (tg && tg.SettingsButton){
+      if (mgr){
+        tg.SettingsButton.show();
+        if (!setWhoami._sbWired){
+          tg.SettingsButton.onClick(openMoreSheet);
+          setWhoami._sbWired = true;
+        }
+      } else {
+        tg.SettingsButton.hide();
+      }
+    }
+  } catch(e){}
+}
+
+let moreSheet, moreBackdrop;
+function openMoreSheet(){
+  moreSheet = moreSheet || document.getElementById("moreSheet");
+  moreBackdrop = moreBackdrop || document.getElementById("moreBackdrop");
+  haptic();
+  moreBackdrop.classList.add("open");
+  moreSheet.classList.add("open");
+  sheetBackOn(closeMoreSheet);
+}
+function closeMoreSheet(){
+  if (moreSheet) moreSheet.classList.remove("open");
+  if (moreBackdrop) moreBackdrop.classList.remove("open");
+  sheetBackOff();
 }
 
 // which FORMS entry the "+" button opens for the current view
@@ -1081,6 +1131,8 @@ async function load(tab){
   document.getElementById("screenLabel").textContent = TITLES[tab];
   document.querySelectorAll("nav button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
+  const nm = document.getElementById("navMore");
+  if (nm) nm.classList.toggle("active", tab === "team" || tab === "dash");
   updateFab();
   view.innerHTML = `<div class="loader">Загрузка…</div>`;
   try {
@@ -1112,9 +1164,18 @@ function noAccessScreen(d){
 /* ── events ──────────────────────────────────────────────── */
 
 document.querySelector("nav").addEventListener("click", e => {
+  if (e.target.closest("#navMore")){ openMoreSheet(); return; }
   const b = e.target.closest("button[data-tab]");
   if (b) { haptic(); load(b.dataset.tab); }
 });
+
+document.getElementById("moreSheet").addEventListener("click", e => {
+  const g = e.target.closest("[data-goto]");
+  if (g){ closeMoreSheet(); haptic(); load(g.dataset.goto); }
+});
+moreBackdrop = document.getElementById("moreBackdrop");
+moreBackdrop.addEventListener("click", closeMoreSheet);
+attachSheetDismiss(document.getElementById("moreSheet"), closeMoreSheet);
 
 view.addEventListener("change", e => {
   if (e.target.id === "contentProjFilter"){
