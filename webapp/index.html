@@ -52,7 +52,8 @@
   header{
     flex:0 0 auto;
     background:var(--bg);
-    padding:14px 16px 10px; border-bottom:1px solid var(--sep);
+    padding:calc(14px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) 10px calc(16px + var(--safe-left, 0px));
+    border-bottom:1px solid var(--sep);
     display:flex; align-items:center; justify-content:space-between;
   }
   header h1{font-size:18px; font-weight:700; margin:0}
@@ -152,7 +153,7 @@
   nav{
     flex:0 0 auto; z-index:10;
     display:flex; background:var(--bg); border-top:1px solid var(--sep);
-    padding-bottom:env(safe-area-inset-bottom);
+    padding-bottom:calc(var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
   }
   nav button{
     flex:1 1 0; min-width:0; background:none; border:none; cursor:pointer;
@@ -209,7 +210,7 @@
   }
 
   .toast{
-    position:fixed; left:50%; bottom:78px; transform:translateX(-50%);
+    position:fixed; left:50%; bottom:calc(78px + var(--safe-bottom, 0px)); transform:translateX(-50%);
     background:#000; color:#fff; padding:9px 16px; border-radius:10px;
     font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20;
     max-width:88%;
@@ -219,7 +220,7 @@
   /* ── floating + button ─────────────────────────────────── */
   .fab{
     position:fixed; right:16px; z-index:15;
-    bottom:calc(64px + env(safe-area-inset-bottom) + 14px);
+    bottom:calc(64px + 14px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
     width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
     background:var(--fab, #ff6b5e); color:#fff; font-size:28px; line-height:52px;
     box-shadow:0 4px 14px rgba(0,0,0,.28); padding:0;
@@ -324,6 +325,29 @@ const INIT_DATA = (tg && tg.initData) || "";
   // paint Telegram's top bar in the brand colour so it blends in
   try { if (tg.setHeaderColor) tg.setHeaderColor("#1a0820"); } catch(e){}
   try { if (tg.setBackgroundColor) tg.setBackgroundColor("#1a0820"); } catch(e){}
+
+  // keep the header clear of the notch + Telegram's floating controls
+  const root = document.documentElement.style;
+  function applyInsets(){
+    const s = tg.safeAreaInset || {};
+    const c = tg.contentSafeAreaInset || {};
+    const px = (n) => (n && n > 0 ? n + "px" : "0px");
+    root.setProperty("--safe-top",    px((s.top || 0) + (c.top || 0)));
+    root.setProperty("--safe-bottom", px((s.bottom || 0) + (c.bottom || 0)));
+    root.setProperty("--safe-left",   px((s.left || 0) + (c.left || 0)));
+    root.setProperty("--safe-right",  px((s.right || 0) + (c.right || 0)));
+  }
+  ["safeAreaChanged", "contentSafeAreaChanged", "fullscreenChanged"].forEach((ev) => {
+    try { tg.onEvent && tg.onEvent(ev, applyInsets); } catch(e){}
+  });
+
+  // open edge-to-edge for maximum working area (Bot API 8.0+)
+  try {
+    if (atLeast("8.0") && tg.requestFullscreen && !tg.isFullscreen){
+      tg.requestFullscreen();
+    }
+  } catch(e){}
+  applyInsets();
 })();
 
 /* ── install / add-to-home-screen banner ────────────────── */
