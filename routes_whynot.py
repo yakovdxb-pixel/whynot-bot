@@ -116,17 +116,32 @@ async def current_user(request: Request, session=Depends(get_session)) -> dict:
                     "full_name": row.full_name, "role": row.role, "registered": True}
         name = " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")]))
         return {"id": 0, "telegram_id": tg_id,
-                "full_name": name or "Guest", "role": "intern", "registered": False}
+                "full_name": name or "Guest", "role": "guest", "registered": False}
 
-    # ── dev fallback: no/again-invalid init data ──
-    row = (await session.execute(
-        select(User).order_by(User.id).limit(1)
-    )).scalar_one_or_none()
-    if row:
-        return {"id": row.id, "telegram_id": row.telegram_id or 0,
-                "full_name": row.full_name, "role": row.role, "registered": True}
-    return {"id": 0, "telegram_id": 0, "full_name": "Dev",
-            "role": "admin", "registered": False}
+    # ── no valid init data ──
+    if not BOT_TOKEN:
+        # local dev only (no token to validate against) — act as the first user
+        row = (await session.execute(
+            select(User).order_by(User.id).limit(1)
+        )).scalar_one_or_none()
+        if row:
+            return {"id": row.id, "telegram_id": row.telegram_id or 0,
+                    "full_name": row.full_name, "role": row.role, "registered": True}
+        return {"id": 0, "telegram_id": 0, "full_name": "Dev",
+                "role": "admin", "registered": True}
+    return {"id": 0, "telegram_id": 0, "full_name": "Guest",
+            "role": "guest", "registered": False}
+
+
+async def member(user: dict = Depends(current_user)) -> dict:
+    """Closed access: only users present in the `users` table get through."""
+    if not user.get("registered"):
+        raise HTTPException(403, {
+            "code": "not_registered",
+            "message": "Доступ закрыт. Передай свой Telegram ID администратору.",
+            "telegram_id": user.get("telegram_id") or 0,
+        })
+    return user
 
 
 # ── models ──────────────────────────────────────────────────────
@@ -246,7 +261,7 @@ CONTENT_ROLE_COLS = (
 # ── routes ──────────────────────────────────────────────────────
 
 @router.get("/home")
-async def home(user: dict = Depends(current_user), session=Depends(get_session)):
+async def home(user: dict = Depends(member), session=Depends(get_session)):
     uid = user["id"]
 
     tasks = (await session.execute(
@@ -282,7 +297,7 @@ async def home(user: dict = Depends(current_user), session=Depends(get_session))
 
 @router.get("/tasks")
 async def list_tasks(my: bool = False, status: str | None = None,
-                     user: dict = Depends(current_user), session=Depends(get_session)):
+                     user: dict = Depends(member), session=Depends(get_session)):
     q = select(Task)
     if my:
         q = q.where(Task.assignee_id == user["id"])
@@ -301,7 +316,7 @@ async def list_tasks(my: bool = False, status: str | None = None,
 
 @router.patch("/tasks/{task_id}")
 async def update_task(task_id: int, patch: TaskPatch,
-                      user: dict = Depends(current_user), session=Depends(get_session)):
+                      user: dict = Depends(member), session=Depends(get_session)):
     if patch.status not in TASK_STATUSES:
         raise HTTPException(422, f"status must be one of {sorted(TASK_STATUSES)}")
     task = (await session.execute(
@@ -322,7 +337,7 @@ async def update_task(task_id: int, patch: TaskPatch,
 
 @router.get("/content")
 async def list_content(client_id: int | None = None,
-                       user: dict = Depends(current_user), session=Depends(get_session)):
+                       user: dict = Depends(member), session=Depends(get_session)):
     q = select(ContentItem)
     if client_id:
         q = q.where(ContentItem.client_id == client_id)
@@ -334,7 +349,7 @@ async def list_content(client_id: int | None = None,
 
 @router.post("/content/{content_id}/advance")
 async def advance_content(content_id: int,
-                          user: dict = Depends(current_user), session=Depends(get_session)):
+                          user: dict = Depends(member), session=Depends(get_session)):
     item = (await session.execute(
         select(ContentItem).where(ContentItem.id == content_id)
     )).scalar_one_or_none()
@@ -353,7 +368,7 @@ async def advance_content(content_id: int,
 
 
 @router.get("/ideas")
-async def list_ideas(user: dict = Depends(current_user), session=Depends(get_session)):
+async def list_ideas(user: dict = Depends(member), session=Depends(get_session)):
     rows = (await session.execute(
         select(Idea).order_by(Idea.votes_count.desc(), Idea.created_at.desc()).limit(200)
     )).scalars().all()
@@ -374,7 +389,7 @@ async def list_ideas(user: dict = Depends(current_user), session=Depends(get_ses
 
 @router.post("/ideas/{idea_id}/vote")
 async def vote_idea(idea_id: int,
-                    user: dict = Depends(current_user), session=Depends(get_session)):
+                    user: dict = Depends(member), session=Depends(get_session)):
     if not user["id"]:
         raise HTTPException(403, "Register in the bot before voting")
     idea = (await session.execute(
@@ -402,7 +417,7 @@ async def vote_idea(idea_id: int,
 
 
 @router.get("/blockers")
-async def list_blockers(user: dict = Depends(current_user), session=Depends(get_session)):
+async def list_blockers(user: dict = Depends(member), session=Depends(get_session)):
     rows = (await session.execute(
         select(Blocker).where(Blocker.status == "active")
         .order_by(Blocker.created_at.desc()).limit(200)
@@ -472,7 +487,7 @@ async def _telegram_id_for(session, user_id):
 
 @router.post("/tasks", status_code=201)
 async def create_task(body: TaskCreate, bg: BackgroundTasks,
-                      user: dict = Depends(current_user), session=Depends(get_session)):
+                      user: dict = Depends(member), session=Depends(get_session)):
     title = _clean(body.title)
     if not title:
         raise HTTPException(422, "title is required")
@@ -507,7 +522,7 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
 
 @router.post("/content", status_code=201)
 async def create_content(body: ContentCreate,
-                         user: dict = Depends(current_user), session=Depends(get_session)):
+                         user: dict = Depends(member), session=Depends(get_session)):
     fmt = (_clean(body.format) or "").lower()
     fmt = FORMAT_ALIASES.get(fmt, fmt)
     if fmt not in CONTENT_FORMATS:
@@ -530,7 +545,7 @@ async def create_content(body: ContentCreate,
 
 @router.post("/ideas", status_code=201)
 async def create_idea(body: IdeaCreate,
-                      user: dict = Depends(current_user), session=Depends(get_session)):
+                      user: dict = Depends(member), session=Depends(get_session)):
     title = _clean(body.title)
     if not title:
         raise HTTPException(422, "title is required")
@@ -555,7 +570,7 @@ async def create_idea(body: IdeaCreate,
 
 @router.post("/blockers", status_code=201)
 async def create_blocker(body: BlockerCreate, bg: BackgroundTasks,
-                         user: dict = Depends(current_user), session=Depends(get_session)):
+                         user: dict = Depends(member), session=Depends(get_session)):
     title = _clean(body.title)
     if not title:
         raise HTTPException(422, "title is required")
@@ -589,7 +604,7 @@ def _project_out(p):
 
 
 @router.get("/clients")
-async def list_clients(user: dict = Depends(current_user), session=Depends(get_session)):
+async def list_clients(user: dict = Depends(member), session=Depends(get_session)):
     rows = (await session.execute(
         select(Client).order_by(Client.is_active.desc(), Client.name)
     )).scalars().all()
@@ -599,7 +614,7 @@ async def list_clients(user: dict = Depends(current_user), session=Depends(get_s
 
 @router.post("/clients", status_code=201)
 async def create_client(body: ClientCreate,
-                        user: dict = Depends(current_user), session=Depends(get_session)):
+                        user: dict = Depends(member), session=Depends(get_session)):
     if user["role"] not in ("admin", "am"):
         raise HTTPException(403, "only admin / am can add clients")
     name = _clean(body.name)
@@ -616,7 +631,7 @@ async def create_client(body: ClientCreate,
 
 @router.get("/projects")
 async def list_projects(client_id: int | None = None, active: bool = True,
-                        user: dict = Depends(current_user), session=Depends(get_session)):
+                        user: dict = Depends(member), session=Depends(get_session)):
     q = select(Project)
     if client_id:
         q = q.where(Project.client_id == client_id)
@@ -629,7 +644,7 @@ async def list_projects(client_id: int | None = None, active: bool = True,
 
 @router.post("/projects", status_code=201)
 async def create_project(body: ProjectCreate,
-                         user: dict = Depends(current_user), session=Depends(get_session)):
+                         user: dict = Depends(member), session=Depends(get_session)):
     if user["role"] not in ("admin", "am"):
         raise HTTPException(403, "only admin / am can add projects")
     name = _clean(body.name)
@@ -649,13 +664,19 @@ async def create_project(body: ProjectCreate,
 
 # ── team ────────────────────────────────────────────────────────
 
+class TeamMemberCreate(BaseModel):
+    telegram_id: int
+    full_name: str
+    role: str = "smm"
+
+
 def _user_out(u):
     return {"id": u.id, "telegram_id": u.telegram_id, "full_name": u.full_name,
             "username": u.username, "role": u.role, "is_active": u.is_active}
 
 
 @router.get("/team")
-async def list_team(user: dict = Depends(current_user), session=Depends(get_session)):
+async def list_team(user: dict = Depends(member), session=Depends(get_session)):
     if user["role"] not in ("admin", "am"):
         raise HTTPException(403, "team list is for admin / am only")
     rows = (await session.execute(
@@ -667,7 +688,7 @@ async def list_team(user: dict = Depends(current_user), session=Depends(get_sess
 
 @router.patch("/team/{user_id}/role")
 async def set_team_role(user_id: int, body: TeamRolePatch,
-                        user: dict = Depends(current_user), session=Depends(get_session)):
+                        user: dict = Depends(member), session=Depends(get_session)):
     """Change a teammate's role. Caller must be admin (via init-data, no secret)."""
     if user["role"] != "admin":
         raise HTTPException(403, "only an admin can change roles")
@@ -685,6 +706,32 @@ async def set_team_role(user_id: int, body: TeamRolePatch,
     return _user_out(target)
 
 
+@router.post("/team", status_code=201)
+async def add_team_member(body: TeamMemberCreate,
+                          user: dict = Depends(member), session=Depends(get_session)):
+    """Add a teammate by Telegram ID so they get access. admin / am only."""
+    if user["role"] not in ("admin", "am"):
+        raise HTTPException(403, "only admin / am can add members")
+    if body.role not in USER_ROLES:
+        raise HTTPException(422, f"role must be one of {sorted(USER_ROLES)}")
+    exists = (await session.execute(
+        select(User).where(User.telegram_id == body.telegram_id)
+    )).scalar_one_or_none()
+    if exists:
+        raise HTTPException(409, "user with this Telegram ID already exists")
+    obj = User(
+        telegram_id=body.telegram_id,
+        full_name=_clean(body.full_name) or f"User {body.telegram_id}",
+        role=body.role,
+        is_active=True,
+    )
+    session.add(obj)
+    await session.commit()
+    await session.refresh(obj)
+    await _log(session, "user", "created", obj.id, user["id"], obj.full_name)
+    return _user_out(obj)
+
+
 # ── dashboard & activity ────────────────────────────────────────
 
 def _activity_out(a, name):
@@ -698,7 +745,7 @@ def _activity_out(a, name):
 
 @router.get("/activity")
 async def list_activity(limit: int = 20,
-                        user: dict = Depends(current_user), session=Depends(get_session)):
+                        user: dict = Depends(member), session=Depends(get_session)):
     limit = max(1, min(limit, 100))
     rows = (await session.execute(
         select(ActivityEvent)
@@ -710,7 +757,7 @@ async def list_activity(limit: int = 20,
 
 
 @router.get("/dashboard")
-async def dashboard(user: dict = Depends(current_user), session=Depends(get_session)):
+async def dashboard(user: dict = Depends(member), session=Depends(get_session)):
     if user["role"] not in ("admin", "am"):
         raise HTTPException(403, "dashboard is for admin / am only")
 

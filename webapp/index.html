@@ -52,16 +52,33 @@
   header{
     flex:0 0 auto;
     background:var(--bg);
-    padding:calc(14px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) 10px calc(16px + var(--safe-left, 0px));
+    padding:calc(6px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) 7px calc(16px + var(--safe-left, 0px));
     border-bottom:1px solid var(--sep);
-    display:flex; align-items:center; justify-content:space-between;
+    display:flex; align-items:center;
   }
-  header h1{font-size:18px; font-weight:700; margin:0}
-  header .sub{font-size:12px; color:var(--hint); margin-top:2px}
-  .refresh{
-    background:none; border:none; color:var(--link);
-    font-size:22px; padding:4px 6px; cursor:pointer; line-height:1;
+  header .who{font-size:13px; color:var(--hint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  header .who b{color:var(--text); font-weight:700; font-size:15px}
+
+  #ptr{
+    flex:0 0 auto; height:0; overflow:hidden;
+    display:flex; align-items:flex-end; justify-content:center;
+    color:var(--hint); font-size:18px;
   }
+  #ptr.anim{transition:height .2s}
+  #ptr.spin span{display:inline-block; animation:ptrspin .8s linear infinite}
+  @keyframes ptrspin{to{transform:rotate(360deg)}}
+
+  .no-access{text-align:center; padding:60px 24px}
+  .no-access .na-emoji{font-size:44px}
+  .no-access .na-title{font-size:19px; font-weight:700; margin:14px 0 6px}
+  .no-access .na-sub{color:var(--hint); font-size:14px; margin:0 0 16px}
+  .no-access .na-id{
+    font-size:22px; font-weight:800; letter-spacing:.5px;
+    background:var(--card); color:var(--text); border:1px solid var(--sep);
+    border-radius:12px; padding:12px 22px; cursor:pointer;
+  }
+  .no-access .na-hint{color:var(--hint); font-size:12px; margin-top:8px}
+
   main#view{
     flex:1 1 auto; min-height:0;
     overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
@@ -273,11 +290,8 @@
 </head>
 <body>
 <header>
-  <div>
-    <h1 id="screenTitle">Главная</h1>
-    <div class="sub" id="whoami">…</div>
-  </div>
-  <button class="refresh" id="refreshBtn" aria-label="Обновить">⟳</button>
+  <span id="screenTitle" hidden></span>
+  <span class="who"><b id="screenLabel">Главная</b><span id="whoami"></span></span>
 </header>
 
 <div id="installBanner" hidden>
@@ -286,6 +300,7 @@
   <button id="installClose" aria-label="Закрыть">×</button>
 </div>
 
+<div id="ptr"><span>⟳</span></div>
 <main id="view"><div class="loader">Загрузка…</div></main>
 
 <nav>
@@ -494,8 +509,12 @@ async function api(path, opts){
   let data = null;
   try { data = await res.json(); } catch(e){}
   if (!res.ok){
-    const msg = (data && (data.detail || data.message)) || ("Ошибка " + res.status);
-    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    const d = data && data.detail;
+    const msg = (d && (typeof d === "string" ? d : d.message)) || (data && data.message) || ("Ошибка " + res.status);
+    const err = new Error(msg);
+    err.status = res.status;
+    err.detail = d;
+    throw err;
   }
   return data;
 }
@@ -836,38 +855,58 @@ const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, b
 
 function setWhoami(u){
   const el = document.getElementById("whoami");
-  if(!u){ el.textContent = INIT_DATA ? "" : "dev-режим"; return; }
-  const bits = [u.full_name || "—"];
+  if(!u){ el.textContent = ""; return; }
+  const bits = [];
   if (u.role) bits.push(u.role);
-  if (!u.registered) bits.push("не зарегистрирован");
-  el.textContent = bits.join(" · ");
+  el.textContent = bits.length ? " · " + bits.join(" · ") : "";
 }
 
 // which FORMS entry the "+" button opens for the current view
 function activeFormKey(){
-  if (currentTab === "team") return teamSub === "clients" ? "clients" : null;
+  if (currentTab === "team") return teamSub === "clients" ? "clients" : "team";
+  if (currentTab === "dash") return null;
   return currentTab;
 }
+let accessDenied = false;
 function updateFab(){
   const key = activeFormKey();
-  let show = !!(key && FORMS[key]);
-  if (key === "clients") show = show && isManager();
+  let show = !accessDenied && !!(key && FORMS[key]);
+  if (key === "clients" || key === "team") show = show && isManager();
   document.getElementById("fab").style.display = show ? "" : "none";
 }
 
 async function load(tab){
   currentTab = tab;
   screenTitle.textContent = TITLES[tab];
+  document.getElementById("screenLabel").textContent = TITLES[tab];
   document.querySelectorAll("nav button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
   updateFab();
   view.innerHTML = `<div class="loader">Загрузка…</div>`;
   try {
     await RENDERERS[tab]();
+    accessDenied = false;
   } catch (e){
-    view.innerHTML = `<div class="err">${esc(e.message || "Не удалось загрузить")}</div>`;
+    if (e && e.detail && e.detail.code === "not_registered"){
+      accessDenied = true;
+      view.innerHTML = noAccessScreen(e.detail);
+    } else {
+      view.innerHTML = `<div class="err">${esc(e.message || "Не удалось загрузить")}</div>`;
+    }
   }
   updateFab();
+}
+
+function noAccessScreen(d){
+  const tgid = d && d.telegram_id ? String(d.telegram_id) : "—";
+  return `
+  <div class="no-access">
+    <div class="na-emoji">🔒</div>
+    <p class="na-title">Доступ закрыт</p>
+    <p class="na-sub">Приложение только для команды. Передай администратору свой Telegram ID:</p>
+    <button class="na-id" id="naCopy">${esc(tgid)}</button>
+    <p class="na-hint">Нажми, чтобы скопировать</p>
+  </div>`;
 }
 
 /* ── events ──────────────────────────────────────────────── */
@@ -876,9 +915,16 @@ document.querySelector("nav").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]");
   if (b) { haptic(); load(b.dataset.tab); }
 });
-document.getElementById("refreshBtn").addEventListener("click", () => { haptic(); load(currentTab); });
 
 view.addEventListener("click", async e => {
+  const naCopy = e.target.closest("#naCopy");
+  if (naCopy){
+    const t = naCopy.textContent.trim();
+    try { await navigator.clipboard.writeText(t); } catch(err){}
+    haptic(); toast("ID скопирован");
+    return;
+  }
+
   const scopeBtn = e.target.closest("[data-scope]");
   if (scopeBtn){
     if (scopeBtn.dataset.scope !== homeScope){ homeScope = scopeBtn.dataset.scope; haptic(); load("home"); }
@@ -1054,6 +1100,17 @@ const FORMS = {
       { name:"notes",   label:"Заметки",   type:"textarea" },
     ],
   },
+  team: {
+    title: "Добавить в команду", endpoint: "/api/team",
+    fields: [
+      { name:"telegram_id", label:"Telegram ID", type:"number", required:true, coerce:"int" },
+      { name:"full_name",   label:"Имя",         type:"text",   required:true },
+      { name:"role",        label:"Роль",        type:"select", value:"smm",
+        options:[["admin","Админ"],["am","AM"],["producer","Продюсер"],["smm","SMM"],
+                 ["photographer","Фотограф"],["editor","Монтажёр"],["designer","Дизайнер"],
+                 ["copywriter","Копирайтер"],["intern","Стажёр"]] },
+    ],
+  },
 };
 
 const sheet = document.getElementById("sheet");
@@ -1188,6 +1245,49 @@ async function submitForm(){
 document.getElementById("fab").addEventListener("click", () => { haptic(); openSheet(); });
 sheetBackdrop.addEventListener("click", closeSheet);
 formSubmit.addEventListener("click", submitForm);
+
+/* ── pull-to-refresh (like YouTube) ─────────────────────── */
+(function pullToRefresh(){
+  const ptr = document.getElementById("ptr");
+  const MAX = 72, TRIGGER = 56;
+  let y0 = 0, active = false, dist = 0;
+
+  view.addEventListener("touchstart", (e) => {
+    if (view.scrollTop <= 0 && !busy && e.touches.length === 1){
+      y0 = e.touches[0].clientY; active = true; dist = 0;
+      ptr.classList.remove("anim");
+    }
+  }, {passive:true});
+
+  view.addEventListener("touchmove", (e) => {
+    if (!active) return;
+    dist = e.touches[0].clientY - y0;
+    if (dist <= 0){ ptr.style.height = "0px"; return; }
+    const h = Math.min(dist * 0.5, MAX);
+    ptr.style.height = h + "px";
+    ptr.querySelector("span").style.opacity = Math.min(h / TRIGGER, 1);
+  }, {passive:true});
+
+  async function end(){
+    if (!active) return;
+    active = false;
+    ptr.classList.add("anim");
+    if (dist * 0.5 >= TRIGGER){
+      ptr.style.height = "40px";
+      ptr.classList.add("spin");
+      haptic("light");
+      try { await load(currentTab); } finally {
+        ptr.classList.remove("spin");
+        ptr.style.height = "0px";
+      }
+    } else {
+      ptr.style.height = "0px";
+    }
+    dist = 0;
+  }
+  view.addEventListener("touchend", end, {passive:true});
+  view.addEventListener("touchcancel", end, {passive:true});
+})();
 
 load("home");
 </script>
