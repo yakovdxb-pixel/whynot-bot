@@ -219,11 +219,18 @@
   .act-row:last-child{border-bottom:none}
   .act-row .ago{color:var(--hint); font-size:11px; margin-left:4px}
 
+  .tc-controls{display:flex; gap:8px; margin-top:10px; align-items:center}
   .role-select{
-    width:100%; margin-top:10px; font:14px inherit; color:var(--text);
+    flex:1 1 auto; font:14px inherit; color:var(--text);
     background:var(--bg); border:1px solid var(--sep); border-radius:9px;
     padding:8px 10px; -webkit-appearance:none; appearance:none;
   }
+  .tc-del{
+    flex:0 0 auto; border:1px solid color-mix(in srgb, var(--st-overdue) 45%, transparent);
+    background:transparent; color:var(--st-overdue); border-radius:9px;
+    padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .tc-del[disabled]{opacity:.5}
 
   #installBanner{
     display:flex; align-items:center; gap:10px;
@@ -698,11 +705,15 @@ async function renderBlockers(){
 function teamCard(u, isAdmin){
   const label = ROLE_LABELS[u.role] || u.role;
   const color = ROLE_COLORS[u.role] || "#8a8a8e";
-  const picker = isAdmin ? `
-    <select class="role-select" data-user="${u.id}">
-      ${Object.keys(ROLE_LABELS).map(r =>
-        `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r]}</option>`).join("")}
-    </select>` : "";
+  const self = ME && u.id === ME.id;
+  const controls = isAdmin ? `
+    <div class="tc-controls">
+      <select class="role-select" data-user="${u.id}"${self ? " disabled" : ""}>
+        ${Object.keys(ROLE_LABELS).map(r =>
+          `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r]}</option>`).join("")}
+      </select>
+      ${self ? "" : `<button class="tc-del" data-remove-user="${u.id}" data-name="${esc(u.full_name || "")}">Удалить</button>`}
+    </div>` : "";
   return `
   <div class="card">
     <div class="row">
@@ -711,9 +722,9 @@ function teamCard(u, isAdmin){
     </div>
     <div class="meta">
       ${u.username ? `<span>@${esc(u.username)}</span>` : ""}
-      ${u.is_active === false ? `<span>неактивен</span>` : ""}
+      ${u.telegram_id ? `<span>ID ${esc(String(u.telegram_id))}</span>` : ""}
     </div>
-    ${picker}
+    ${controls}
   </div>`;
 }
 
@@ -953,6 +964,28 @@ view.addEventListener("click", async e => {
     if (subBtn.dataset.teamsub !== teamSub){
       teamSub = subBtn.dataset.teamsub; expandedClient = null; haptic(); load("team");
     }
+    return;
+  }
+
+  const delUser = e.target.closest("[data-remove-user]");
+  if (delUser){
+    if (busy) return;
+    const name = delUser.dataset.name || "этого человека";
+    const ok = await new Promise(res => {
+      const q = `Убрать «${name}» из команды? Доступ пропадёт.`;
+      if (tg && tg.initData && tg.showConfirm){
+        try { tg.showConfirm(q, v => res(!!v)); return; } catch(e){}
+      }
+      res(window.confirm(q));
+    });
+    if (!ok) return;
+    busy = true; delUser.disabled = true; delUser.textContent = "…";
+    try {
+      await api(`/api/team/${delUser.dataset.removeUser}`, {method:"DELETE"});
+      haptic("medium"); toast("Удалён");
+      await load("team");
+    } catch(err){ toast(err.message); delUser.disabled = false; delUser.textContent = "Удалить"; }
+    finally { busy = false; }
     return;
   }
 

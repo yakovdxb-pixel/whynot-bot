@@ -111,7 +111,7 @@ async def current_user(request: Request, session=Depends(get_session)) -> dict:
         row = (await session.execute(
             select(User).where(User.telegram_id == tg_id)
         )).scalar_one_or_none()
-        if row:
+        if row and row.is_active:
             return {"id": row.id, "telegram_id": tg_id,
                     "full_name": row.full_name, "role": row.role, "registered": True}
         name = " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")]))
@@ -717,8 +717,16 @@ async def add_team_member(body: TeamMemberCreate,
     exists = (await session.execute(
         select(User).where(User.telegram_id == body.telegram_id)
     )).scalar_one_or_none()
-    if exists:
+    if exists and exists.is_active:
         raise HTTPException(409, "user with this Telegram ID already exists")
+    if exists:  # was removed earlier — re-activate
+        exists.is_active = True
+        exists.role = body.role
+        exists.full_name = _clean(body.full_name) or exists.full_name
+        exists.updated_at = _now()
+        await session.commit()
+        await session.refresh(exists)
+        return _user_out(exists)
     obj = User(
         telegram_id=body.telegram_id,
         full_name=_clean(body.full_name) or f"User {body.telegram_id}",
@@ -730,6 +738,26 @@ async def add_team_member(body: TeamMemberCreate,
     await session.refresh(obj)
     await _log(session, "user", "created", obj.id, user["id"], obj.full_name)
     return _user_out(obj)
+
+
+@router.delete("/team/{user_id}")
+async def remove_team_member(user_id: int,
+                             user: dict = Depends(member), session=Depends(get_session)):
+    """Revoke a teammate's access (soft delete). admin only."""
+    if user["role"] != "admin":
+        raise HTTPException(403, "only an admin can remove members")
+    if user_id == user["id"]:
+        raise HTTPException(400, "нельзя удалить себя")
+    target = (await session.execute(
+        select(User).where(User.id == user_id)
+    )).scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "user not found")
+    target.is_active = False
+    target.updated_at = _now()
+    await session.commit()
+    await _log(session, "user", "deleted", user_id, user["id"], target.full_name)
+    return {"ok": True, "id": user_id}
 
 
 # ── dashboard & activity ────────────────────────────────────────
