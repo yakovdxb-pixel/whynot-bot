@@ -2030,16 +2030,23 @@ function renderPendingRefs(box){
   list.innerHTML = pendingRefs.map((r, i) =>
     `<div class="rf-item"><span class="rf-t">${r.kind === "link" ? "🔗 " + esc(r.url) : "📎 " + esc(r.file.name)}</span><button type="button" data-rfi="${i}">✕</button></div>`).join("");
 }
+function commitPendingUrl(box){
+  const inp = box && box.querySelector(".rf-url");
+  if (!inp) return;
+  let u = (inp.value || "").trim();
+  if (!u) return;
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  pendingRefs.push({ kind: "link", url: u });
+  inp.value = "";
+  renderPendingRefs(box);
+}
 function wirePendingRefs(box){
   renderPendingRefs(box);
-  box.querySelector(".rf-add-link").addEventListener("click", () => {
-    const inp = box.querySelector(".rf-url");
-    let u = (inp.value || "").trim();
-    if (!u) return;
-    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
-    pendingRefs.push({ kind: "link", url: u });
-    inp.value = ""; haptic(); renderPendingRefs(box);
+  const url = box.querySelector(".rf-url");
+  url.addEventListener("keydown", e => {
+    if (e.key === "Enter"){ e.preventDefault(); commitPendingUrl(box); haptic(); }
   });
+  url.addEventListener("blur", () => commitPendingUrl(box));
   box.querySelector(".rf-add-file").addEventListener("click", () => box.querySelector(".rf-file").click());
   box.querySelector(".rf-file").addEventListener("change", e => {
     const f = e.target.files && e.target.files[0];
@@ -2117,10 +2124,7 @@ async function openSheet(){
     } else if (f.type === "refs"){
       control = `<div class="refs-field" id="${id}">
         <div class="rf-list"></div>
-        <div class="rf-row">
-          <input type="url" class="rf-url" placeholder="https://…">
-          <button type="button" class="act ghost rf-add-link">＋</button>
-        </div>
+        <input type="url" class="rf-url" placeholder="https://…  (${esc(t("refsheet.addLink"))})">
         <div class="rf-actions">
           <button type="button" class="act ghost rf-add-file">${esc(t("btn.attachFile"))}</button>
         </div>
@@ -2206,6 +2210,7 @@ async function submitForm(){
     }
   }
   if (!valid){ setFormError(t("toast.fillRequired")); return; }
+  if (!isEdit) commitPendingUrl(formFields.querySelector(".refs-field"));
 
   busy = true;
   formSubmit.disabled = true; formSubmit.textContent = t("btn.saving");
