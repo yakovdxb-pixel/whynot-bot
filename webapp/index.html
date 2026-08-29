@@ -62,14 +62,18 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
   #brandbar b{color:var(--text); font-weight:700; font-size:15px}
+  #whoami:not(:empty)::before{content:" · "; color:var(--hint)}
 
   html.fs #brandbar{
     position:fixed; left:50%; transform:translateX(-50%);
-    top:calc(var(--sa-top, 0px) + 3px);
+    top:calc(var(--sa-top, 0px) + 1px);
     padding:0; border:none; background:transparent; z-index:40;
-    max-width:52vw; pointer-events:none; text-align:center;
+    max-width:60vw; pointer-events:none;
+    display:flex; flex-direction:column; align-items:center; line-height:1.15;
   }
   html.fs #brandbar b{font-size:13px}
+  html.fs #whoami{font-size:10px; color:var(--hint); text-transform:lowercase}
+  html.fs #whoami::before{content:none}
 
   #ptr{
     flex:0 0 auto; height:0; overflow:hidden;
@@ -871,11 +875,7 @@ function statCard(n, label){
 const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, team:renderTeam, dash:renderDashboard };
 
 function setWhoami(u){
-  const el = document.getElementById("whoami");
-  if(!u){ el.textContent = ""; return; }
-  const bits = [];
-  if (u.role) bits.push(u.role);
-  el.textContent = bits.length ? " · " + bits.join(" · ") : "";
+  document.getElementById("whoami").textContent = (u && u.role) ? u.role : "";
 }
 
 // which FORMS entry the "+" button opens for the current view
