@@ -193,6 +193,17 @@ class ContentItem(Base):
     created_at       = Column(DateTime(timezone=True), server_default=text('NOW()'))
     updated_at       = Column(DateTime(timezone=True), server_default=text('NOW()'))
 
+    # content-plan fields (added 2026-08-30 via _MIGRATIONS — ADD COLUMN IF NOT EXISTS)
+    rubric           = Column(Text)
+    platform         = Column(Text)                 # instagram | tiktok | youtube | telegram | ...
+    publish_at       = Column(DateTime(timezone=True))   # date + time; publish_date kept for back-compat
+    hook             = Column(Text)
+    script           = Column(Text)
+    caption          = Column(Text)
+    hashtags         = Column(Text)
+    smm_id           = Column(Integer, ForeignKey('users.id'))
+    copywriter_id    = Column(Integer, ForeignKey('users.id'))
+
     __table_args__ = (
         UniqueConstraint('client_id', 'number', name='uq_content_client_number'),
     )
@@ -435,9 +446,75 @@ class ReferenceItem(Base):
     )
 
 
+class ProjectChat(Base):
+    """Binds a project to a Telegram chat (and optional forum topic) for notifications."""
+    __tablename__ = 'project_chats'
+
+    id         = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey('projects.id', ondelete='CASCADE'), nullable=False)
+    chat_id    = Column(BigInteger, nullable=False)
+    thread_id  = Column(Integer)                       # forum topic message_thread_id, NULL = whole chat
+    title      = Column(Text)                          # topic / chat name, for display
+    bound_by   = Column(Integer, ForeignKey('users.id'))
+    created_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
+
+    __table_args__ = (
+        UniqueConstraint('chat_id', 'thread_id', name='uq_project_chat_location'),
+        Index('idx_project_chat_project', 'project_id'),
+    )
+
+
+class ShootSession(Base):
+    __tablename__ = 'shoot_sessions'
+
+    id         = Column(Integer, primary_key=True)
+    title      = Column(Text, nullable=False)
+    shoot_at   = Column(DateTime(timezone=True))       # date + time
+    location   = Column(Text)
+    client_id  = Column(Integer, ForeignKey('clients.id', ondelete='SET NULL'))
+    project_id = Column(Integer, ForeignKey('projects.id', ondelete='SET NULL'))
+    status     = Column(Text, default='planned')       # planned | done | cancelled
+    notes      = Column(Text)
+    created_by = Column(Integer, ForeignKey('users.id'))
+    created_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
+    updated_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
+
+    __table_args__ = (
+        Index('idx_shoot_at', 'shoot_at'),
+    )
+
+
+class ShootParticipant(Base):
+    __tablename__ = 'shoot_participants'
+
+    id       = Column(Integer, primary_key=True)
+    shoot_id = Column(Integer, ForeignKey('shoot_sessions.id', ondelete='CASCADE'), nullable=False)
+    user_id  = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    role     = Column(Text)                            # free-text on-set role, optional
+
+    __table_args__ = (
+        UniqueConstraint('shoot_id', 'user_id', name='uq_shoot_participant'),
+        Index('idx_shoot_participant_user', 'user_id'),
+    )
+
+
 # ─────────────────────────────────────────────
 # DB INIT
 # ─────────────────────────────────────────────
+
+# Idempotent column additions for existing tables (create_all only makes new tables).
+_MIGRATIONS = [
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS rubric TEXT",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS platform TEXT",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS hook TEXT",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS script TEXT",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS caption TEXT",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS hashtags TEXT",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS smm_id INTEGER REFERENCES users(id)",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS copywriter_id INTEGER REFERENCES users(id)",
+]
+
 
 async def init_db():
     """Create all tables. Run once on startup."""
@@ -455,6 +532,11 @@ async def init_db():
                 f"EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
             ))
         await conn.run_sync(Base.metadata.create_all)
+        for ddl in _MIGRATIONS:
+            try:
+                await conn.execute(text(ddl))
+            except Exception as e:  # noqa: BLE001 — never let a migration crash startup
+                print(f"⚠️ migration skipped: {ddl!r} -> {e}")
 
 
 async def get_db():
