@@ -401,6 +401,40 @@ class Setting(Base):
     )
 
 
+class TaskAssignee(Base):
+    __tablename__ = 'task_assignees'
+
+    id      = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey('tasks.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('task_id', 'user_id', name='uq_task_assignee'),
+        Index('idx_task_assignee_user', 'user_id'),
+    )
+
+
+class ReferenceItem(Base):
+    __tablename__ = 'reference_items'
+
+    id         = Column(Integer, primary_key=True)
+    task_id    = Column(Integer, ForeignKey('tasks.id', ondelete='CASCADE'))
+    content_id = Column(Integer, ForeignKey('content_items.id', ondelete='CASCADE'))
+    kind       = Column(Text, nullable=False)          # 'link' | 'file'
+    url        = Column(Text)                          # links
+    title      = Column(Text)
+    tg_file_id = Column(Text)                          # files (stored on Telegram)
+    file_name  = Column(Text)
+    mime       = Column(Text)
+    added_by   = Column(Integer, ForeignKey('users.id'))
+    created_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
+
+    __table_args__ = (
+        Index('idx_ref_task', 'task_id'),
+        Index('idx_ref_content', 'content_id'),
+    )
+
+
 # ─────────────────────────────────────────────
 # DB INIT
 # ─────────────────────────────────────────────

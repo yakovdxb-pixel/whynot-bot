@@ -6,3 +6,4 @@ asyncpg==0.30.0
 alembic==1.14.0
 httpx==0.28.0
 pydantic==2.10.0
+python-multipart==0.0.18

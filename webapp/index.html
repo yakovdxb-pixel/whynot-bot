@@ -230,6 +230,41 @@
   #memberSheet #memberDelete{color:var(--st-overdue); border-color:color-mix(in srgb, var(--st-overdue) 45%, transparent)}
   #memberSheet #memberDelete[hidden]{display:none}
 
+  /* multi-assignee picker */
+  .mpick{display:flex; flex-wrap:wrap; gap:7px}
+  .mp-opt{
+    border:1px solid var(--sep); background:transparent; color:var(--text);
+    border-radius:999px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .mp-opt.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+
+  /* references */
+  .ref-open{
+    margin-top:10px; width:100%; border:1px dashed var(--sep); background:transparent;
+    color:var(--hint); border-radius:10px; padding:8px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  #refSheet #refList{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
+  #refSheet #refList:empty{display:none}
+  .ref-item{
+    display:flex; align-items:center; gap:10px;
+    background:var(--card); border-radius:10px; padding:10px 12px;
+  }
+  .ref-item .ri-main{flex:1 1 auto; min-width:0; overflow:hidden}
+  .ref-item .ri-main a{color:var(--link); text-decoration:none; word-break:break-all}
+  .ref-item .ri-name{color:var(--text); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .ref-item .ri-sub{color:var(--hint); font-size:11px; margin-top:2px}
+  .ref-item img.ri-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; flex:0 0 auto}
+  .ref-item .ri-del{flex:0 0 auto; background:none; border:none; color:var(--st-overdue); font-size:16px; cursor:pointer; padding:4px}
+  #refSheet input{
+    width:100%; font:15px inherit; color:var(--text);
+    background:var(--card); border:1px solid var(--sep); border-radius:10px;
+    padding:10px 12px; outline:none;
+  }
+  #refSheet input:focus{border-color:var(--link)}
+  #refSheet #refLinkForm[hidden]{display:none}
+  .ref-actions{display:flex; gap:8px}
+  .ref-actions .act{flex:1}
+
   #installBanner{
     display:flex; align-items:center; gap:10px;
     background:#6c5ce7; color:#fff;
@@ -363,6 +398,23 @@
   <div class="field"><label>Роль</label><select id="memberRole"></select></div>
   <button class="submit" id="memberSave">Сохранить</button>
   <button class="act ghost" id="memberDelete" style="margin-top:10px">Удалить из команды</button>
+</div>
+
+<div class="sheet-backdrop" id="refBackdrop"></div>
+<div class="sheet" id="refSheet" role="dialog" aria-modal="true">
+  <div class="sheet-head"><div class="grabber"></div><button class="sheet-x" id="refClose" aria-label="Закрыть">✕</button></div>
+  <h2>Референсы</h2>
+  <div id="refList"></div>
+  <div id="refLinkForm" hidden>
+    <div class="field"><label>Ссылка</label><input id="refUrl" type="url" placeholder="https://..."></div>
+    <div class="field"><label>Название (необяз.)</label><input id="refTitle" type="text"></div>
+    <button class="submit" id="refLinkSave">Добавить ссылку</button>
+  </div>
+  <div class="ref-actions">
+    <button class="act ghost" id="refAddLink">＋ Ссылка</button>
+    <button class="act ghost" id="refAddFile">＋ Файл</button>
+    <input type="file" id="refFileInput" hidden>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -579,9 +631,16 @@ function deadlineMeta(v){
   return f ? `⏰ ${f}` : "⏰ без срока";
 }
 
+function assigneesLabel(t){
+  const names = (t.assignees || []).map(a => a.name).filter(Boolean);
+  if (names.length) return "👤 " + esc(names.join(", "));
+  return t.assignee_name ? "👤 " + esc(t.assignee_name) : "";
+}
+
 function taskCard(t){
   const st = t.status || "pending";
   const next = TASK_NEXT[st];
+  const who = assigneesLabel(t);
   return `
   <div class="card" data-task="${t.id}">
     <div class="row">
@@ -591,9 +650,10 @@ function taskCard(t){
     ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ""}
     <div class="meta">
       <span>${deadlineMeta(t.deadline)}</span>
-      ${t.assignee_name ? `<span>👤 ${esc(t.assignee_name)}</span>` : ""}
+      ${who ? `<span>${who}</span>` : ""}
       ${t.priority && t.priority !== "normal" ? `<span>❗ ${esc(t.priority)}</span>` : ""}
     </div>
+    <button class="ref-open" data-refs="task:${t.id}">📎 Референсы${t.refs_count ? " · " + t.refs_count : ""}</button>
     ${next
       ? `<button class="act" data-task-to="${next.to}" data-task-id="${t.id}">${next.label}</button>`
       : st === "done" ? `<div class="done-mark">✅ Выполнено</div>` : ""}
@@ -664,6 +724,7 @@ function contentCard(c, {advance=true}={}){
       ${c.publish_date ? `<span>📅 ${esc(fmtDate(c.publish_date))}</span>` : ""}
       ${c.client_approved ? `<span>✅ клиент</span>` : ""}
     </div>
+    <button class="ref-open" data-refs="content:${c.id}">📎 Референсы${c.refs_count ? " · " + c.refs_count : ""}</button>
     ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">Продвинуть →</button>` : ""}
     ${advance && isFinal ? `<button class="act ghost" disabled>Финальный этап</button>` : ""}
   </div>`;
@@ -986,6 +1047,14 @@ view.addEventListener("click", async e => {
     return;
   }
 
+  const refBtn = e.target.closest("[data-refs]");
+  if (refBtn){
+    const [kind, id] = refBtn.dataset.refs.split(":");
+    haptic();
+    openRefSheet(kind, +id);
+    return;
+  }
+
   const cfilterBtn = e.target.closest("[data-cfilter]");
   if (cfilterBtn){
     const v = cfilterBtn.dataset.cfilter;
@@ -1148,6 +1217,129 @@ memberBackdrop.addEventListener("click", closeMemberSheet);
 document.getElementById("memberClose").addEventListener("click", closeMemberSheet);
 memberSheet.querySelector(".grabber").addEventListener("click", closeMemberSheet);
 
+/* ── references sheet ─────────────────────────────────────── */
+const refSheet = document.getElementById("refSheet");
+const refBackdrop = document.getElementById("refBackdrop");
+let refScope = null;
+
+function closeRefSheet(){
+  refSheet.classList.remove("open");
+  refBackdrop.classList.remove("open");
+  document.getElementById("refLinkForm").hidden = true;
+  refScope = null;
+  sheetBackOff();
+}
+function refQuery(){
+  return (refScope.kind === "task" ? "task_id=" : "content_id=") + refScope.id;
+}
+function refFileUrl(r){
+  return r.download ? r.download + "?ia=" + encodeURIComponent(INIT_DATA) : "";
+}
+function refItemHtml(r){
+  const isImg = r.mime && r.mime.indexOf("image/") === 0;
+  const url = r.kind === "file" ? refFileUrl(r) : r.url;
+  const label = r.kind === "file" ? (r.file_name || "файл") : (r.title || r.url);
+  const thumb = (r.kind === "file" && isImg) ? `<img class="ri-thumb" src="${esc(url)}" alt="">` : "";
+  return `<div class="ref-item" data-ref="${r.id}">
+    ${thumb}
+    <div class="ri-main">
+      <div class="ri-name"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a></div>
+      ${r.added_by_name ? `<div class="ri-sub">${esc(r.added_by_name)}</div>` : ""}
+    </div>
+    <button class="ri-del" data-ref-del="${r.id}" aria-label="Удалить">✕</button>
+  </div>`;
+}
+async function renderRefList(){
+  const list = document.getElementById("refList");
+  list.innerHTML = `<div class="hint">Загрузка…</div>`;
+  try {
+    const refs = await api("/api/references?" + refQuery());
+    list.innerHTML = refs.length ? refs.map(refItemHtml).join("") : `<div class="hint">Пока пусто</div>`;
+  } catch(e){ list.innerHTML = `<div class="err">${esc(e.message || "Ошибка")}</div>`; }
+}
+async function openRefSheet(kind, id){
+  refScope = { kind, id };
+  document.getElementById("refLinkForm").hidden = true;
+  document.getElementById("refUrl").value = "";
+  document.getElementById("refTitle").value = "";
+  refBackdrop.classList.add("open");
+  refSheet.classList.add("open");
+  sheetBackOn(closeRefSheet);
+  await renderRefList();
+}
+function bumpRefCount(delta){
+  const card = refScope && document.querySelector(`[data-refs="${refScope.kind}:${refScope.id}"]`);
+  if (!card) return;
+  const m = card.textContent.match(/·\s*(\d+)/);
+  const n = Math.max(0, (m ? +m[1] : 0) + (delta == null ? 1 : delta));
+  card.textContent = "📎 Референсы" + (n ? " · " + n : "");
+}
+
+document.getElementById("refClose").addEventListener("click", closeRefSheet);
+refBackdrop.addEventListener("click", closeRefSheet);
+refSheet.querySelector(".grabber").addEventListener("click", closeRefSheet);
+
+document.getElementById("refAddLink").addEventListener("click", () => {
+  const f = document.getElementById("refLinkForm");
+  f.hidden = !f.hidden;
+  if (!f.hidden) document.getElementById("refUrl").focus();
+});
+document.getElementById("refLinkSave").addEventListener("click", async () => {
+  if (busy || !refScope) return;
+  const url = document.getElementById("refUrl").value.trim();
+  if (!url){ toast("Вставь ссылку"); return; }
+  const title = document.getElementById("refTitle").value.trim();
+  const btn = document.getElementById("refLinkSave");
+  busy = true; btn.disabled = true;
+  try {
+    const body = { url };
+    if (title) body.title = title;
+    body[refScope.kind === "task" ? "task_id" : "content_id"] = refScope.id;
+    await api("/api/references", { method:"POST", body });
+    haptic("medium"); toast("Добавлено");
+    document.getElementById("refLinkForm").hidden = true;
+    await renderRefList(); bumpRefCount();
+  } catch(e){ toast(e.message); }
+  finally { busy = false; btn.disabled = false; }
+});
+document.getElementById("refAddFile").addEventListener("click", () => document.getElementById("refFileInput").click());
+document.getElementById("refFileInput").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file || busy || !refScope) return;
+  if (file.size > 20 * 1024 * 1024){ toast("Файл больше 20 МБ"); return; }
+  busy = true; toast("Загрузка…");
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append(refScope.kind === "task" ? "task_id" : "content_id", String(refScope.id));
+    const res = await fetch("/api/references/upload", {
+      method:"POST",
+      headers:{ "X-Init-Data": INIT_DATA, "X-Telegram-Init-Data": INIT_DATA },
+      body: fd,
+    });
+    if (!res.ok){
+      const j = await res.json().catch(() => ({}));
+      throw new Error((j.detail && (j.detail.message || j.detail)) || ("Ошибка " + res.status));
+    }
+    haptic("medium"); toast("Файл добавлен");
+    await renderRefList(); bumpRefCount();
+  } catch(err){ toast(err.message); }
+  finally { busy = false; }
+});
+document.getElementById("refList").addEventListener("click", async e => {
+  const del = e.target.closest("[data-ref-del]");
+  if (!del || busy) return;
+  e.preventDefault();
+  if (!(await askConfirm("Удалить референс?"))) return;
+  busy = true;
+  try {
+    await api("/api/references/" + del.dataset.refDel, { method:"DELETE" });
+    haptic(); await renderRefList(); bumpRefCount(-1);
+  } catch(err){ toast(err.message); }
+  finally { busy = false; }
+});
+
 /* ── creation forms (bottom-sheet) ───────────────────────── */
 
 const FORMS = {
@@ -1159,8 +1351,7 @@ const FORMS = {
       { name:"priority",     label:"Приоритет", type:"select", value:"normal",
         options:[["normal","Обычный"],["high","Высокий"],["urgent","Срочный"]] },
       { name:"deadline",     label:"Дедлайн",   type:"date" },
-      { name:"assignee_id",  label:"Исполнитель", type:"select", value:"", coerce:"int",
-        dynamic:"team", options:[["","Не назначено"]] },
+      { name:"assignee_ids", label:"Исполнители", type:"mpick", dynamic:"members" },
       { name:"client_id",    label:"Клиент (необяз.)", type:"select", value:"", coerce:"int",
         dynamic:"clients", options:[["","—"]] },
       { name:"project_id",   label:"Проект (необяз.)", type:"select", value:"", coerce:"int",
@@ -1237,7 +1428,22 @@ function _baseOptions(f){
     `<option value="${esc(v)}"${v === (f.value ?? "") ? " selected" : ""}>${esc(l)}</option>`).join("");
 }
 
+async function fillMpick(f){
+  const box = document.getElementById("f_" + f.name);
+  if (!box) return;
+  box.innerHTML = `<div class="hint">Загрузка…</div>`;
+  try {
+    const list = await api("/api/members");
+    box.innerHTML = list.length
+      ? list.map(u => `<button type="button" class="mp-opt" data-id="${u.id}">${esc(u.full_name)}</button>`).join("")
+      : `<div class="hint">Нет участников</div>`;
+  } catch(e){
+    box.innerHTML = `<div class="hint">${esc(e.message || "недоступно")}</div>`;
+  }
+}
+
 async function fillDynamic(f){
+  if (f.type === "mpick"){ await fillMpick(f); return; }
   const sel = document.getElementById("f_" + f.name);
   if (!sel) return;
   const keep = sel.value;
@@ -1282,6 +1488,8 @@ async function openSheet(){
       control = `<textarea id="${id}"></textarea>`;
     } else if (f.type === "select"){
       control = `<select id="${id}">${_baseOptions(f)}</select>`;
+    } else if (f.type === "mpick"){
+      control = `<div class="mpick" id="${id}"></div>`;
     } else {
       const t = f.type === "number" ? "number" : (f.type === "date" ? "date" : "text");
       control = `<input id="${id}" type="${t}"${f.type === "number" ? ' inputmode="numeric"' : ""}>`;
@@ -1321,6 +1529,11 @@ async function submitForm(){
   formFields.querySelectorAll(".field").forEach(w => w.classList.remove("bad"));
   for (const f of cfg.fields){
     const el = document.getElementById("f_" + f.name);
+    if (f.type === "mpick"){
+      const ids = [...el.querySelectorAll(".mp-opt.on")].map(b => +b.dataset.id);
+      if (ids.length) body[f.name] = ids;
+      continue;
+    }
     const raw = (el.value || "").trim();
     if (f.required && !raw){
       el.closest(".field").classList.add("bad"); valid = false; continue;
@@ -1357,6 +1570,10 @@ sheetBackdrop.addEventListener("click", closeSheet);
 document.getElementById("sheetClose").addEventListener("click", closeSheet);
 sheet.querySelector(".grabber").addEventListener("click", closeSheet);
 formSubmit.addEventListener("click", submitForm);
+formFields.addEventListener("click", e => {
+  const opt = e.target.closest(".mp-opt");
+  if (opt){ opt.classList.toggle("on"); haptic(); }
+});
 
 /* ── pull-to-refresh (like YouTube) ─────────────────────── */
 (function pullToRefresh(){

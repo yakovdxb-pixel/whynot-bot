@@ -13,14 +13,16 @@ from decimal import Decimal
 from urllib.parse import unquote
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
+                     HTTPException, Request, UploadFile)
+from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, delete as sa_delete
 from sqlalchemy.exc import IntegrityError
 
 from db.models import (
     AsyncSessionLocal, User, Task, ContentItem, Idea, IdeaVote, Blocker,
-    Client, Project, ActivityEvent,
+    Client, Project, ActivityEvent, TaskAssignee, ReferenceItem,
     PIPELINE_SEQUENCE, task_status_enum, user_role_enum,
     content_format_enum, task_priority_enum,
 )
@@ -172,8 +174,16 @@ class TaskCreate(BaseModel):
     priority: str | None = "normal"
     deadline: str | None = None
     assignee_id: int | None = None
+    assignee_ids: list[int] | None = None
     client_id: int | None = None
     project_id: int | None = None
+
+
+class LinkRef(BaseModel):
+    task_id: int | None = None
+    content_id: int | None = None
+    url: str
+    title: str | None = None
 
 
 class TeamRolePatch(BaseModel):
@@ -261,13 +271,60 @@ CONTENT_ROLE_COLS = (
 
 # ── routes ──────────────────────────────────────────────────────
 
+async def _mine_task_ids(session, uid):
+    """Task ids where uid is a (co-)assignee."""
+    if not uid:
+        return []
+    return list((await session.execute(
+        select(TaskAssignee.task_id).where(TaskAssignee.user_id == uid)
+    )).scalars().all())
+
+
+async def _ref_counts(session, *, task_ids=None, content_ids=None):
+    col = ReferenceItem.task_id if task_ids is not None else ReferenceItem.content_id
+    ids = task_ids if task_ids is not None else content_ids
+    if not ids:
+        return {}
+    rows = (await session.execute(
+        select(col, func.count()).where(col.in_(ids)).group_by(col)
+    )).all()
+    return {k: v for k, v in rows}
+
+
+async def _attach_assignees(session, tasks):
+    """Add `assignees: [{id, name}]` and `refs_count` to each serialized task dict."""
+    if not tasks:
+        return []
+    ids = [t.id for t in tasks]
+    rows = (await session.execute(
+        select(TaskAssignee.task_id, TaskAssignee.user_id).where(TaskAssignee.task_id.in_(ids))
+    )).all()
+    by_task = {}
+    for tid, uid in rows:
+        by_task.setdefault(tid, []).append(uid)
+    all_uids = {u for lst in by_task.values() for u in lst} | {t.assignee_id for t in tasks}
+    names = await _names_for(session, all_uids)
+    refc = await _ref_counts(session, task_ids=ids)
+    out = []
+    for t in tasks:
+        d = row_to_dict(t)
+        aids = by_task.get(t.id) or ([t.assignee_id] if t.assignee_id else [])
+        d["assignees"] = [{"id": i, "name": names.get(i)} for i in aids]
+        d["assignee_name"] = names.get(t.assignee_id) or (d["assignees"][0]["name"] if d["assignees"] else None)
+        d["refs_count"] = refc.get(t.id, 0)
+        out.append(d)
+    return out
+
+
 @router.get("/home")
 async def home(user: dict = Depends(member), session=Depends(get_session)):
     uid = user["id"]
+    mine = await _mine_task_ids(session, uid)
 
     tasks = (await session.execute(
         select(Task)
-        .where(Task.assignee_id == uid, Task.status.in_(OPEN_TASK_STATUSES))
+        .where(or_(Task.assignee_id == uid, Task.id.in_(mine)),
+               Task.status.in_(OPEN_TASK_STATUSES))
         .order_by(Task.deadline.is_(None), Task.deadline, Task.id)
         .limit(100)
     )).scalars().all() if uid else []
@@ -290,7 +347,7 @@ async def home(user: dict = Depends(member), session=Depends(get_session)):
 
     return {
         "user": user,
-        "my_tasks": [row_to_dict(t) for t in tasks],
+        "my_tasks": await _attach_assignees(session, tasks),
         "my_blockers": [row_to_dict(b) for b in blockers],
         "my_content": [row_to_dict(c) for c in content],
     }
@@ -301,18 +358,13 @@ async def list_tasks(my: bool = False, status: str | None = None,
                      user: dict = Depends(member), session=Depends(get_session)):
     q = select(Task)
     if my:
-        q = q.where(Task.assignee_id == user["id"])
+        mine = await _mine_task_ids(session, user["id"])
+        q = q.where(or_(Task.assignee_id == user["id"], Task.id.in_(mine)))
     if status:
         q = q.where(Task.status == status)
     q = q.order_by(Task.deadline.is_(None), Task.deadline, Task.id.desc()).limit(200)
     rows = (await session.execute(q)).scalars().all()
-    names = await _names_for(session, [r.assignee_id for r in rows])
-    out = []
-    for r in rows:
-        d = row_to_dict(r)
-        d["assignee_name"] = names.get(r.assignee_id)
-        out.append(d)
-    return out
+    return await _attach_assignees(session, rows)
 
 
 @router.patch("/tasks/{task_id}")
@@ -345,7 +397,13 @@ async def list_content(client_id: int | None = None,
     q = q.order_by(ContentItem.pipeline_status, ContentItem.publish_date.is_(None),
                    ContentItem.publish_date, ContentItem.id.desc()).limit(300)
     rows = (await session.execute(q)).scalars().all()
-    return [row_to_dict(c) for c in rows]
+    refc = await _ref_counts(session, content_ids=[c.id for c in rows])
+    out = []
+    for c in rows:
+        d = row_to_dict(c)
+        d["refs_count"] = refc.get(c.id, 0)
+        out.append(d)
+    return out
 
 
 @router.post("/content/{content_id}/advance")
@@ -497,8 +555,10 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
     if prio not in TASK_PRIORITIES:
         raise HTTPException(422, f"priority must be one of {sorted(TASK_PRIORITIES)}")
     uid = user["id"] or None
-    # explicit assignee from the picker, else self-assign (keeps it on the creator's Главная)
-    assignee_id = body.assignee_id if body.assignee_id else uid
+    # assignees: explicit list from the picker, else the single field, else self-assign
+    aids = list(dict.fromkeys(body.assignee_ids or ([] if body.assignee_id is None else [body.assignee_id])))
+    if not aids and uid:
+        aids = [uid]
     deadline = _parse_dt(body.deadline)
     obj = Task(
         title=title,
@@ -507,18 +567,28 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
         deadline=deadline,
         status="pending",
         created_by=uid,
-        assignee_id=assignee_id,
+        assignee_id=aids[0] if aids else None,   # keep the single field = first assignee
         client_id=body.client_id,
         project_id=body.project_id,
     )
     result = await _commit_new(session, obj)
+    for a in aids:
+        session.add(TaskAssignee(task_id=obj.id, user_id=a))
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "один из исполнителей не найден")
     await _log(session, "task", "created", obj.id, uid, title)
-    tg = await _telegram_id_for(session, obj.assignee_id)
-    if tg:
-        dl = deadline.strftime("%d.%m.%Y") if deadline else "без срока"
-        bg.add_task(_tg_send, tg,
-                    f"📋 Тебе назначена задача: {title}\nПриоритет: {prio}\nДедлайн: {dl}")
-    return result
+
+    dl = deadline.strftime("%d.%m.%Y") if deadline else "без срока"
+    for a in aids:
+        tg = await _telegram_id_for(session, a)
+        if tg:
+            bg.add_task(_tg_send, tg,
+                        f"📋 Тебе назначена задача: {title}\nПриоритет: {prio}\nДедлайн: {dl}")
+    result = await _attach_assignees(session, [obj])
+    return result[0]
 
 
 @router.post("/content", status_code=201)
@@ -661,6 +731,154 @@ async def create_project(body: ProjectCreate,
     result = await _commit_new(session, obj)
     await _log(session, "project", "created", obj.id, user["id"], name)
     return result
+
+
+# ── members (lightweight list for assignee pickers — any member) ─
+
+@router.get("/members")
+async def list_members(user: dict = Depends(member), session=Depends(get_session)):
+    rows = (await session.execute(
+        select(User).where(User.is_active.is_(True)).order_by(User.full_name)
+    )).scalars().all()
+    return [{"id": u.id, "full_name": u.full_name, "role": u.role} for u in rows]
+
+
+# ── references (links + files) ──────────────────────────────────
+
+def _ref_out(r, name=None):
+    return {
+        "id": r.id, "kind": r.kind, "url": r.url, "title": r.title,
+        "file_name": r.file_name, "mime": r.mime, "added_by_name": name,
+        "task_id": r.task_id, "content_id": r.content_id,
+        "download": f"/api/references/{r.id}/file" if r.kind == "file" else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+async def _ref_scope(body_task, body_content):
+    if not (body_task or body_content):
+        raise HTTPException(422, "task_id или content_id обязателен")
+
+
+@router.get("/references")
+async def list_references(task_id: int | None = None, content_id: int | None = None,
+                          user: dict = Depends(member), session=Depends(get_session)):
+    await _ref_scope(task_id, content_id)
+    q = select(ReferenceItem)
+    if task_id:
+        q = q.where(ReferenceItem.task_id == task_id)
+    if content_id:
+        q = q.where(ReferenceItem.content_id == content_id)
+    rows = (await session.execute(q.order_by(ReferenceItem.id.desc()))).scalars().all()
+    names = await _names_for(session, [r.added_by for r in rows])
+    return [_ref_out(r, names.get(r.added_by)) for r in rows]
+
+
+@router.post("/references", status_code=201)
+async def add_link_reference(body: LinkRef,
+                             user: dict = Depends(member), session=Depends(get_session)):
+    await _ref_scope(body.task_id, body.content_id)
+    url = _clean(body.url)
+    if not url:
+        raise HTTPException(422, "url обязателен")
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    obj = ReferenceItem(kind="link", url=url, title=_clean(body.title) or url,
+                        task_id=body.task_id, content_id=body.content_id,
+                        added_by=user["id"] or None)
+    session.add(obj)
+    await session.commit()
+    await session.refresh(obj)
+    return _ref_out(obj, user.get("full_name"))
+
+
+@router.post("/references/upload", status_code=201)
+async def upload_file_reference(
+        file: UploadFile = File(...),
+        task_id: int | None = Form(None),
+        content_id: int | None = Form(None),
+        user: dict = Depends(member), session=Depends(get_session)):
+    await _ref_scope(task_id, content_id)
+    if not (BOT_TOKEN and user.get("telegram_id")):
+        raise HTTPException(400, "загрузка файлов недоступна")
+    raw = await file.read()
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(413, "файл больше 20 МБ")
+    async with httpx.AsyncClient(timeout=120) as c:
+        r = await c.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument",
+            data={"chat_id": user["telegram_id"], "caption": f"📎 референс: {file.filename}"},
+            files={"document": (file.filename, raw, file.content_type or "application/octet-stream")},
+        )
+    j = r.json()
+    if not j.get("ok"):
+        raise HTTPException(502, f"Telegram: {j.get('description')}")
+    res = j["result"]
+    doc = res.get("document") or (res.get("photo") or [{}])[-1] or {}
+    fid = doc.get("file_id")
+    if not fid:
+        raise HTTPException(502, "Telegram не вернул file_id")
+    obj = ReferenceItem(
+        kind="file", tg_file_id=fid,
+        file_name=doc.get("file_name") or file.filename,
+        mime=doc.get("mime_type") or file.content_type,
+        task_id=task_id, content_id=content_id, added_by=user["id"] or None,
+    )
+    session.add(obj)
+    await session.commit()
+    await session.refresh(obj)
+    return _ref_out(obj, user.get("full_name"))
+
+
+@router.get("/references/{ref_id}/file")
+async def reference_file(ref_id: int, request: Request, ia: str | None = None,
+                         session=Depends(get_session)):
+    # auth via header OR ?ia= query (so plain <a>/<img> links work inside the app)
+    init_data = (request.headers.get("X-Init-Data")
+                 or request.headers.get("X-Telegram-Init-Data") or ia or "")
+    ok = not BOT_TOKEN
+    if init_data and BOT_TOKEN:
+        try:
+            ok = bool(_validate_init_data(init_data).get("id"))
+        except HTTPException:
+            ok = False
+    if not ok:
+        raise HTTPException(403, "нет доступа")
+
+    r = (await session.execute(
+        select(ReferenceItem).where(ReferenceItem.id == ref_id)
+    )).scalar_one_or_none()
+    if not r or r.kind != "file" or not r.tg_file_id:
+        raise HTTPException(404, "файл не найден")
+    async with httpx.AsyncClient(timeout=60) as c:
+        gf = (await c.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
+                          params={"file_id": r.tg_file_id})).json()
+        path = gf.get("result", {}).get("file_path")
+        if not path:
+            raise HTTPException(410, "файл больше недоступен")
+        fr = await c.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{path}")
+    return Response(
+        content=fr.content, media_type=r.mime or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'inline; filename="{(r.file_name or "file")}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
+@router.delete("/references/{ref_id}")
+async def delete_reference(ref_id: int,
+                           user: dict = Depends(member), session=Depends(get_session)):
+    r = (await session.execute(
+        select(ReferenceItem).where(ReferenceItem.id == ref_id)
+    )).scalar_one_or_none()
+    if not r:
+        raise HTTPException(404, "не найдено")
+    if not (user["role"] in ("admin", "am") or r.added_by == user["id"]):
+        raise HTTPException(403, "можно удалить только свой референс")
+    await session.delete(r)
+    await session.commit()
+    return {"ok": True}
 
 
 # ── team ────────────────────────────────────────────────────────
