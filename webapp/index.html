@@ -239,8 +239,10 @@
   .mp-opt.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
 
   /* references */
+  .ref-row{display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap}
+  .ref-mini{width:40px; height:40px; object-fit:cover; border-radius:8px; cursor:pointer; flex:0 0 auto}
   .ref-open{
-    margin-top:10px; width:100%; border:1px dashed var(--sep); background:transparent;
+    flex:1 1 auto; min-width:80px; border:1px dashed var(--sep); background:transparent;
     color:var(--hint); border-radius:10px; padding:8px; font-size:13px; font-weight:600; cursor:pointer;
   }
   #refSheet #refList{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
@@ -308,6 +310,14 @@
   }
   .sheet-backdrop.open{opacity:1; pointer-events:auto}
   .sheet{
+    /* milky-cream sheet theme — scoped var overrides cascade to every child */
+    --bg:#f4efe3;
+    --text:#241a22;
+    --hint:#8a7f86;
+    --card:#ffffff;
+    --sep:rgba(20,8,20,.14);
+    --link:#0b7a5c;
+    --st-overdue:#d23a2e;
     position:fixed; left:0; right:0; bottom:0; z-index:31;
     background:var(--bg); color:var(--text);
     border-radius:16px 16px 0 0; padding:8px 16px calc(20px + env(safe-area-inset-bottom));
@@ -315,6 +325,7 @@
     max-height:88vh; overflow-y:auto;
   }
   .sheet.open{transform:translateY(0)}
+  .sheet .hint{color:var(--hint); font-size:13px}
   .sheet-head{
     position:sticky; top:0; z-index:3; background:var(--bg);
     display:flex; align-items:center; justify-content:center; padding:8px 0 4px;
@@ -637,12 +648,25 @@ function assigneesLabel(t){
   return t.assignee_name ? "👤 " + esc(t.assignee_name) : "";
 }
 
+let taskById = {};
+let contentById = {};
+
+function refStrip(kind, id, count, thumbs){
+  const t = (thumbs || []).map(x =>
+    `<img class="ref-mini" src="${esc(x.download)}?ia=${encodeURIComponent(INIT_DATA)}" alt="" data-refs="${kind}:${id}">`).join("");
+  return `<div class="ref-row" data-refs="${kind}:${id}">
+    ${t}
+    <button class="ref-open" data-refs="${kind}:${id}">📎${count ? " " + count : " Референсы"}</button>
+  </div>`;
+}
+
 function taskCard(t){
+  taskById[t.id] = t;
   const st = t.status || "pending";
   const next = TASK_NEXT[st];
   const who = assigneesLabel(t);
   return `
-  <div class="card" data-task="${t.id}">
+  <div class="card tappable" data-task-edit="${t.id}">
     <div class="row">
       <p class="title">${esc(t.title || "Без названия")}</p>
       <span class="pill ${esc(st)}">${esc(STATUS_LABELS[st] || st)}</span>
@@ -653,7 +677,7 @@ function taskCard(t){
       ${who ? `<span>${who}</span>` : ""}
       ${t.priority && t.priority !== "normal" ? `<span>❗ ${esc(t.priority)}</span>` : ""}
     </div>
-    <button class="ref-open" data-refs="task:${t.id}">📎 Референсы${t.refs_count ? " · " + t.refs_count : ""}</button>
+    ${refStrip("task", t.id, t.refs_count || 0, t.ref_thumbs)}
     ${next
       ? `<button class="act" data-task-to="${next.to}" data-task-id="${t.id}">${next.label}</button>`
       : st === "done" ? `<div class="done-mark">✅ Выполнено</div>` : ""}
@@ -684,6 +708,7 @@ async function renderHome(){
   ]);
   ME = d.user;
   setWhoami(d.user);
+  taskById = {};
   const parts = [];
 
   parts.push(`
@@ -724,7 +749,7 @@ function contentCard(c, {advance=true}={}){
       ${c.publish_date ? `<span>📅 ${esc(fmtDate(c.publish_date))}</span>` : ""}
       ${c.client_approved ? `<span>✅ клиент</span>` : ""}
     </div>
-    <button class="ref-open" data-refs="content:${c.id}">📎 Референсы${c.refs_count ? " · " + c.refs_count : ""}</button>
+    ${refStrip("content", c.id, c.refs_count || 0, c.ref_thumbs)}
     ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">Продвинуть →</button>` : ""}
     ${advance && isFinal ? `<button class="act ghost" disabled>Финальный этап</button>` : ""}
   </div>`;
@@ -1055,6 +1080,13 @@ view.addEventListener("click", async e => {
     return;
   }
 
+  const taskEditCard = e.target.closest("[data-task-edit]");
+  if (taskEditCard && !e.target.closest("button, a")){
+    const t = taskById[+taskEditCard.dataset.taskEdit];
+    if (t){ haptic(); openTaskEdit(t); }
+    return;
+  }
+
   const cfilterBtn = e.target.closest("[data-cfilter]");
   if (cfilterBtn){
     const v = cfilterBtn.dataset.cfilter;
@@ -1222,12 +1254,14 @@ const refSheet = document.getElementById("refSheet");
 const refBackdrop = document.getElementById("refBackdrop");
 let refScope = null;
 
+let refDirty = false;
 function closeRefSheet(){
   refSheet.classList.remove("open");
   refBackdrop.classList.remove("open");
   document.getElementById("refLinkForm").hidden = true;
   refScope = null;
   sheetBackOff();
+  if (refDirty){ refDirty = false; load(currentTab); }
 }
 function refQuery(){
   return (refScope.kind === "task" ? "task_id=" : "content_id=") + refScope.id;
@@ -1267,14 +1301,6 @@ async function openRefSheet(kind, id){
   sheetBackOn(closeRefSheet);
   await renderRefList();
 }
-function bumpRefCount(delta){
-  const card = refScope && document.querySelector(`[data-refs="${refScope.kind}:${refScope.id}"]`);
-  if (!card) return;
-  const m = card.textContent.match(/·\s*(\d+)/);
-  const n = Math.max(0, (m ? +m[1] : 0) + (delta == null ? 1 : delta));
-  card.textContent = "📎 Референсы" + (n ? " · " + n : "");
-}
-
 document.getElementById("refClose").addEventListener("click", closeRefSheet);
 refBackdrop.addEventListener("click", closeRefSheet);
 refSheet.querySelector(".grabber").addEventListener("click", closeRefSheet);
@@ -1298,7 +1324,7 @@ document.getElementById("refLinkSave").addEventListener("click", async () => {
     await api("/api/references", { method:"POST", body });
     haptic("medium"); toast("Добавлено");
     document.getElementById("refLinkForm").hidden = true;
-    await renderRefList(); bumpRefCount();
+    await renderRefList(); refDirty = true;
   } catch(e){ toast(e.message); }
   finally { busy = false; btn.disabled = false; }
 });
@@ -1323,7 +1349,7 @@ document.getElementById("refFileInput").addEventListener("change", async (e) => 
       throw new Error((j.detail && (j.detail.message || j.detail)) || ("Ошибка " + res.status));
     }
     haptic("medium"); toast("Файл добавлен");
-    await renderRefList(); bumpRefCount();
+    await renderRefList(); refDirty = true;
   } catch(err){ toast(err.message); }
   finally { busy = false; }
 });
@@ -1335,7 +1361,7 @@ document.getElementById("refList").addEventListener("click", async e => {
   busy = true;
   try {
     await api("/api/references/" + del.dataset.refDel, { method:"DELETE" });
-    haptic(); await renderRefList(); bumpRefCount(-1);
+    haptic(); await renderRefList(); refDirty = true;
   } catch(err){ toast(err.message); }
   finally { busy = false; }
 });
@@ -1476,12 +1502,59 @@ async function fillDynamic(f){
   }
 }
 
+let editState = null;   // {formKey, title, endpoint, method, submitLabel, prefill, extraFields}
+let sheetFields = [];
+
+const STATUS_OPTS = [["pending","Ожидает"],["in_progress","В работе"],["done","Готово"],
+                     ["overdue","Просрочено"],["cancelled","Отменено"]];
+
+function openTaskEdit(t){
+  editState = {
+    formKey: "home",
+    title: "Изменить задачу",
+    endpoint: "/api/tasks/" + t.id,
+    method: "PATCH",
+    submitLabel: "Сохранить",
+    extraFields: [{ name:"status", label:"Статус", type:"select", options: STATUS_OPTS }],
+    prefill: {
+      title: t.title || "",
+      description: t.description || "",
+      priority: t.priority || "normal",
+      deadline: t.deadline ? String(t.deadline).slice(0, 10) : "",
+      assignee_ids: (t.assignees || []).map(a => a.id),
+      client_id: t.client_id || "",
+      project_id: t.project_id || "",
+      status: t.status || "pending",
+    },
+  };
+  openSheet();
+}
+
+function applyPrefill(pf){
+  for (const f of sheetFields){
+    if (!(f.name in pf)) continue;
+    const el = document.getElementById("f_" + f.name);
+    if (!el) continue;
+    if (f.type === "mpick"){
+      const want = new Set((pf[f.name] || []).map(String));
+      el.querySelectorAll(".mp-opt").forEach(b => b.classList.toggle("on", want.has(b.dataset.id)));
+    } else if (f.type === "select"){
+      const v = String(pf[f.name] ?? "");
+      if ([...el.options].some(o => o.value === v)) el.value = v;
+    } else {
+      el.value = pf[f.name] ?? "";
+    }
+  }
+}
+
 async function openSheet(){
-  const cfg = FORMS[activeFormKey()];
+  const cfg = FORMS[editState ? editState.formKey : activeFormKey()];
   if (!cfg) return;
-  document.getElementById("sheetTitle").textContent = cfg.title;
+  sheetFields = editState && editState.extraFields
+    ? cfg.fields.concat(editState.extraFields) : cfg.fields;
+  document.getElementById("sheetTitle").textContent = editState ? editState.title : cfg.title;
   setFormError("");
-  formFields.innerHTML = cfg.fields.map(f => {
+  formFields.innerHTML = sheetFields.map(f => {
     const id = "f_" + f.name;
     let control;
     if (f.type === "textarea"){
@@ -1498,50 +1571,60 @@ async function openSheet(){
       <label for="${id}">${esc(f.label)}${f.required ? " *" : ""}</label>${control}
     </div>`;
   }).join("");
-  formSubmit.disabled = false; formSubmit.textContent = "Создать";
+  formSubmit.disabled = false;
+  formSubmit.textContent = editState ? editState.submitLabel : "Создать";
   sheetBackdrop.classList.add("open");
   sheet.classList.add("open");
   sheetBackOn(closeSheet);
 
-  // wire dependent selects (project list follows the chosen client)
-  for (const f of cfg.fields){
+  for (const f of sheetFields){
     if (!f.dependsOn) continue;
     const dep = document.getElementById("f_" + f.dependsOn);
     if (dep) dep.addEventListener("change", () => fillDynamic(f));
   }
-  // populate dynamic option lists (projects self-disable until a client is picked)
-  for (const f of cfg.fields){
+  for (const f of sheetFields){
     if (f.dynamic) await fillDynamic(f);
+  }
+  if (editState){
+    applyPrefill(editState.prefill);
+    // refill dependent selects now that their parent has a value, then re-apply
+    for (const f of sheetFields){
+      if (f.dependsOn && f.dynamic) await fillDynamic(f);
+    }
+    applyPrefill(editState.prefill);
   }
 }
 
 function closeSheet(){
   sheet.classList.remove("open");
   sheetBackdrop.classList.remove("open");
+  editState = null;
   sheetBackOff();
 }
 
 async function submitForm(){
-  const cfg = FORMS[activeFormKey()];
-  if (!cfg || busy) return;
+  if (busy || !sheetFields.length) return;
+  const isEdit = !!editState;
+  const method = isEdit ? editState.method : "POST";
+  const endpoint = isEdit ? editState.endpoint : FORMS[activeFormKey()].endpoint;
   const body = {};
   let valid = true;
   formFields.querySelectorAll(".field").forEach(w => w.classList.remove("bad"));
-  for (const f of cfg.fields){
+  for (const f of sheetFields){
     const el = document.getElementById("f_" + f.name);
     if (f.type === "mpick"){
-      const ids = [...el.querySelectorAll(".mp-opt.on")].map(b => +b.dataset.id);
-      if (ids.length) body[f.name] = ids;
+      body[f.name] = [...el.querySelectorAll(".mp-opt.on")].map(b => +b.dataset.id);
+      if (!isEdit && !body[f.name].length) delete body[f.name];
       continue;
     }
     const raw = (el.value || "").trim();
     if (f.required && !raw){
       el.closest(".field").classList.add("bad"); valid = false; continue;
     }
-    if (raw === "") continue;
+    if (raw === "" && !isEdit) continue;   // on edit, send blanks to clear
     if (f.type === "number" || f.coerce === "int"){
       const n = parseInt(raw, 10);
-      if (!Number.isNaN(n)) body[f.name] = n;
+      body[f.name] = Number.isNaN(n) ? null : n;
     } else {
       body[f.name] = raw;
     }
@@ -1551,15 +1634,17 @@ async function submitForm(){
   busy = true;
   formSubmit.disabled = true; formSubmit.textContent = "Сохранение…";
   setFormError("");
+  const wasEdit = isEdit;
   try {
-    await api(cfg.endpoint, { method:"POST", body });
+    await api(endpoint, { method, body });
     haptic("medium");
     closeSheet();
-    toast("Создано");
+    toast(wasEdit ? "Сохранено" : "Создано");
     await load(currentTab);
   } catch(e){
     setFormError(e.message || "Не удалось сохранить");
-    formSubmit.disabled = false; formSubmit.textContent = "Создать";
+    formSubmit.disabled = false;
+    formSubmit.textContent = wasEdit ? "Сохранить" : "Создать";
   } finally {
     busy = false;
   }

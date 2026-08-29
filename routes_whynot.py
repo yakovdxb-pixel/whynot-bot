@@ -159,7 +159,14 @@ FORMAT_ALIASES = {"reel": "reels", "video": "youtube_long", "article": "other"}
 
 
 class TaskPatch(BaseModel):
-    status: str
+    status: str | None = None
+    title: str | None = None
+    description: str | None = None
+    priority: str | None = None
+    deadline: str | None = None
+    assignee_ids: list[int] | None = None
+    client_id: int | None = None
+    project_id: int | None = None
 
 
 class RolePatch(BaseModel):
@@ -280,15 +287,23 @@ async def _mine_task_ids(session, uid):
     )).scalars().all())
 
 
-async def _ref_counts(session, *, task_ids=None, content_ids=None):
+async def _ref_summaries(session, *, task_ids=None, content_ids=None):
+    """id -> {"count": n, "thumbs": [{"id", "download"}]} (thumbs = up to 4 image files)."""
     col = ReferenceItem.task_id if task_ids is not None else ReferenceItem.content_id
     ids = task_ids if task_ids is not None else content_ids
     if not ids:
         return {}
     rows = (await session.execute(
-        select(col, func.count()).where(col.in_(ids)).group_by(col)
-    )).all()
-    return {k: v for k, v in rows}
+        select(ReferenceItem).where(col.in_(ids)).order_by(ReferenceItem.id.desc())
+    )).scalars().all()
+    out = {}
+    for r in rows:
+        key = r.task_id if task_ids is not None else r.content_id
+        s = out.setdefault(key, {"count": 0, "thumbs": []})
+        s["count"] += 1
+        if r.kind == "file" and (r.mime or "").startswith("image/") and len(s["thumbs"]) < 4:
+            s["thumbs"].append({"id": r.id, "download": f"/api/references/{r.id}/file"})
+    return out
 
 
 async def _attach_assignees(session, tasks):
@@ -304,14 +319,16 @@ async def _attach_assignees(session, tasks):
         by_task.setdefault(tid, []).append(uid)
     all_uids = {u for lst in by_task.values() for u in lst} | {t.assignee_id for t in tasks}
     names = await _names_for(session, all_uids)
-    refc = await _ref_counts(session, task_ids=ids)
+    refs = await _ref_summaries(session, task_ids=ids)
     out = []
     for t in tasks:
         d = row_to_dict(t)
         aids = by_task.get(t.id) or ([t.assignee_id] if t.assignee_id else [])
         d["assignees"] = [{"id": i, "name": names.get(i)} for i in aids]
         d["assignee_name"] = names.get(t.assignee_id) or (d["assignees"][0]["name"] if d["assignees"] else None)
-        d["refs_count"] = refc.get(t.id, 0)
+        s = refs.get(t.id, {})
+        d["refs_count"] = s.get("count", 0)
+        d["ref_thumbs"] = s.get("thumbs", [])
         out.append(d)
     return out
 
@@ -368,24 +385,69 @@ async def list_tasks(my: bool = False, status: str | None = None,
 
 
 @router.patch("/tasks/{task_id}")
-async def update_task(task_id: int, patch: TaskPatch,
+async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
                       user: dict = Depends(member), session=Depends(get_session)):
-    if patch.status not in TASK_STATUSES:
-        raise HTTPException(422, f"status must be one of {sorted(TASK_STATUSES)}")
     task = (await session.execute(
         select(Task).where(Task.id == task_id)
     )).scalar_one_or_none()
     if not task:
         raise HTTPException(404, "Task not found")
-    task.status = patch.status
+
+    if patch.status is not None:
+        if patch.status not in TASK_STATUSES:
+            raise HTTPException(422, f"status must be one of {sorted(TASK_STATUSES)}")
+        task.status = patch.status
+        if patch.status == "done" and task.actual_completion is None:
+            task.actual_completion = _now()
+
+    if patch.title is not None:
+        t = _clean(patch.title)
+        if not t:
+            raise HTTPException(422, "title cannot be empty")
+        task.title = t
+    if patch.description is not None:
+        task.description = _clean(patch.description)
+    if patch.priority is not None:
+        p = PRIORITY_ALIASES.get(patch.priority.lower(), patch.priority.lower())
+        if p not in TASK_PRIORITIES:
+            raise HTTPException(422, f"priority must be one of {sorted(TASK_PRIORITIES)}")
+        task.priority = p
+    if patch.deadline is not None:
+        task.deadline = _parse_dt(patch.deadline)
+    if patch.client_id is not None:
+        task.client_id = patch.client_id or None
+    if patch.project_id is not None:
+        task.project_id = patch.project_id or None
+
+    new_notify = []
+    if patch.assignee_ids is not None:
+        aids = list(dict.fromkeys(patch.assignee_ids))
+        cur = set((await session.execute(
+            select(TaskAssignee.user_id).where(TaskAssignee.task_id == task_id)
+        )).scalars().all())
+        new_notify = [a for a in aids if a not in cur]
+        await session.execute(sa_delete(TaskAssignee).where(TaskAssignee.task_id == task_id))
+        for a in aids:
+            session.add(TaskAssignee(task_id=task_id, user_id=a))
+        task.assignee_id = aids[0] if aids else None
+
     task.updated_at = _now()
-    if patch.status == "done" and task.actual_completion is None:
-        task.actual_completion = _now()
-    await session.commit()
-    await session.refresh(task)
-    await _log(session, "task", "completed" if patch.status == "done" else "updated",
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "один из id не найден")
+    await _log(session, "task",
+               "completed" if patch.status == "done" else "updated",
                task.id, user["id"], task.title)
-    return row_to_dict(task)
+
+    for a in new_notify:
+        tg = await _telegram_id_for(session, a)
+        if tg:
+            bg.add_task(_tg_send, tg, f"📋 Тебе назначена задача: {task.title}")
+
+    result = await _attach_assignees(session, [task])
+    return result[0]
 
 
 @router.get("/content")
@@ -397,11 +459,13 @@ async def list_content(client_id: int | None = None,
     q = q.order_by(ContentItem.pipeline_status, ContentItem.publish_date.is_(None),
                    ContentItem.publish_date, ContentItem.id.desc()).limit(300)
     rows = (await session.execute(q)).scalars().all()
-    refc = await _ref_counts(session, content_ids=[c.id for c in rows])
+    refs = await _ref_summaries(session, content_ids=[c.id for c in rows])
     out = []
     for c in rows:
         d = row_to_dict(c)
-        d["refs_count"] = refc.get(c.id, 0)
+        s = refs.get(c.id, {})
+        d["refs_count"] = s.get("count", 0)
+        d["ref_thumbs"] = s.get("thumbs", [])
         out.append(d)
     return out
 
