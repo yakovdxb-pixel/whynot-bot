@@ -328,16 +328,13 @@
   .sheet .hint{color:var(--hint); font-size:13px}
   .sheet-head{
     position:sticky; top:0; z-index:3; background:var(--bg);
-    display:flex; align-items:center; justify-content:center; padding:8px 0 4px;
+    display:flex; align-items:center; justify-content:center;
+    padding:12px 0 10px; margin:-8px 0 0; cursor:pointer;
+    touch-action:none;
   }
-  .sheet-head .grabber{cursor:pointer}
-  .sheet-x{
-    position:absolute; right:0; top:2px;
-    width:32px; height:32px; border-radius:50%; border:none; cursor:pointer;
-    background:var(--card); color:var(--text); font-size:15px; line-height:32px; padding:0;
-  }
-  .sheet .grabber{width:36px; height:4px; border-radius:2px; background:var(--sep);
-    margin:6px auto 12px}
+  .sheet .grabber{width:40px; height:5px; border-radius:3px; background:var(--sep);
+    margin:0 auto; transition:width .15s, background .15s}
+  .sheet-head:active .grabber{width:52px; background:var(--hint)}
   .sheet h2{font-size:17px; font-weight:700; margin:0 0 14px}
   .field{margin-bottom:12px}
   .field label{display:block; font-size:12px; color:var(--hint); margin-bottom:5px}
@@ -394,7 +391,7 @@
 
 <div class="sheet-backdrop" id="sheetBackdrop"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true">
-  <div class="sheet-head"><div class="grabber"></div><button class="sheet-x" id="sheetClose" aria-label="Закрыть">✕</button></div>
+  <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
   <h2 id="sheetTitle"></h2>
   <div class="form-err" id="formErr" style="display:none"></div>
   <div id="formFields"></div>
@@ -403,7 +400,7 @@
 
 <div class="sheet-backdrop" id="memberBackdrop"></div>
 <div class="sheet" id="memberSheet" role="dialog" aria-modal="true">
-  <div class="sheet-head"><div class="grabber"></div><button class="sheet-x" id="memberClose" aria-label="Закрыть">✕</button></div>
+  <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
   <h2 id="memberName"></h2>
   <div class="field"><label>Имя</label><input id="memberFullName" type="text"></div>
   <div class="field"><label>Роль</label><select id="memberRole"></select></div>
@@ -413,7 +410,7 @@
 
 <div class="sheet-backdrop" id="refBackdrop"></div>
 <div class="sheet" id="refSheet" role="dialog" aria-modal="true">
-  <div class="sheet-head"><div class="grabber"></div><button class="sheet-x" id="refClose" aria-label="Закрыть">✕</button></div>
+  <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
   <h2>Референсы</h2>
   <div id="refList"></div>
   <div id="refLinkForm" hidden>
@@ -676,8 +673,8 @@ function taskCard(t){
       <span>${deadlineMeta(t.deadline)}</span>
       ${who ? `<span>${who}</span>` : ""}
       ${t.priority && t.priority !== "normal" ? `<span>❗ ${esc(t.priority)}</span>` : ""}
+      ${t.refs_count ? `<span>📎 ${t.refs_count}</span>` : ""}
     </div>
-    ${refStrip("task", t.id, t.refs_count || 0, t.ref_thumbs)}
     ${next
       ? `<button class="act" data-task-to="${next.to}" data-task-id="${t.id}">${next.label}</button>`
       : st === "done" ? `<div class="done-mark">✅ Выполнено</div>` : ""}
@@ -748,8 +745,8 @@ function contentCard(c, {advance=true}={}){
       ${c.format ? `<span>🎞 ${esc(c.format)}</span>` : ""}
       ${c.publish_date ? `<span>📅 ${esc(fmtDate(c.publish_date))}</span>` : ""}
       ${c.client_approved ? `<span>✅ клиент</span>` : ""}
+      ${c.refs_count ? `<span>📎 ${c.refs_count}</span>` : ""}
     </div>
-    ${refStrip("content", c.id, c.refs_count || 0, c.ref_thumbs)}
     ${advance && !isFinal ? `<button class="act" data-advance="${c.id}">Продвинуть →</button>` : ""}
     ${advance && isFinal ? `<button class="act ghost" disabled>Финальный этап</button>` : ""}
   </div>`;
@@ -1192,6 +1189,33 @@ if (tg && tg.BackButton){ try { tg.BackButton.onClick(_onTgBack); } catch(e){} }
 function sheetBackOn(fn){ _sheetCloser = fn; try { tg && tg.BackButton && tg.BackButton.show(); } catch(e){} }
 function sheetBackOff(){ _sheetCloser = null; try { tg && tg.BackButton && tg.BackButton.hide(); } catch(e){} }
 
+/* Sheet dismiss: tap the top strip, or drag it down. No visible close button. */
+function attachSheetDismiss(sheetEl, closeFn){
+  const head = sheetEl.querySelector(".sheet-head") || sheetEl;
+  let y0 = null, dy = 0, dragging = false;
+  const reset = () => { sheetEl.style.transition = ""; sheetEl.style.transform = ""; };
+  head.addEventListener("touchstart", e => {
+    y0 = e.touches[0].clientY; dy = 0; dragging = true;
+    sheetEl.style.transition = "none";
+  }, {passive:true});
+  head.addEventListener("touchmove", e => {
+    if (!dragging) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    sheetEl.style.transform = "translateY(" + dy + "px)";
+  }, {passive:true});
+  head.addEventListener("touchend", () => {
+    if (!dragging) return;
+    dragging = false;
+    reset();
+    if (dy > 70) closeFn();          // dragged down far enough -> dismiss
+    // a plain tap (dy ~ 0) is handled by the click event below
+  });
+  head.addEventListener("click", () => {
+    if (dy > 6) { dy = 0; return; }  // this click trails a drag -> swallow it
+    closeFn();
+  });
+}
+
 function closeMemberSheet(){
   memberSheet.classList.remove("open");
   memberBackdrop.classList.remove("open");
@@ -1246,8 +1270,7 @@ document.getElementById("memberDelete").addEventListener("click", async () => {
 });
 
 memberBackdrop.addEventListener("click", closeMemberSheet);
-document.getElementById("memberClose").addEventListener("click", closeMemberSheet);
-memberSheet.querySelector(".grabber").addEventListener("click", closeMemberSheet);
+attachSheetDismiss(memberSheet, closeMemberSheet);
 
 /* ── references sheet ─────────────────────────────────────── */
 const refSheet = document.getElementById("refSheet");
@@ -1301,9 +1324,8 @@ async function openRefSheet(kind, id){
   sheetBackOn(closeRefSheet);
   await renderRefList();
 }
-document.getElementById("refClose").addEventListener("click", closeRefSheet);
 refBackdrop.addEventListener("click", closeRefSheet);
-refSheet.querySelector(".grabber").addEventListener("click", closeRefSheet);
+attachSheetDismiss(refSheet, closeRefSheet);
 
 document.getElementById("refAddLink").addEventListener("click", () => {
   const f = document.getElementById("refLinkForm");
@@ -1382,6 +1404,7 @@ const FORMS = {
         dynamic:"clients", options:[["","—"]] },
       { name:"project_id",   label:"Проект (необяз.)", type:"select", value:"", coerce:"int",
         dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
+      { name:"reference_url", label:"Референс — ссылка (необяз.)", type:"text" },
     ],
   },
   content: {
@@ -1516,6 +1539,8 @@ function openTaskEdit(t){
     method: "PATCH",
     submitLabel: "Сохранить",
     extraFields: [{ name:"status", label:"Статус", type:"select", options: STATUS_OPTS }],
+    omitFields: ["reference_url"],
+    refsFor: { kind: "task", id: t.id },
     prefill: {
       title: t.title || "",
       description: t.description || "",
@@ -1550,8 +1575,13 @@ function applyPrefill(pf){
 async function openSheet(){
   const cfg = FORMS[editState ? editState.formKey : activeFormKey()];
   if (!cfg) return;
-  sheetFields = editState && editState.extraFields
-    ? cfg.fields.concat(editState.extraFields) : cfg.fields;
+  {
+    let base = cfg.fields;
+    if (editState && editState.omitFields)
+      base = base.filter(f => !editState.omitFields.includes(f.name));
+    sheetFields = editState && editState.extraFields
+      ? base.concat(editState.extraFields) : base;
+  }
   document.getElementById("sheetTitle").textContent = editState ? editState.title : cfg.title;
   setFormError("");
   formFields.innerHTML = sheetFields.map(f => {
@@ -1571,6 +1601,12 @@ async function openSheet(){
       <label for="${id}">${esc(f.label)}${f.required ? " *" : ""}</label>${control}
     </div>`;
   }).join("");
+  if (editState && editState.refsFor){
+    const r = editState.refsFor;
+    formFields.insertAdjacentHTML("beforeend",
+      `<button type="button" class="act ghost" id="editRefsBtn" style="margin-top:4px">📎 Референсы</button>`);
+    document.getElementById("editRefsBtn").addEventListener("click", () => openRefSheet(r.kind, r.id));
+  }
   formSubmit.disabled = false;
   formSubmit.textContent = editState ? editState.submitLabel : "Создать";
   sheetBackdrop.classList.add("open");
@@ -1652,8 +1688,7 @@ async function submitForm(){
 
 document.getElementById("fab").addEventListener("click", () => { haptic(); openSheet(); });
 sheetBackdrop.addEventListener("click", closeSheet);
-document.getElementById("sheetClose").addEventListener("click", closeSheet);
-sheet.querySelector(".grabber").addEventListener("click", closeSheet);
+attachSheetDismiss(sheet, closeSheet);
 formSubmit.addEventListener("click", submitForm);
 formFields.addEventListener("click", e => {
   const opt = e.target.closest(".mp-opt");

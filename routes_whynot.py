@@ -184,6 +184,7 @@ class TaskCreate(BaseModel):
     assignee_ids: list[int] | None = None
     client_id: int | None = None
     project_id: int | None = None
+    reference_url: str | None = None
 
 
 class LinkRef(BaseModel):
@@ -638,6 +639,9 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
     result = await _commit_new(session, obj)
     for a in aids:
         session.add(TaskAssignee(task_id=obj.id, user_id=a))
+    ref_url = _clean(body.reference_url)
+    if ref_url:
+        session.add(ReferenceItem(task_id=obj.id, kind="link", url=ref_url, added_by=uid))
     try:
         await session.commit()
     except IntegrityError:
