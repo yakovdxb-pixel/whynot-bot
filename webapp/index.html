@@ -221,11 +221,12 @@
 
   .card.tappable{cursor:pointer}
   .card.tappable:active{opacity:.75}
-  #memberSheet select{
+  #memberSheet select, #memberSheet input{
     width:100%; font:15px inherit; color:var(--text);
     background:var(--card); border:1px solid var(--sep); border-radius:10px;
-    padding:10px 12px; -webkit-appearance:none; appearance:none;
+    padding:10px 12px; outline:none; -webkit-appearance:none; appearance:none;
   }
+  #memberSheet input:focus, #memberSheet select:focus{border-color:var(--link)}
   #memberSheet #memberDelete{color:var(--st-overdue); border-color:color-mix(in srgb, var(--st-overdue) 45%, transparent)}
   #memberSheet #memberDelete[hidden]{display:none}
 
@@ -348,6 +349,7 @@
 <div class="sheet" id="memberSheet" role="dialog" aria-modal="true">
   <div class="grabber"></div>
   <h2 id="memberName"></h2>
+  <div class="field"><label>Имя</label><input id="memberFullName" type="text"></div>
   <div class="field"><label>Роль</label><select id="memberRole"></select></div>
   <button class="submit" id="memberSave">Сохранить</button>
   <button class="act ghost" id="memberDelete" style="margin-top:10px">Удалить из команды</button>
@@ -1083,6 +1085,7 @@ function openMemberSheet(id){
   editingMemberId = id;
   const self = ME && id === ME.id;
   document.getElementById("memberName").textContent = u.full_name || ("ID " + u.telegram_id);
+  document.getElementById("memberFullName").value = u.full_name || "";
   const sel = document.getElementById("memberRole");
   const roles = self ? ["admin", "am"] : Object.keys(ROLE_LABELS);
   sel.innerHTML = roles.map(r =>
@@ -1096,10 +1099,12 @@ function openMemberSheet(id){
 document.getElementById("memberSave").addEventListener("click", async () => {
   if (editingMemberId == null || busy) return;
   const role = document.getElementById("memberRole").value;
+  const full_name = document.getElementById("memberFullName").value.trim();
+  if (!full_name){ toast("Имя не может быть пустым"); return; }
   busy = true; document.getElementById("memberSave").disabled = true;
   try {
-    await api(`/api/team/${editingMemberId}/role`, {method:"PATCH", body:{role}});
-    haptic("medium"); toast("Роль обновлена");
+    await api(`/api/team/${editingMemberId}/role`, {method:"PATCH", body:{role, full_name}});
+    haptic("medium"); toast("Сохранено");
     closeMemberSheet();
     await load("team");
   } catch(err){ toast(err.message); document.getElementById("memberSave").disabled = false; }

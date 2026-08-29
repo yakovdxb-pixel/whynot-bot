@@ -178,6 +178,7 @@ class TaskCreate(BaseModel):
 
 class TeamRolePatch(BaseModel):
     role: str
+    full_name: str | None = None
 
 
 class ClientCreate(BaseModel):
@@ -705,6 +706,10 @@ async def set_team_role(user_id: int, body: TeamRolePatch,
     if user["role"] == "am" and (target.role == "admin" or body.role == "admin") and not is_self:
         raise HTTPException(403, "роль admin может назначать только admin")
     target.role = body.role
+    if body.full_name is not None:
+        name = _clean(body.full_name)
+        if name:
+            target.full_name = name
     target.updated_at = _now()
     await session.commit()
     await session.refresh(target)
