@@ -280,6 +280,16 @@
     max-height:88vh; overflow-y:auto;
   }
   .sheet.open{transform:translateY(0)}
+  .sheet-head{
+    position:sticky; top:0; z-index:3; background:var(--bg);
+    display:flex; align-items:center; justify-content:center; padding:8px 0 4px;
+  }
+  .sheet-head .grabber{cursor:pointer}
+  .sheet-x{
+    position:absolute; right:0; top:2px;
+    width:32px; height:32px; border-radius:50%; border:none; cursor:pointer;
+    background:var(--card); color:var(--text); font-size:15px; line-height:32px; padding:0;
+  }
   .sheet .grabber{width:36px; height:4px; border-radius:2px; background:var(--sep);
     margin:6px auto 12px}
   .sheet h2{font-size:17px; font-weight:700; margin:0 0 14px}
@@ -338,7 +348,7 @@
 
 <div class="sheet-backdrop" id="sheetBackdrop"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true">
-  <div class="grabber"></div>
+  <div class="sheet-head"><div class="grabber"></div><button class="sheet-x" id="sheetClose" aria-label="Закрыть">✕</button></div>
   <h2 id="sheetTitle"></h2>
   <div class="form-err" id="formErr" style="display:none"></div>
   <div id="formFields"></div>
@@ -347,7 +357,7 @@
 
 <div class="sheet-backdrop" id="memberBackdrop"></div>
 <div class="sheet" id="memberSheet" role="dialog" aria-modal="true">
-  <div class="grabber"></div>
+  <div class="sheet-head"><div class="grabber"></div><button class="sheet-x" id="memberClose" aria-label="Закрыть">✕</button></div>
   <h2 id="memberName"></h2>
   <div class="field"><label>Имя</label><input id="memberFullName" type="text"></div>
   <div class="field"><label>Роль</label><select id="memberRole"></select></div>
@@ -1074,10 +1084,18 @@ function askConfirm(q){
     res(window.confirm(q));
   });
 }
+/* Telegram back-button closes whichever sheet is open */
+let _sheetCloser = null;
+function _onTgBack(){ if (_sheetCloser) _sheetCloser(); }
+if (tg && tg.BackButton){ try { tg.BackButton.onClick(_onTgBack); } catch(e){} }
+function sheetBackOn(fn){ _sheetCloser = fn; try { tg && tg.BackButton && tg.BackButton.show(); } catch(e){} }
+function sheetBackOff(){ _sheetCloser = null; try { tg && tg.BackButton && tg.BackButton.hide(); } catch(e){} }
+
 function closeMemberSheet(){
   memberSheet.classList.remove("open");
   memberBackdrop.classList.remove("open");
   editingMemberId = null;
+  sheetBackOff();
 }
 function openMemberSheet(id){
   const u = teamById[id];
@@ -1094,6 +1112,7 @@ function openMemberSheet(id){
   document.getElementById("memberSave").disabled = false;
   memberBackdrop.classList.add("open");
   memberSheet.classList.add("open");
+  sheetBackOn(closeMemberSheet);
 }
 
 document.getElementById("memberSave").addEventListener("click", async () => {
@@ -1126,6 +1145,8 @@ document.getElementById("memberDelete").addEventListener("click", async () => {
 });
 
 memberBackdrop.addEventListener("click", closeMemberSheet);
+document.getElementById("memberClose").addEventListener("click", closeMemberSheet);
+memberSheet.querySelector(".grabber").addEventListener("click", closeMemberSheet);
 
 /* ── creation forms (bottom-sheet) ───────────────────────── */
 
@@ -1272,6 +1293,7 @@ async function openSheet(){
   formSubmit.disabled = false; formSubmit.textContent = "Создать";
   sheetBackdrop.classList.add("open");
   sheet.classList.add("open");
+  sheetBackOn(closeSheet);
 
   // wire dependent selects (project list follows the chosen client)
   for (const f of cfg.fields){
@@ -1288,6 +1310,7 @@ async function openSheet(){
 function closeSheet(){
   sheet.classList.remove("open");
   sheetBackdrop.classList.remove("open");
+  sheetBackOff();
 }
 
 async function submitForm(){
@@ -1331,6 +1354,8 @@ async function submitForm(){
 
 document.getElementById("fab").addEventListener("click", () => { haptic(); openSheet(); });
 sheetBackdrop.addEventListener("click", closeSheet);
+document.getElementById("sheetClose").addEventListener("click", closeSheet);
+sheet.querySelector(".grabber").addEventListener("click", closeSheet);
 formSubmit.addEventListener("click", submitForm);
 
 /* ── pull-to-refresh (like YouTube) ─────────────────────── */
