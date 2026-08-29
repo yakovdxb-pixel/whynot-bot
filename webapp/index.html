@@ -49,15 +49,27 @@
     display:flex; flex-direction:column;
     overflow:hidden; overscroll-behavior:none;
   }
-  header{
-    flex:0 0 auto;
-    background:var(--bg);
-    padding:calc(6px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) 7px calc(16px + var(--safe-left, 0px));
+  /* --- title bar: a normal thin row; in fullscreen it floats between
+         Telegram's Close pill and the ⋯ menu, reclaiming the whole row --- */
+  #fsSpacer{flex:0 0 auto; height:0}
+  html.fs #fsSpacer{height:calc(var(--sa-top, 0px) + var(--csa-top, 0px))}
+
+  #brandbar{
+    flex:0 0 auto; background:var(--bg);
+    padding:6px calc(16px + var(--safe-right, 0px)) 7px calc(16px + var(--safe-left, 0px));
     border-bottom:1px solid var(--sep);
-    display:flex; align-items:center;
+    font-size:13px; color:var(--hint);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  header .who{font-size:13px; color:var(--hint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  header .who b{color:var(--text); font-weight:700; font-size:15px}
+  #brandbar b{color:var(--text); font-weight:700; font-size:15px}
+
+  html.fs #brandbar{
+    position:fixed; left:50%; transform:translateX(-50%);
+    top:calc(var(--sa-top, 0px) + 3px);
+    padding:0; border:none; background:transparent; z-index:40;
+    max-width:52vw; pointer-events:none; text-align:center;
+  }
+  html.fs #brandbar b{font-size:13px}
 
   #ptr{
     flex:0 0 auto; height:0; overflow:hidden;
@@ -289,10 +301,11 @@
 </style>
 </head>
 <body>
-<header>
+<div id="fsSpacer"></div>
+<div id="brandbar">
   <span id="screenTitle" hidden></span>
-  <span class="who"><b id="screenLabel">Главная</b><span id="whoami"></span></span>
-</header>
+  <b id="screenLabel">Главная</b><span id="whoami"></span>
+</div>
 
 <div id="installBanner" hidden>
   <span id="installText"></span>
@@ -341,16 +354,20 @@ const INIT_DATA = (tg && tg.initData) || "";
   try { if (tg.setHeaderColor) tg.setHeaderColor("#1a0820"); } catch(e){}
   try { if (tg.setBackgroundColor) tg.setBackgroundColor("#1a0820"); } catch(e){}
 
-  // keep the header clear of the notch + Telegram's floating controls
-  const root = document.documentElement.style;
+  // keep content clear of the notch + Telegram's floating controls
+  const rootEl = document.documentElement;
+  const root = rootEl.style;
   function applyInsets(){
     const s = tg.safeAreaInset || {};
     const c = tg.contentSafeAreaInset || {};
     const px = (n) => (n && n > 0 ? n + "px" : "0px");
-    root.setProperty("--safe-top",    px((s.top || 0) + (c.top || 0)));
-    root.setProperty("--safe-bottom", px((s.bottom || 0) + (c.bottom || 0)));
-    root.setProperty("--safe-left",   px((s.left || 0) + (c.left || 0)));
-    root.setProperty("--safe-right",  px((s.right || 0) + (c.right || 0)));
+    root.setProperty("--sa-top",       px(s.top || 0));                 // notch only
+    root.setProperty("--csa-top",      px(c.top || 0));                 // Telegram controls
+    root.setProperty("--safe-top",     px((s.top || 0) + (c.top || 0)));
+    root.setProperty("--safe-bottom",  px((s.bottom || 0) + (c.bottom || 0)));
+    root.setProperty("--safe-left",    px((s.left || 0) + (c.left || 0)));
+    root.setProperty("--safe-right",   px((s.right || 0) + (c.right || 0)));
+    rootEl.classList.toggle("fs", !!tg.isFullscreen);
   }
   ["safeAreaChanged", "contentSafeAreaChanged", "fullscreenChanged"].forEach((ev) => {
     try { tg.onEvent && tg.onEvent(ev, applyInsets); } catch(e){}
