@@ -480,6 +480,7 @@
 <script>
 const tg = window.Telegram && window.Telegram.WebApp;
 const INIT_DATA = (tg && tg.initData) || "";
+const IN_TELEGRAM = !!INIT_DATA;
 
 /* make the Mini App feel solid inside Telegram */
 (function tgChrome(){
@@ -632,7 +633,7 @@ const I18N = {
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
     "empty.shoots":"Съёмок пока нет — добавь через «+»",
     "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
-    "toast.created":"Создано","toast.saved":"Сохранено","toast.added":"Добавлено",
+    "toast.created":"Создано","toast.saved":"Сохранено","toast.added":"Добавлено","draft.restored":"Черновик восстановлен",
     "toast.fileTooBig":"Файл больше 20 МБ","toast.fillRequired":"Заполни обязательные поля",
     "confirm.refDelete":"Удалить этот референс?","err.load":"Не удалось загрузить","err.save":"Не удалось сохранить",
     "role.admin":"Админ","role.am":"AM","role.director":"Директор","role.editor":"Монтажёр","role.designer":"Дизайнер",
@@ -648,6 +649,7 @@ const I18N = {
     "tn.toWork":"▶ В работу","tn.toDone":"✅ Готово","tn.doneMark":"✅ Выполнено",
     "misc.loading":"Загрузка…","misc.noDeadline":"без срока","misc.editArrow":"изменить ›",
     "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
+    "login.title":"Вход в WHY NOT? OS","login.sub":"Войди через Telegram — так приложение работает в браузере отдельно от чатов.","login.noBot":"Вход через браузер пока не настроен. Открой приложение из бота.",
     "content.advance":"Продвинуть →","content.final":"Финальный этап",
     "blocker.word":"Блокер","blocker.by":"сообщил","blocker.to":"на",
     "member.save":"Сохранить","member.delete":"Удалить из команды",
@@ -679,7 +681,7 @@ const I18N = {
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
     "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
     "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
-    "toast.created":"Yaratildi","toast.saved":"Saqlandi","toast.added":"Qoʻshildi",
+    "toast.created":"Yaratildi","toast.saved":"Saqlandi","toast.added":"Qoʻshildi","draft.restored":"Qoralama tiklandi",
     "toast.fileTooBig":"Fayl 20 MB dan katta","toast.fillRequired":"Majburiy maydonlarni toʻldiring",
     "confirm.refDelete":"Ushbu namunani oʻchirasizmi?","err.load":"Yuklab boʻlmadi","err.save":"Saqlab boʻlmadi",
     "role.admin":"Admin","role.am":"AM","role.director":"Direktor","role.editor":"Montajchi","role.designer":"Dizayner",
@@ -695,6 +697,7 @@ const I18N = {
     "tn.toWork":"▶ Ishga","tn.toDone":"✅ Tayyor","tn.doneMark":"✅ Bajarildi",
     "misc.loading":"Yuklanmoqda…","misc.noDeadline":"muddatsiz","misc.editArrow":"tahrirlash ›",
     "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
+    "login.title":"WHY NOT? OS ga kirish","login.sub":"Telegram orqali kiring — ilova brauzerda chatlardan alohida ishlaydi.","login.noBot":"Brauzer orqali kirish hali sozlanmagan. Ilovani botdan oching.",
     "content.advance":"Keyingi bosqich →","content.final":"Yakuniy bosqich",
     "blocker.word":"Toʻsiq","blocker.by":"xabar berdi","blocker.to":"kimga",
     "member.save":"Saqlash","member.delete":"Jamoadan chiqarish",
@@ -726,7 +729,7 @@ const I18N = {
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
     "empty.shoots":"No shoots yet — add one with “+”",
     "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
-    "toast.created":"Created","toast.saved":"Saved","toast.added":"Added",
+    "toast.created":"Created","toast.saved":"Saved","toast.added":"Added","draft.restored":"Draft restored",
     "toast.fileTooBig":"File over 20 MB","toast.fillRequired":"Fill in the required fields",
     "confirm.refDelete":"Delete this reference?","err.load":"Could not load","err.save":"Could not save",
     "role.admin":"Admin","role.am":"AM","role.director":"Director","role.editor":"Editor","role.designer":"Designer",
@@ -742,6 +745,7 @@ const I18N = {
     "tn.toWork":"▶ Start","tn.toDone":"✅ Done","tn.doneMark":"✅ Completed",
     "misc.loading":"Loading…","misc.noDeadline":"no deadline","misc.editArrow":"edit ›",
     "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
+    "login.title":"Sign in to WHY NOT? OS","login.sub":"Sign in with Telegram — the app then runs in the browser, separate from your chats.","login.noBot":"Browser sign-in isn\u2019t set up yet. Open the app from the bot.",
     "content.advance":"Advance →","content.final":"Final stage",
     "blocker.word":"Blocker","blocker.by":"reported by","blocker.to":"for",
     "member.save":"Save","member.delete":"Remove from team",
@@ -1383,14 +1387,41 @@ async function load(tab){
     await RENDERERS[tab]();
     accessDenied = false;
   } catch (e){
-    if (e && e.detail && e.detail.code === "not_registered"){
+    const code = e && e.detail && e.detail.code;
+    if (code === "no_auth" && !IN_TELEGRAM){
       accessDenied = true;
-      view.innerHTML = noAccessScreen(e.detail);
+      renderLogin();
+    } else if (code === "not_registered" || code === "no_auth"){
+      accessDenied = true;
+      view.innerHTML = noAccessScreen(e.detail || {});
     } else {
       view.innerHTML = `<div class="err">${esc(e.message || t("err.load"))}</div>`;
     }
   }
   updateFab();
+}
+
+async function renderLogin(){
+  let botUser = "";
+  try { botUser = (await api("/api/webapp-config")).bot_username || ""; } catch(e){}
+  view.innerHTML = `
+  <div class="no-access">
+    <div class="na-emoji">🔐</div>
+    <p class="na-title">${esc(t("login.title"))}</p>
+    <p class="na-sub">${esc(t("login.sub"))}</p>
+    <div id="tgLoginBox" style="margin-top:6px"></div>
+    ${botUser ? "" : `<p class="na-hint">${esc(t("login.noBot"))}</p>`}
+  </div>`;
+  if (!botUser) return;
+  const s = document.createElement("script");
+  s.async = true;
+  s.src = "https://telegram.org/js/telegram-widget.js?22";
+  s.setAttribute("data-telegram-login", botUser);
+  s.setAttribute("data-size", "large");
+  s.setAttribute("data-radius", "12");
+  s.setAttribute("data-request-access", "write");
+  s.setAttribute("data-auth-url", location.origin + "/api/auth/telegram");
+  document.getElementById("tgLoginBox").appendChild(s);
 }
 
 function noAccessScreen(d){
@@ -2209,11 +2240,52 @@ async function openSheet(){
     }
     applyPrefill(editState.prefill);
   }
+
+  // restore an in-progress draft (survives an accidental close / app minimise)
+  const draft = loadDraft();
+  if (draft && Object.values(draft).some(v => v && v.length)){
+    applyPrefill(draft);
+    for (const f of sheetFields){
+      if (f.dependsOn && f.dynamic) await fillDynamic(f);
+    }
+    applyPrefill(draft);
+    toast(t("draft.restored"));
+  }
+  _draftReady = true;
 }
 
+/* ── form drafts (localStorage) ──────────────────────────── */
+let _draftReady = false, _draftTimer = null;
+function _draftKey(){ return "wn_d_" + (editState ? "e:" + editState.endpoint : "c:" + activeFormKey()); }
+function saveDraft(){
+  if (!_draftReady || !sheet.classList.contains("open") || !sheetFields.length) return;
+  const d = {};
+  for (const f of sheetFields){
+    if (f.type === "refs") continue;
+    const el = document.getElementById("f_" + f.name);
+    if (!el) continue;
+    if (f.type === "mpick") d[f.name] = [...el.querySelectorAll(".mp-opt.on")].map(b => b.dataset.id);
+    else d[f.name] = el.value || "";
+  }
+  try { localStorage.setItem(_draftKey(), JSON.stringify({ ts: Date.now(), d })); } catch(e){}
+}
+function scheduleDraftSave(){ clearTimeout(_draftTimer); _draftTimer = setTimeout(saveDraft, 400); }
+function loadDraft(){
+  try {
+    const raw = localStorage.getItem(_draftKey());
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || Date.now() - o.ts > 24 * 3600 * 1000) return null;
+    return o.d || null;
+  } catch(e){ return null; }
+}
+function clearDraft(){ try { localStorage.removeItem(_draftKey()); } catch(e){} }
+
 function closeSheet(){
+  saveDraft();                       // keep whatever's typed — restored on reopen
   sheet.classList.remove("open");
   sheetBackdrop.classList.remove("open");
+  _draftReady = false;
   editState = null;
   pendingRefs = [];
   sheetBackOff();
@@ -2262,6 +2334,8 @@ async function submitForm(){
       await flushPendingRefs(formKey === "content" ? "content_id" : "task_id", saved.id);
     }
     haptic("medium");
+    clearDraft();
+    _draftReady = false;           // stop closeSheet from re-saving
     closeSheet();
     toast(wasEdit ? t("toast.saved") : t("toast.created"));
     await load(currentTab);
@@ -2280,8 +2354,13 @@ attachSheetDismiss(sheet, closeSheet);
 formSubmit.addEventListener("click", submitForm);
 formFields.addEventListener("click", e => {
   const opt = e.target.closest(".mp-opt");
-  if (opt){ opt.classList.toggle("on"); haptic(); }
+  if (opt){ opt.classList.toggle("on"); haptic(); scheduleDraftSave(); }
 });
+formFields.addEventListener("input", scheduleDraftSave);
+formFields.addEventListener("change", scheduleDraftSave);
+// also snapshot when the app is backgrounded / minimised
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveDraft(); });
+window.addEventListener("pagehide", saveDraft);
 
 /* ── pull-to-refresh (like YouTube) ─────────────────────── */
 (function pullToRefresh(){

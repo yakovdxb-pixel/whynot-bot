@@ -15,7 +15,7 @@ from urllib.parse import unquote
 import httpx
 from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
                      HTTPException, Request, UploadFile)
-from fastapi.responses import Response
+from fastapi.responses import Response, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select, or_, func, delete as sa_delete
 from sqlalchemy.exc import IntegrityError
@@ -87,6 +87,51 @@ def _validate_init_data(init_data: str) -> dict:
         raise HTTPException(403, "Malformed init data")
 
 
+# ── standalone browser sessions (Telegram Login Widget) ─────────
+
+_SESSION_SECRET = hashlib.sha256(("wn-session:" + BOT_TOKEN).encode()).digest()
+SESSION_DAYS = 30
+
+
+def _sign_session(telegram_id: int) -> str:
+    exp = int(_now().timestamp()) + SESSION_DAYS * 86400
+    payload = f"{telegram_id}.{exp}"
+    sig = hmac.new(_SESSION_SECRET, payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+
+def _read_session(token: str):
+    try:
+        tg_s, exp_s, sig = token.split(".")
+        good = hmac.new(_SESSION_SECRET, f"{tg_s}.{exp_s}".encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(good, sig):
+            return None
+        if int(exp_s) < _now().timestamp():
+            return None
+        return int(tg_s)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _verify_login_widget(data: dict) -> bool:
+    received = data.pop("hash", "")
+    check = "\n".join(f"{k}={data[k]}" for k in sorted(data))
+    secret = hashlib.sha256(BOT_TOKEN.encode()).digest()
+    good = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(good, received)
+
+
+async def _user_dict(session, tg_id: int, fallback_name: str = "Guest") -> dict:
+    row = (await session.execute(
+        select(User).where(User.telegram_id == tg_id)
+    )).scalar_one_or_none()
+    if row and row.is_active:
+        return {"id": row.id, "telegram_id": tg_id,
+                "full_name": row.full_name, "role": row.role, "registered": True}
+    return {"id": 0, "telegram_id": tg_id,
+            "full_name": fallback_name or "Guest", "role": "guest", "registered": False}
+
+
 async def current_user(request: Request, session=Depends(get_session)) -> dict:
     """Resolve the acting user.
 
@@ -110,16 +155,15 @@ async def current_user(request: Request, session=Depends(get_session)) -> dict:
             tg_user = None
 
     if tg_user and tg_user.get("id"):
-        tg_id = int(tg_user["id"])
-        row = (await session.execute(
-            select(User).where(User.telegram_id == tg_id)
-        )).scalar_one_or_none()
-        if row and row.is_active:
-            return {"id": row.id, "telegram_id": tg_id,
-                    "full_name": row.full_name, "role": row.role, "registered": True}
         name = " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")]))
-        return {"id": 0, "telegram_id": tg_id,
-                "full_name": name or "Guest", "role": "guest", "registered": False}
+        return await _user_dict(session, int(tg_user["id"]), name)
+
+    # ── standalone browser: signed session cookie ──
+    if BOT_TOKEN:
+        tok = request.cookies.get("wn_session")
+        tg_id = _read_session(tok) if tok else None
+        if tg_id:
+            return await _user_dict(session, tg_id)
 
     # ── no valid init data ──
     if not BOT_TOKEN:
@@ -136,9 +180,59 @@ async def current_user(request: Request, session=Depends(get_session)) -> dict:
             "role": "guest", "registered": False}
 
 
+_bot_username_cache = {"v": None}
+
+
+@router.get("/webapp-config")
+async def webapp_config():
+    """Public: what the standalone login screen needs."""
+    u = _bot_username_cache["v"]
+    if u is None and BOT_TOKEN:
+        try:
+            async with httpx.AsyncClient(timeout=6) as c:
+                r = await c.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe")
+            u = (r.json().get("result") or {}).get("username")
+            _bot_username_cache["v"] = u
+        except Exception:  # noqa: BLE001
+            u = None
+    return {"bot_username": u, "standalone": bool(BOT_TOKEN)}
+
+
+@router.get("/auth/telegram")
+async def auth_telegram(request: Request):
+    """Telegram Login Widget callback -> set a 30-day signed cookie, bounce to the app."""
+    data = dict(request.query_params)
+    if not (data.get("hash") and data.get("id")):
+        raise HTTPException(400, "missing auth data")
+    if not _verify_login_widget(dict(data)):
+        raise HTTPException(403, "bad Telegram signature")
+    try:
+        if _now().timestamp() - int(data.get("auth_date", "0")) > 86400:
+            raise HTTPException(403, "auth data expired — try again")
+    except ValueError:
+        raise HTTPException(400, "bad auth_date")
+    resp = RedirectResponse(url="/webapp", status_code=303)
+    resp.set_cookie("wn_session", _sign_session(int(data["id"])),
+                    max_age=SESSION_DAYS * 86400, httponly=True,
+                    secure=True, samesite="lax", path="/")
+    return resp
+
+
+@router.post("/auth/logout")
+async def auth_logout():
+    resp = Response(status_code=204)
+    resp.delete_cookie("wn_session", path="/")
+    return resp
+
+
 async def member(user: dict = Depends(current_user)) -> dict:
     """Closed access: only users present in the `users` table get through."""
     if not user.get("registered"):
+        if not user.get("telegram_id"):
+            raise HTTPException(401, {
+                "code": "no_auth",
+                "message": "Войди через Telegram.",
+            })
         raise HTTPException(403, {
             "code": "not_registered",
             "message": "Доступ закрыт. Передай свой Telegram ID администратору.",
@@ -1262,7 +1356,7 @@ async def upload_file_reference(
 @router.get("/references/{ref_id}/file")
 async def reference_file(ref_id: int, request: Request, ia: str | None = None,
                          session=Depends(get_session)):
-    # auth via header OR ?ia= query (so plain <a>/<img> links work inside the app)
+    # auth via header / ?ia= query (so plain <a>/<img> links work) / session cookie
     init_data = (request.headers.get("X-Init-Data")
                  or request.headers.get("X-Telegram-Init-Data") or ia or "")
     ok = not BOT_TOKEN
@@ -1271,6 +1365,9 @@ async def reference_file(ref_id: int, request: Request, ia: str | None = None,
             ok = bool(_validate_init_data(init_data).get("id"))
         except HTTPException:
             ok = False
+    if not ok:
+        tok = request.cookies.get("wn_session")
+        ok = bool(tok and _read_session(tok))
     if not ok:
         raise HTTPException(403, "нет доступа")
 
