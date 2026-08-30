@@ -247,6 +247,7 @@ TASK_STATUSES = set(task_status_enum.enums)
 OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue")
 USER_ROLES = {"admin", "am", "director", "editor", "designer",
               "videographer", "mobilographer", "driver", "intern"}
+MANAGER_ROLES = ("admin", "am", "director")   # full access: team, clients, dashboard, /bind
 TASK_PRIORITIES = set(task_priority_enum.enums)          # low, normal, high, urgent
 CONTENT_FORMATS = set(content_format_enum.enums)
 # tolerate the labels the Mini App form uses
@@ -1056,7 +1057,7 @@ async def list_clients(user: dict = Depends(member), session=Depends(get_session
 @router.post("/clients", status_code=201)
 async def create_client(body: ClientCreate,
                         user: dict = Depends(member), session=Depends(get_session)):
-    if user["role"] not in ("admin", "am"):
+    if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "only admin / am can add clients")
     name = _clean(body.name)
     if not name:
@@ -1104,7 +1105,7 @@ async def _client_names(session, ids):
 @router.post("/projects", status_code=201)
 async def create_project(body: ProjectCreate,
                          user: dict = Depends(member), session=Depends(get_session)):
-    if user["role"] not in ("admin", "am"):
+    if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "only admin / am can add projects")
     name = _clean(body.name)
     if not name:
@@ -1400,7 +1401,7 @@ async def delete_reference(ref_id: int,
     )).scalar_one_or_none()
     if not r:
         raise HTTPException(404, "не найдено")
-    if not (user["role"] in ("admin", "am") or r.added_by == user["id"]):
+    if not (user["role"] in MANAGER_ROLES or r.added_by == user["id"]):
         raise HTTPException(403, "можно удалить только свой референс")
     await session.delete(r)
     await session.commit()
@@ -1422,7 +1423,7 @@ def _user_out(u):
 
 @router.get("/team")
 async def list_team(user: dict = Depends(member), session=Depends(get_session)):
-    if user["role"] not in ("admin", "am"):
+    if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "team list is for admin / am only")
     rows = (await session.execute(
         select(User).where(User.is_active.is_(True))
@@ -1435,7 +1436,7 @@ async def list_team(user: dict = Depends(member), session=Depends(get_session)):
 async def set_team_role(user_id: int, body: TeamRolePatch,
                         user: dict = Depends(member), session=Depends(get_session)):
     """Change a teammate's role. admin / am."""
-    if user["role"] not in ("admin", "am"):
+    if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "only admin / am can change roles")
     if body.role not in USER_ROLES:
         raise HTTPException(422, f"role must be one of {sorted(USER_ROLES)}")
@@ -1445,9 +1446,9 @@ async def set_team_role(user_id: int, body: TeamRolePatch,
     if not target:
         raise HTTPException(404, "user not found")
     is_self = target.id == user["id"]
-    if is_self and body.role not in ("admin", "am"):
+    if is_self and body.role not in MANAGER_ROLES:
         raise HTTPException(400, "нельзя понизить свою роль ниже управляющей")
-    if user["role"] == "am" and (target.role == "admin" or body.role == "admin") and not is_self:
+    if user["role"] in ("am", "director") and (target.role == "admin" or body.role == "admin") and not is_self:
         raise HTTPException(403, "роль admin может назначать только admin")
     target.role = body.role
     if body.full_name is not None:
@@ -1464,7 +1465,7 @@ async def set_team_role(user_id: int, body: TeamRolePatch,
 async def add_team_member(body: TeamMemberCreate,
                           user: dict = Depends(member), session=Depends(get_session)):
     """Add a teammate by Telegram ID so they get access. admin / am only."""
-    if user["role"] not in ("admin", "am"):
+    if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "only admin / am can add members")
     if body.role not in USER_ROLES:
         raise HTTPException(422, f"role must be one of {sorted(USER_ROLES)}")
@@ -1498,7 +1499,7 @@ async def add_team_member(body: TeamMemberCreate,
 async def remove_team_member(user_id: int,
                              user: dict = Depends(member), session=Depends(get_session)):
     """Revoke a teammate's access (soft delete). admin / am."""
-    if user["role"] not in ("admin", "am"):
+    if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "only admin / am can remove members")
     if user_id == user["id"]:
         raise HTTPException(400, "нельзя удалить себя")
@@ -1542,7 +1543,7 @@ async def list_activity(limit: int = 20,
 
 @router.get("/dashboard")
 async def dashboard(user: dict = Depends(member), session=Depends(get_session)):
-    if user["role"] not in ("admin", "am"):
+    if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "dashboard is for admin / am only")
 
     now = _now()

@@ -832,7 +832,7 @@ let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
 
-function isManager(){ return !!(ME && (ME.role === "admin" || ME.role === "am")); }
+function isManager(){ return !!(ME && (ME.role === "admin" || ME.role === "am" || ME.role === "director")); }
 
 function toast(msg){
   const t = document.getElementById("toast");
@@ -1706,7 +1706,7 @@ function openMemberSheet(id){
   document.getElementById("memberName").textContent = u.full_name || ("ID " + u.telegram_id);
   document.getElementById("memberFullName").value = u.full_name || "";
   const sel = document.getElementById("memberRole");
-  const roles = self ? ["admin", "am"] : _ROLES.slice();
+  const roles = self ? ["admin", "am", "director"] : _ROLES.slice();
   if (!roles.includes(u.role)) roles.push(u.role);   // keep a legacy role visible until reassigned
   sel.innerHTML = roles.map(r =>
     `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r] || r}</option>`).join("");

@@ -2178,8 +2178,8 @@ async def bind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("Команду /bind нужно писать в нужной теме супергруппы проекта.")
         return
     role = await _pg_role(update.effective_user.id)
-    if role not in ("admin", "am"):
-        await msg.reply_text("Привязывать темы к проектам может только админ или АМ.")
+    if role not in ("admin", "am", "director"):
+        await msg.reply_text("Привязывать темы к проектам может админ, АМ или Директор.")
         return
     try:
         from db.models import AsyncSessionLocal, Project, Client
@@ -2218,7 +2218,7 @@ async def bind_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     chat = update.effective_chat
     role = await _pg_role(update.effective_user.id)
-    if role not in ("admin", "am"):
+    if role not in ("admin", "am", "director"):
         await q.edit_message_text("Нет прав.")
         return
     try:
@@ -2253,7 +2253,7 @@ async def unbind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type not in ("group", "supergroup"):
         return
     role = await _pg_role(update.effective_user.id)
-    if role not in ("admin", "am"):
+    if role not in ("admin", "am", "director"):
         await msg.reply_text("Только админ или АМ.")
         return
     thread_id = getattr(msg, "message_thread_id", None)
