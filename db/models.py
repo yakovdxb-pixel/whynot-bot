@@ -35,6 +35,9 @@ user_role_enum = ENUM(
     'designer', 'copywriter', 'intern',
     name='user_role', create_type=True
 )
+# users.role is migrated to TEXT (see _MIGRATIONS) — roles are validated in Python now.
+USER_ROLES = ('admin', 'am', 'director', 'editor', 'designer',
+              'videographer', 'mobilographer', 'driver', 'intern')
 
 content_format_enum = ENUM(
     'reels', 'carousel', 'story', 'post', 'tiktok', 'youtube_short',
@@ -134,7 +137,7 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True)
     username    = Column(Text)
     full_name   = Column(Text, nullable=False)
-    role        = Column(user_role_enum, nullable=False)
+    role        = Column(Text, nullable=False)
     is_active   = Column(Boolean, default=True)
     created_at  = Column(DateTime(timezone=True), server_default=text('NOW()'))
     updated_at  = Column(DateTime(timezone=True), server_default=text('NOW()'))
@@ -513,6 +516,11 @@ _MIGRATIONS = [
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS hashtags TEXT",
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS smm_id INTEGER REFERENCES users(id)",
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS copywriter_id INTEGER REFERENCES users(id)",
+    # roles: drop the Postgres enum constraint, validate in Python instead
+    "ALTER TABLE users ALTER COLUMN role TYPE TEXT USING role::text",
+    # rename retired roles to the closest current one (best-effort)
+    "UPDATE users SET role='videographer' WHERE role='photographer'",
+    "UPDATE users SET role='director' WHERE role='producer'",
 ]
 
 

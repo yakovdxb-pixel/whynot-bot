@@ -258,8 +258,9 @@
     border:1px solid var(--sep); border-radius:8px; padding:8px 10px; font-size:13px}
   .rf-item .rf-t{flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .rf-item button{border:none; background:none; color:var(--st-overdue,#d23a2e); font-size:14px; cursor:pointer; flex:0 0 auto}
-  .rf-row{display:flex; gap:6px}
-  .rf-row input{flex:1 1 auto}
+  .rf-row{display:flex; gap:8px; align-items:stretch}
+  .rf-row .rf-url{flex:1 1 auto; min-width:0}
+  .rf-row .rf-add-file{flex:0 0 auto; width:auto; white-space:nowrap; margin:0; padding:10px 12px}
   .rf-actions{display:flex; gap:8px; margin-top:6px}
   #refSheet #refList{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
   #refSheet #refList:empty{display:none}
@@ -612,7 +613,7 @@ const I18N = {
     "field.assignee_ids":"Исполнители","field.client_id":"Клиент","field.project_id":"Проект",
     "field.refs":"Референсы — ссылки и файлы","field.topic":"Тема / название","field.rubric":"Рубрика",
     "field.format":"Формат","field.platform":"Площадка","field.publish_at":"Дата и время публикации",
-    "field.hook":"Заголовок / хук","field.script":"Сценарий","field.caption":"Подпись к посту","field.hashtags":"Хэштеги",
+    "field.hook":"Заголовок / хук","field.script":"Описание","field.caption":"Подпись к посту","field.hashtags":"Хэштеги",
     "field.smm_id":"SMM","field.copywriter_id":"Сценарист / копирайтер","field.editor_id":"Монтажёр","field.designer_id":"Дизайнер",
     "field.status":"Статус","field.pipeline_status":"Этап","field.shoot_at":"Дата и время","field.location":"Локация / адрес",
     "field.participant_ids":"Команда на съёмке","field.notes":"Заметки","field.name":"Название","field.contact":"Контакт",
@@ -626,8 +627,9 @@ const I18N = {
     "toast.created":"Создано","toast.saved":"Сохранено","toast.added":"Добавлено",
     "toast.fileTooBig":"Файл больше 20 МБ","toast.fillRequired":"Заполни обязательные поля",
     "confirm.refDelete":"Удалить этот референс?","err.load":"Не удалось загрузить","err.save":"Не удалось сохранить",
-    "role.admin":"Админ","role.am":"AM","role.producer":"Продюсер","role.smm":"SMM","role.photographer":"Фотограф",
-    "role.editor":"Монтажёр","role.designer":"Дизайнер","role.copywriter":"Копирайтер","role.intern":"Стажёр",
+    "role.admin":"Админ","role.am":"AM","role.director":"Директор","role.editor":"Монтажёр","role.designer":"Дизайнер",
+    "role.videographer":"Видеограф","role.mobilographer":"Мобилограф","role.driver":"Водитель","role.intern":"Стажёр",
+    "role.producer":"Продюсер","role.smm":"SMM","role.photographer":"Фотограф","role.copywriter":"Копирайтер",
     "st.pending":"ожидает","st.in_progress":"в работе","st.done":"готово","st.overdue":"просрочено","st.cancelled":"отменено",
     "pipe.idea":"Идея","pipe.approval":"Согласование","pipe.script":"Сценарий","pipe.shoot":"Съёмка","pipe.edit":"Монтаж",
     "pipe.review":"Ревью","pipe.client":"У клиента","pipe.revisions":"Правки","pipe.done":"Готово","pipe.published":"Опубликовано","pipe.analytics":"Аналитика",
@@ -658,7 +660,7 @@ const I18N = {
     "field.assignee_ids":"Ijrochilar","field.client_id":"Mijoz","field.project_id":"Loyiha",
     "field.refs":"Namunalar — havolalar va fayllar","field.topic":"Mavzu / nomi","field.rubric":"Rubrika",
     "field.format":"Format","field.platform":"Platforma","field.publish_at":"Chop etish sanasi va vaqti",
-    "field.hook":"Sarlavha / huk","field.script":"Ssenariy","field.caption":"Post matni","field.hashtags":"Xeshteglar",
+    "field.hook":"Sarlavha / huk","field.script":"Tavsif","field.caption":"Post matni","field.hashtags":"Xeshteglar",
     "field.smm_id":"SMM","field.copywriter_id":"Ssenariynavis / kopirayter","field.editor_id":"Montajchi","field.designer_id":"Dizayner",
     "field.status":"Holat","field.pipeline_status":"Bosqich","field.shoot_at":"Sana va vaqt","field.location":"Manzil",
     "field.participant_ids":"Suratga olish jamoasi","field.notes":"Eslatmalar","field.name":"Nomi","field.contact":"Kontakt",
@@ -672,8 +674,9 @@ const I18N = {
     "toast.created":"Yaratildi","toast.saved":"Saqlandi","toast.added":"Qoʻshildi",
     "toast.fileTooBig":"Fayl 20 MB dan katta","toast.fillRequired":"Majburiy maydonlarni toʻldiring",
     "confirm.refDelete":"Ushbu namunani oʻchirasizmi?","err.load":"Yuklab boʻlmadi","err.save":"Saqlab boʻlmadi",
-    "role.admin":"Admin","role.am":"AM","role.producer":"Prodyuser","role.smm":"SMM","role.photographer":"Fotograf",
-    "role.editor":"Montajchi","role.designer":"Dizayner","role.copywriter":"Kopirayter","role.intern":"Stajyor",
+    "role.admin":"Admin","role.am":"AM","role.director":"Direktor","role.editor":"Montajchi","role.designer":"Dizayner",
+    "role.videographer":"Videograf","role.mobilographer":"Mobilograf","role.driver":"Haydovchi","role.intern":"Stajyor",
+    "role.producer":"Prodyuser","role.smm":"SMM","role.photographer":"Fotograf","role.copywriter":"Kopirayter",
     "st.pending":"kutilmoqda","st.in_progress":"ishda","st.done":"tayyor","st.overdue":"muddati oʻtgan","st.cancelled":"bekor qilingan",
     "pipe.idea":"Gʻoya","pipe.approval":"Kelishuv","pipe.script":"Ssenariy","pipe.shoot":"Suratga olish","pipe.edit":"Montaj",
     "pipe.review":"Koʻrib chiqish","pipe.client":"Mijozda","pipe.revisions":"Tuzatishlar","pipe.done":"Tayyor","pipe.published":"Chop etilgan","pipe.analytics":"Analitika",
@@ -704,7 +707,7 @@ const I18N = {
     "field.assignee_ids":"Assignees","field.client_id":"Client","field.project_id":"Project",
     "field.refs":"References — links & files","field.topic":"Topic / title","field.rubric":"Rubric",
     "field.format":"Format","field.platform":"Platform","field.publish_at":"Publish date & time",
-    "field.hook":"Headline / hook","field.script":"Script","field.caption":"Caption","field.hashtags":"Hashtags",
+    "field.hook":"Headline / hook","field.script":"Description","field.caption":"Caption","field.hashtags":"Hashtags",
     "field.smm_id":"SMM","field.copywriter_id":"Scriptwriter / copywriter","field.editor_id":"Editor","field.designer_id":"Designer",
     "field.status":"Status","field.pipeline_status":"Stage","field.shoot_at":"Date & time","field.location":"Location / address",
     "field.participant_ids":"Shoot crew","field.notes":"Notes","field.name":"Name","field.contact":"Contact",
@@ -718,8 +721,9 @@ const I18N = {
     "toast.created":"Created","toast.saved":"Saved","toast.added":"Added",
     "toast.fileTooBig":"File over 20 MB","toast.fillRequired":"Fill in the required fields",
     "confirm.refDelete":"Delete this reference?","err.load":"Could not load","err.save":"Could not save",
-    "role.admin":"Admin","role.am":"AM","role.producer":"Producer","role.smm":"SMM","role.photographer":"Photographer",
-    "role.editor":"Editor","role.designer":"Designer","role.copywriter":"Copywriter","role.intern":"Intern",
+    "role.admin":"Admin","role.am":"AM","role.director":"Director","role.editor":"Editor","role.designer":"Designer",
+    "role.videographer":"Videographer","role.mobilographer":"Mobilographer","role.driver":"Driver","role.intern":"Intern",
+    "role.producer":"Producer","role.smm":"SMM","role.photographer":"Photographer","role.copywriter":"Copywriter",
     "st.pending":"pending","st.in_progress":"in progress","st.done":"done","st.overdue":"overdue","st.cancelled":"cancelled",
     "pipe.idea":"Idea","pipe.approval":"Approval","pipe.script":"Script","pipe.shoot":"Shoot","pipe.edit":"Editing",
     "pipe.review":"Review","pipe.client":"With client","pipe.revisions":"Revisions","pipe.done":"Done","pipe.published":"Published","pipe.analytics":"Analytics",
@@ -754,7 +758,8 @@ let TITLES = {}, ROLE_LABELS = {}, PIPELINE_LABELS = {}, STATUS_LABELS = {},
 const PLATFORM_OPTS = [], SHOOT_STATUS_OPTS = [], PIPELINE_OPTS = [], STATUS_OPTS = [],
       PRIORITY_OPTS = [], FORMAT_OPTS = [], FORMATOPT_OPTS = [], ROLE_OPTS = [];
 const _PIPE = ["idea","approval","script","shoot","edit","review","client","revisions","done","published","analytics"];
-const _ROLES = ["admin","am","producer","smm","photographer","editor","designer","copywriter","intern"];
+const _ROLES = ["admin","am","director","editor","designer","videographer","mobilographer","driver","intern"];
+const _ROLES_LEGACY = ["producer","smm","photographer","copywriter"];
 const _FMT = ["post","reels","story","carousel","tiktok","youtube_long","other"];
 function _setArr(a, v){ a.length = 0; v.forEach(x => a.push(x)); }
 
@@ -769,7 +774,7 @@ function buildLabels(){
   _setArr(FORMAT_OPTS, opts("fmt.", _FMT));
   _setArr(FORMATOPT_OPTS, [["","—"], ...opts("fmt.", ["post","reels","story","carousel","other"])]);
   _setArr(ROLE_OPTS, _ROLES.map(r => [r, t("role."+r)]));
-  ROLE_LABELS = {}; _ROLES.forEach(r => ROLE_LABELS[r] = t("role."+r));
+  ROLE_LABELS = {}; [..._ROLES, ..._ROLES_LEGACY].forEach(r => ROLE_LABELS[r] = t("role."+r));
   PIPELINE_LABELS = {}; _PIPE.forEach(p => PIPELINE_LABELS[p] = t("pipe."+p));
   STATUS_LABELS = {}; ["pending","in_progress","done","overdue","cancelled"].forEach(s => STATUS_LABELS[s] = t("st."+s));
   PLATFORM_LABEL = Object.fromEntries(PLATFORM_OPTS);
@@ -798,8 +803,9 @@ function setLang(l){
 const ENTITY_NOUN = { task:"задачу", content:"контент", idea:"идею", blocker:"блокер", project:"проект", client:"клиента", user:"пользователя" };
 const ACTION_VERB = { created:"создал", updated:"обновил", completed:"завершил", moved:"продвинул", voted:"проголосовал за", vote_changed:"переголосовал за", assigned:"назначил", resolved:"закрыл" };
 const ROLE_COLORS = {
-  admin:"#8e44ad", am:"#2481cc", smm:"#34c759", designer:"#ff9500",
-  photographer:"#ffcc00", editor:"#1abc9c", intern:"#8a8a8e"
+  admin:"#8e44ad", am:"#2481cc", director:"#e0407f", designer:"#ff9500",
+  videographer:"#5ac8fa", mobilographer:"#34c759", editor:"#1abc9c",
+  driver:"#a0895b", intern:"#8a8a8e"
 };
 
 const view = document.getElementById("view");
@@ -1006,31 +1012,47 @@ function contentCard(c, {advance=true}={}){
   </div>`;
 }
 
+let contentScope = null;   // "mine" | "all" — set on first render by role
+
 async function renderContent(){
   contentById = {};
+  if (contentScope === null) contentScope = (ME && (ME.role === "am" || ME.role === "director")) ? "mine" : "all";
+  const L = (r,u,e) => LANG === "ru" ? r : LANG === "uz" ? u : e;
+  const qs = [];
+  if (contentProjectId) qs.push("project_id=" + encodeURIComponent(contentProjectId));
+  if (contentScope === "mine") qs.push("scope=mine");
   const [projects, items] = await Promise.all([
     api("/api/projects").catch(() => []),
-    api("/api/content" + (contentProjectId ? "?project_id=" + encodeURIComponent(contentProjectId) : "")),
+    api("/api/content" + (qs.length ? "?" + qs.join("&") : "")),
   ]);
-  const filter = `<div class="field" style="margin:2px 0 12px">
+
+  const seg = `<div class="seg" id="contentScopeSeg">
+      <button data-cscope="mine" class="${contentScope === "mine" ? "on" : ""}">${esc(L("Мои проекты","Mening loyihalarim","My projects"))}</button>
+      <button data-cscope="all"  class="${contentScope === "all"  ? "on" : ""}">${esc(L("Все","Barchasi","All"))}</button>
+    </div>`;
+  const filter = `<div class="field" style="margin:8px 0 12px">
     <select id="contentProjFilter">
-      <option value="">${esc(LANG === "ru" ? "Все проекты" : LANG === "uz" ? "Barcha loyihalar" : "All projects")}</option>
+      <option value="">${esc(L("Все проекты","Barcha loyihalar","All projects"))}</option>
       ${projects.map(p => `<option value="${p.id}"${String(contentProjectId) === String(p.id) ? " selected" : ""}>${esc(p.label || p.name)}</option>`).join("")}
     </select>
   </div>`;
 
-  const order = _PIPE;
-  const groups = {};
-  items.forEach(c => { (groups[c.pipeline_status] ||= []).push(c); });
-  const parts = [filter];
+  const parts = [seg, filter];
   if (!items.length){
     parts.push(`<div class="empty">${esc(contentProjectId ? t("empty.contentProj") : t("empty.content"))}</div>`);
   } else {
-    order.forEach(st => {
-      if (!groups[st]) return;
-      parts.push(`<div class="section-title">${PIPELINE_LABELS[st] || st} · ${groups[st].length}</div>`);
-      parts.push(groups[st].map(c => contentCard(c)).join(""));
+    // group by project, keep first-seen order (backend already sorted)
+    const groups = new Map();
+    const noProj = L("Без проекта","Loyihasiz","No project");
+    items.forEach(c => {
+      const key = c.project_name || noProj;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
     });
+    for (const [name, list] of groups){
+      parts.push(`<div class="section-title">📁 ${esc(name)} · ${list.length}</div>`);
+      parts.push(list.map(c => contentCard(c)).join(""));
+    }
   }
   view.innerHTML = parts.join("");
 }
@@ -1427,6 +1449,12 @@ view.addEventListener("click", async e => {
     return;
   }
 
+  const cscopeBtn = e.target.closest("[data-cscope]");
+  if (cscopeBtn){
+    if (cscopeBtn.dataset.cscope !== contentScope){ contentScope = cscopeBtn.dataset.cscope; haptic(); load("content"); }
+    return;
+  }
+
   const subBtn = e.target.closest("[data-teamsub]");
   if (subBtn){
     if (subBtn.dataset.teamsub !== teamSub){
@@ -1631,7 +1659,8 @@ function openMemberSheet(id){
   document.getElementById("memberName").textContent = u.full_name || ("ID " + u.telegram_id);
   document.getElementById("memberFullName").value = u.full_name || "";
   const sel = document.getElementById("memberRole");
-  const roles = self ? ["admin", "am"] : Object.keys(ROLE_LABELS);
+  const roles = self ? ["admin", "am"] : _ROLES.slice();
+  if (!roles.includes(u.role)) roles.push(u.role);   // keep a legacy role visible until reassigned
   sel.innerHTML = roles.map(r =>
     `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r] || r}</option>`).join("");
   document.getElementById("memberDelete").hidden = self;
@@ -1813,22 +1842,17 @@ const FORMS = {
   content: {
     endpoint: "/api/content",
     fields: [
+      { name:"project_id",   type:"select", value:"", coerce:"int", dynamic:"projects", options:[["","—"]] },
       { name:"topic",        type:"text", required:true },
       { name:"rubric",       type:"text" },
       { name:"format",       type:"select", required:true, optsKey:"format" },
       { name:"platform",     type:"select", value:"", optsKey:"platform" },
-      { name:"publish_at",   type:"datetime" },
-      { name:"client_id",    type:"select", value:"", coerce:"int", dynamic:"clients", options:[["","—"]] },
-      { name:"project_id",   type:"select", value:"", coerce:"int", dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
       { name:"hook",         type:"text" },
       { name:"script",       type:"textarea" },
       { name:"caption",      type:"textarea" },
       { name:"hashtags",     type:"text" },
-      { name:"smm_id",        type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
-      { name:"copywriter_id", type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
-      { name:"editor_id",     type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
-      { name:"designer_id",   type:"select", value:"", coerce:"int", dynamic:"members", options:[["","—"]] },
       { name:"refs", type:"refs" },
+      { name:"publish_at",   type:"datetime" },
     ],
   },
   shoots: {
@@ -2124,8 +2148,8 @@ async function openSheet(){
     } else if (f.type === "refs"){
       control = `<div class="refs-field" id="${id}">
         <div class="rf-list"></div>
-        <input type="url" class="rf-url" placeholder="https://…  (${esc(t("refsheet.addLink"))})">
-        <div class="rf-actions">
+        <div class="rf-row">
+          <input type="url" class="rf-url" placeholder="https://…">
           <button type="button" class="act ghost rf-add-file">${esc(t("btn.attachFile"))}</button>
         </div>
         <input type="file" class="rf-file" hidden accept="image/*,video/*,application/pdf">

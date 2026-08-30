@@ -151,7 +151,8 @@ async def member(user: dict = Depends(current_user)) -> dict:
 
 TASK_STATUSES = set(task_status_enum.enums)
 OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue")
-USER_ROLES = set(user_role_enum.enums)
+USER_ROLES = {"admin", "am", "director", "editor", "designer",
+              "videographer", "mobilographer", "driver", "intern"}
 TASK_PRIORITIES = set(task_priority_enum.enums)          # low, normal, high, urgent
 CONTENT_FORMATS = set(content_format_enum.enums)
 # tolerate the labels the Mini App form uses
@@ -545,14 +546,32 @@ async def _projects_map(session, ids):
     return {i: n for i, n in rows}
 
 
+async def _my_project_ids(session, uid):
+    """Project ids where the user is the AM (directly, or via the client)."""
+    if not uid:
+        return set()
+    a = (await session.execute(
+        select(Project.id).where(Project.am_id == uid))).scalars().all()
+    b = (await session.execute(
+        select(Project.id).join(Client, Client.id == Project.client_id)
+        .where(Client.am_id == uid))).scalars().all()
+    return set(a) | set(b)
+
+
 @router.get("/content")
 async def list_content(client_id: int | None = None, project_id: int | None = None,
+                       scope: str | None = None,
                        user: dict = Depends(member), session=Depends(get_session)):
     q = select(ContentItem)
     if client_id:
         q = q.where(ContentItem.client_id == client_id)
     if project_id:
         q = q.where(ContentItem.project_id == project_id)
+    if scope == "mine":
+        mine = await _my_project_ids(session, user["id"])
+        q = q.where(or_(ContentItem.project_id.in_(mine) if mine else False,
+                        ContentItem.am_id == user["id"],
+                        ContentItem.created_by == user["id"]))
     q = q.order_by(ContentItem.pipeline_status,
                    ContentItem.publish_at.is_(None), ContentItem.publish_at,
                    ContentItem.publish_date.is_(None), ContentItem.publish_date,
@@ -626,6 +645,9 @@ async def update_content(content_id: int, patch: ContentPatch,
               "editor_id", "designer_id"):
         if f in data:
             setattr(item, f, data[f] or None)
+    if "project_id" in data and data["project_id"] and "client_id" not in data:
+        item.client_id = (await session.execute(
+            select(Project.client_id).where(Project.id == data["project_id"]))).scalar_one_or_none()
     item.updated_at = _now()
     try:
         await session.commit()
@@ -835,13 +857,17 @@ async def create_content(body: ContentCreate,
     if fmt not in CONTENT_FORMATS:
         raise HTTPException(422, f"format must be one of {sorted(CONTENT_FORMATS)}")
     uid = user["id"] or None
+    client_id = body.client_id
+    if body.project_id and not client_id:
+        client_id = (await session.execute(
+            select(Project.client_id).where(Project.id == body.project_id))).scalar_one_or_none()
     obj = ContentItem(
         format=fmt,
         topic=_clean(body.topic),
         publish_date=_parse_date(body.publish_date),
         publish_at=_parse_dt(body.publish_at),
         project_id=body.project_id,
-        client_id=body.client_id,
+        client_id=client_id,
         pipeline_status="idea",
         created_by=uid,
         author_id=uid,
