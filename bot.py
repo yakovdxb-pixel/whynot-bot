@@ -2294,12 +2294,9 @@ async def _post_init(app: Application):
                                         web_app=WebAppInfo(url=WEBAPP_URL))
         )
         await app.bot.set_my_commands([
-            BotCommand("start",   "Запуск / открыть приложение"),
-            BotCommand("install", "Установить как приложение (PWA)"),
-            BotCommand("my",      "Мои задачи"),
-            BotCommand("join",    "Регистрация в компании"),
-            BotCommand("history", "История"),
-            BotCommand("bind",    "Привязать тему группы к проекту"),
+            BotCommand("start",   "Открыть приложение"),
+            BotCommand("install", "Поставить иконку на телефон"),
+            BotCommand("bind",    "Привязать тему группы к проекту (AM)"),
         ])
         logger.info("✅ menu button + commands set")
     except Exception as e:
