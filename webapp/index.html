@@ -1399,6 +1399,8 @@ async function load(tab){
     }
   }
   updateFab();
+  const navEl = document.querySelector("nav");
+  if (navEl) navEl.style.display = accessDenied ? "none" : "";
 }
 
 async function renderLogin(){
