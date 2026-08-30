@@ -1038,14 +1038,13 @@ async function renderContent(){
       <button data-cscope="mine" class="${contentScope === "mine" ? "on" : ""}">${esc(L("Мои проекты","Mening loyihalarim","My projects"))}</button>
       <button data-cscope="all"  class="${contentScope === "all"  ? "on" : ""}">${esc(L("Все","Barchasi","All"))}</button>
     </div>`;
-  const filter = `<div class="field" style="margin:8px 0 12px">
-    <select id="contentProjFilter">
-      <option value="">${esc(L("Все проекты","Barcha loyihalar","All projects"))}</option>
-      ${projects.map(p => `<option value="${p.id}"${String(contentProjectId) === String(p.id) ? " selected" : ""}>${esc(p.label || p.name)}</option>`).join("")}
-    </select>
-  </div>`;
+  const pillProjects = projects.filter(p => contentScope === "all" || p.is_mine);
+  const pills = pillProjects.length ? `<div class="pills-row" style="margin-top:8px">
+      <button class="pill-btn ${!contentProjectId ? "on" : ""}" data-cproj="">${esc(L("Все","Barchasi","All"))}</button>
+      ${pillProjects.map(p => `<button class="pill-btn ${String(contentProjectId) === String(p.id) ? "on" : ""}" data-cproj="${p.id}">${esc(p.name)}</button>`).join("")}
+    </div>` : "";
 
-  const parts = [seg, filter];
+  const parts = [seg, pills];
   if (!items.length){
     parts.push(`<div class="empty">${esc(contentProjectId ? t("empty.contentProj") : t("empty.content"))}</div>`);
   } else {
@@ -1432,10 +1431,6 @@ document.getElementById("langSheet").addEventListener("click", e => {
 });
 
 view.addEventListener("change", e => {
-  if (e.target.id === "contentProjFilter"){
-    contentProjectId = e.target.value;
-    haptic(); load("content");
-  }
   if (e.target.id === "shootScopeFilter"){
     shootUpcomingOnly = e.target.value === "upcoming";
     haptic(); load("shoots");
@@ -1459,7 +1454,18 @@ view.addEventListener("click", async e => {
 
   const cscopeBtn = e.target.closest("[data-cscope]");
   if (cscopeBtn){
-    if (cscopeBtn.dataset.cscope !== contentScope){ contentScope = cscopeBtn.dataset.cscope; haptic(); load("content"); }
+    if (cscopeBtn.dataset.cscope !== contentScope){
+      contentScope = cscopeBtn.dataset.cscope;
+      contentProjectId = "";
+      haptic(); load("content");
+    }
+    return;
+  }
+
+  const cprojBtn = e.target.closest("[data-cproj]");
+  if (cprojBtn){
+    const v = cprojBtn.dataset.cproj;
+    if (String(v) !== String(contentProjectId)){ contentProjectId = v; haptic(); load("content"); }
     return;
   }
 

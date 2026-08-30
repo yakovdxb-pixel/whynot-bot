@@ -942,11 +942,11 @@ def _client_out(c, am_name=None):
             "am_id": c.am_id, "am_name": am_name, "is_active": c.is_active}
 
 
-def _project_out(p, client_name=None, bound=0):
+def _project_out(p, client_name=None, bound=0, is_mine=False):
     return {"id": p.id, "client_id": p.client_id, "name": p.name,
             "client_name": client_name,
             "label": f"{client_name} — {p.name}" if client_name else p.name,
-            "bound_chats": bound,
+            "bound_chats": bound, "is_mine": is_mine,
             "description": p.description, "is_active": p.is_active}
 
 
@@ -987,6 +987,7 @@ async def list_projects(client_id: int | None = None, active: bool = True,
     q = q.order_by(Project.name)
     rows = (await session.execute(q)).scalars().all()
     cnames = await _client_names(session, [p.client_id for p in rows])
+    mine = await _my_project_ids(session, user["id"])
     bcount = {}
     if rows:
         for pid, n in (await session.execute(
@@ -994,7 +995,8 @@ async def list_projects(client_id: int | None = None, active: bool = True,
             .where(ProjectChat.project_id.in_([p.id for p in rows]))
             .group_by(ProjectChat.project_id))).all():
             bcount[pid] = n
-    return [_project_out(p, cnames.get(p.client_id), bcount.get(p.id, 0)) for p in rows]
+    return [_project_out(p, cnames.get(p.client_id), bcount.get(p.id, 0), p.id in mine)
+            for p in rows]
 
 
 async def _client_names(session, ids):
