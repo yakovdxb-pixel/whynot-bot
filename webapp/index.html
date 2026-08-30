@@ -14,8 +14,16 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
 <script>
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    var _swLoadedAt = Date.now(), _swRefreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      // a newer version just took over — reload, but only right after a fresh
+      // open so we never yank the page out from under someone mid-task
+      if (_swRefreshing || Date.now() - _swLoadedAt > 8000) return;
+      _swRefreshing = true;
+      location.reload();
+    });
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
     });
   }
 </script>
