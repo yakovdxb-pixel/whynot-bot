@@ -2334,7 +2334,7 @@ async function openSheet(){
 
   // restore an in-progress draft (survives an accidental close / app minimise)
   const draft = loadDraft();
-  if (draft && Object.values(draft).some(v => v && v.length)){
+  if (_draftMeaningful(draft)){
     applyPrefill(draft);
     for (const f of sheetFields){
       if (f.dependsOn && f.dynamic) await fillDynamic(f);
@@ -2347,7 +2347,13 @@ async function openSheet(){
 
 /* ── form drafts (localStorage) ──────────────────────────── */
 let _draftReady = false, _draftTimer = null;
-function _draftKey(){ return "wn_d_" + (editState ? "e:" + editState.endpoint : "c:" + activeFormKey()); }
+function _draftKey(){ return "wn_d2_" + (editState ? "e:" + editState.endpoint : "c:" + activeFormKey()); }
+// a draft is worth keeping/restoring only if the user actually typed something
+function _draftMeaningful(d){
+  return !!d && sheetFields.some(f =>
+    (f.type === "text" || f.type === "textarea" || f.type === "number")
+    && d[f.name] != null && String(d[f.name]).trim() !== "");
+}
 function saveDraft(){
   if (!_draftReady || !sheet.classList.contains("open") || !sheetFields.length) return;
   const d = {};
@@ -2358,6 +2364,7 @@ function saveDraft(){
     if (f.type === "mpick") d[f.name] = [...el.querySelectorAll(".mp-opt.on")].map(b => b.dataset.id);
     else d[f.name] = el.value || "";
   }
+  if (!_draftMeaningful(d)){ clearDraft(); return; }
   try { localStorage.setItem(_draftKey(), JSON.stringify({ ts: Date.now(), d })); } catch(e){}
 }
 function scheduleDraftSave(){ clearTimeout(_draftTimer); _draftTimer = setTimeout(saveDraft, 400); }
