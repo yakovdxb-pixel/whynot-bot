@@ -345,15 +345,15 @@ async def health():
             tbls = (await conn.execute(_sql_text(
                 "SELECT count(*) FROM information_schema.tables "
                 "WHERE table_name IN ('task_assignees','reference_items',"
-                "'project_chats','shoot_sessions','shoot_participants')"
+                "'project_chats','shoot_sessions','shoot_participants','content_assignees')"
             ))).scalar()
             cols = (await conn.execute(_sql_text(
-                "SELECT count(*) FROM information_schema.columns "
-                "WHERE table_name='content_items' "
-                "AND column_name IN ('rubric','platform','publish_at','hook',"
-                "'script','caption','hashtags','smm_id','copywriter_id')"
+                "SELECT count(*) FROM information_schema.columns WHERE "
+                "(table_name='content_items' AND column_name IN ('content_kind')) OR "
+                "(table_name='projects' AND column_name='monthly_posts') OR "
+                "(table_name='reference_items' AND column_name='idea_id')"
             ))).scalar()
-        return {"db": "ok", "new_tables": int(tbls), "content_cols": int(cols)}
+        return {"db": "ok", "new_tables": int(tbls), "sep_cols": int(cols)}
     except Exception as e:
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content={"db": "error", "detail": str(e)})

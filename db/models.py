@@ -168,6 +168,7 @@ class Project(Base):
     is_active   = Column(Boolean, default=True)
     start_date  = Column(Date)
     end_date    = Column(Date)
+    monthly_posts = Column(Integer)   # director-set publication target / month
     created_at  = Column(DateTime(timezone=True), server_default=text('NOW()'))
     updated_at  = Column(DateTime(timezone=True), server_default=text('NOW()'))
 
@@ -205,6 +206,7 @@ class ContentItem(Base):
     caption          = Column(Text)
     hashtags         = Column(Text)
     smm_id           = Column(Integer, ForeignKey('users.id'))
+    content_kind     = Column(Text)   # info | sales | image | engage | entertain | other
     copywriter_id    = Column(Integer, ForeignKey('users.id'))
 
     __table_args__ = (
@@ -428,12 +430,26 @@ class TaskAssignee(Base):
     )
 
 
+class ContentAssignee(Base):
+    __tablename__ = 'content_assignees'
+
+    id         = Column(Integer, primary_key=True)
+    content_id = Column(Integer, ForeignKey('content_items.id', ondelete='CASCADE'), nullable=False)
+    user_id    = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('content_id', 'user_id', name='uq_content_assignee'),
+        Index('idx_content_assignee_user', 'user_id'),
+    )
+
+
 class ReferenceItem(Base):
     __tablename__ = 'reference_items'
 
     id         = Column(Integer, primary_key=True)
     task_id    = Column(Integer, ForeignKey('tasks.id', ondelete='CASCADE'))
     content_id = Column(Integer, ForeignKey('content_items.id', ondelete='CASCADE'))
+    idea_id    = Column(Integer, ForeignKey('ideas.id', ondelete='CASCADE'))
     kind       = Column(Text, nullable=False)          # 'link' | 'file'
     url        = Column(Text)                          # links
     title      = Column(Text)
@@ -521,6 +537,13 @@ _MIGRATIONS = [
     # rename retired roles to the closest current one (best-effort)
     "UPDATE users SET role='videographer' WHERE role='photographer'",
     "UPDATE users SET role='director' WHERE role='producer'",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS content_kind TEXT",
+    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS monthly_posts INTEGER",
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS idea_id INTEGER REFERENCES ideas(id) ON DELETE CASCADE",
+    # collapse the old 11-step pipeline into the 4-step publication flow
+    "UPDATE content_items SET pipeline_status='script' WHERE pipeline_status IN ('idea','shoot','edit')",
+    "UPDATE content_items SET pipeline_status='approval' WHERE pipeline_status IN ('review','client')",
+    "UPDATE content_items SET pipeline_status='published' WHERE pipeline_status='analytics'",
 ]
 
 
