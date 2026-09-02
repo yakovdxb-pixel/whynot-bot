@@ -1153,10 +1153,20 @@ function teamCard(u, canManage){
   </div>`;
 }
 
-function clientCard(c){
+function clientCard(c, members){
   const open = expandedClient === c.id;
   const active = c.is_active !== false;
   const projs = (c.projects || []);
+  const L = (r,u,e) => LANG === "ru" ? r : LANG === "uz" ? u : e;
+  let amBlock = "";
+  if (open && Array.isArray(members)){
+    const opts = `<option value="">${esc(L("— не назначен —","— tayinlanmagan —","— unassigned —"))}</option>` +
+      members.map(m => `<option value="${m.id}"${String(c.am_id) === String(m.id) ? " selected" : ""}>${esc(m.full_name)}</option>`).join("");
+    amBlock = `<div class="field" style="margin:10px 0 0">
+      <label>${esc(L("Ответственный AM — его «Мои проекты»","Mas'ul AM","Account manager"))}</label>
+      <select data-client-am="${c.id}">${opts}</select>
+    </div>`;
+  }
   return `
   <div class="card client-card" data-client="${c.id}">
     <div class="row" data-client-toggle="${c.id}">
@@ -1169,6 +1179,7 @@ function clientCard(c){
       ${c.am_name ? `<span>AM: ${esc(c.am_name)}</span>` : ""}
       <span class="hint">${open ? "свернуть ▴" : "изменить ▾"}</span>
     </div>
+    ${amBlock}
     ${open ? projectsBlock(c.id) : ""}
   </div>`;
 }
@@ -1217,9 +1228,12 @@ async function renderTeam(){
     }
   } else {
     try {
-      const clients = await api("/api/clients");
+      const [clients, members] = await Promise.all([
+        api("/api/clients"),
+        api("/api/members").catch(() => []),
+      ]);
       body = clients.length
-        ? clients.map(clientCard).join("")
+        ? clients.map(c => clientCard(c, members)).join("")
         : `<div class="empty">Клиентов пока нет</div>`;
     } catch(e){
       body = `<div class="empty">${esc(e.message || "Не удалось загрузить клиентов")}</div>`;
@@ -1465,10 +1479,23 @@ document.getElementById("langSheet").addEventListener("click", e => {
   if (b){ closeLangSheet(); setLang(b.dataset.lang); }
 });
 
-view.addEventListener("change", e => {
+view.addEventListener("change", async e => {
   if (e.target.id === "shootScopeFilter"){
     shootUpcomingOnly = e.target.value === "upcoming";
     haptic(); load("shoots");
+    return;
+  }
+  const amSel = e.target.closest("[data-client-am]");
+  if (amSel && !busy){
+    busy = true; amSel.disabled = true;
+    try {
+      await api("/api/clients/" + amSel.dataset.clientAm, {
+        method: "PATCH", body: { am_id: amSel.value ? +amSel.value : null },
+      });
+      haptic("medium"); toast(t("toast.saved"));
+      await load("team");
+    } catch(err){ toast(err.message); amSel.disabled = false; }
+    finally { busy = false; }
   }
 });
 

@@ -17,7 +17,7 @@ from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
                      HTTPException, Request, UploadFile)
 from fastapi.responses import Response, RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select, or_, func, delete as sa_delete
+from sqlalchemy import select, or_, func, delete as sa_delete, update as sa_update
 from sqlalchemy.exc import IntegrityError
 
 from db.models import (
@@ -303,6 +303,21 @@ class ClientCreate(BaseModel):
     contact: str | None = None
     notes: str | None = None
     project_name: str | None = None   # empty -> a project named after the client
+
+
+class ClientPatch(BaseModel):
+    name: str | None = None
+    contact: str | None = None
+    notes: str | None = None
+    am_id: int | None = None
+    is_active: bool | None = None
+
+
+class ProjectPatch(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    am_id: int | None = None
+    is_active: bool | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -1051,15 +1066,19 @@ async def list_clients(user: dict = Depends(member), session=Depends(get_session
     rows = (await session.execute(
         select(Client).order_by(Client.is_active.desc(), Client.name)
     )).scalars().all()
-    names = await _names_for(session, [c.am_id for c in rows])
     projs = {}
+    prows = []
     if rows:
-        for pid, cid, pn in (await session.execute(
-            select(Project.id, Project.client_id, Project.name)
+        prows = (await session.execute(
+            select(Project.id, Project.client_id, Project.name, Project.am_id)
             .where(Project.client_id.in_([c.id for c in rows]),
                    Project.is_active.is_(True))
-            .order_by(Project.name))).all():
-            projs.setdefault(cid, []).append({"id": pid, "name": pn})
+            .order_by(Project.name))).all()
+    names = await _names_for(
+        session, [c.am_id for c in rows] + [r[3] for r in prows])
+    for pid, cid, pn, pam in prows:
+        projs.setdefault(cid, []).append(
+            {"id": pid, "name": pn, "am_id": pam, "am_name": names.get(pam)})
     out = []
     for c in rows:
         d = _client_out(c, names.get(c.am_id))
@@ -1146,6 +1165,80 @@ async def create_project(body: ProjectCreate,
     result = await _commit_new(session, obj)
     await _log(session, "project", "created", obj.id, user["id"], name)
     return result
+
+
+async def _client_with_projects(session, c):
+    rows = (await session.execute(
+        select(Project.id, Project.name, Project.am_id)
+        .where(Project.client_id == c.id, Project.is_active.is_(True))
+        .order_by(Project.name))).all()
+    names = await _names_for(session, [c.am_id] + [r[2] for r in rows])
+    d = _client_out(c, names.get(c.am_id))
+    d["projects"] = [{"id": pid, "name": pn, "am_id": pam, "am_name": names.get(pam)}
+                     for pid, pn, pam in rows]
+    return d
+
+
+@router.patch("/clients/{client_id}")
+async def update_client(client_id: int, patch: ClientPatch,
+                        user: dict = Depends(member), session=Depends(get_session)):
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "only admin / am can edit clients")
+    c = (await session.execute(
+        select(Client).where(Client.id == client_id))).scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "client not found")
+    data = patch.model_dump(exclude_unset=True)
+    if "name" in data and _clean(data["name"]):
+        c.name = _clean(data["name"])
+    for f in ("contact", "notes"):
+        if f in data:
+            setattr(c, f, _clean(data[f]))
+    if "is_active" in data and data["is_active"] is not None:
+        c.is_active = bool(data["is_active"])
+    if "am_id" in data:
+        c.am_id = data["am_id"] or None
+        # keep the client's projects on the same AM (1 client ≈ 1 project)
+        await session.execute(sa_update(Project)
+                              .where(Project.client_id == client_id)
+                              .values(am_id=c.am_id))
+    c.updated_at = _now()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "ссылка на несуществующий id")
+    await session.refresh(c)
+    return await _client_with_projects(session, c)
+
+
+@router.patch("/projects/{project_id}")
+async def update_project(project_id: int, patch: ProjectPatch,
+                         user: dict = Depends(member), session=Depends(get_session)):
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "only admin / am can edit projects")
+    p = (await session.execute(
+        select(Project).where(Project.id == project_id))).scalar_one_or_none()
+    if not p:
+        raise HTTPException(404, "project not found")
+    data = patch.model_dump(exclude_unset=True)
+    if "name" in data and _clean(data["name"]):
+        p.name = _clean(data["name"])
+    if "description" in data:
+        p.description = _clean(data["description"])
+    if "is_active" in data and data["is_active"] is not None:
+        p.is_active = bool(data["is_active"])
+    if "am_id" in data:
+        p.am_id = data["am_id"] or None
+    p.updated_at = _now()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "ссылка на несуществующий id")
+    await session.refresh(p)
+    cn = await _client_names(session, [p.client_id])
+    return _project_out(p, cn.get(p.client_id))
 
 
 # ── members (lightweight list for assignee pickers — any member) ─
