@@ -302,6 +302,7 @@ class ClientCreate(BaseModel):
     name: str
     contact: str | None = None
     notes: str | None = None
+    project_name: str | None = None   # empty -> a project named after the client
 
 
 class ProjectCreate(BaseModel):
@@ -1051,7 +1052,20 @@ async def list_clients(user: dict = Depends(member), session=Depends(get_session
         select(Client).order_by(Client.is_active.desc(), Client.name)
     )).scalars().all()
     names = await _names_for(session, [c.am_id for c in rows])
-    return [_client_out(c, names.get(c.am_id)) for c in rows]
+    projs = {}
+    if rows:
+        for pid, cid, pn in (await session.execute(
+            select(Project.id, Project.client_id, Project.name)
+            .where(Project.client_id.in_([c.id for c in rows]),
+                   Project.is_active.is_(True))
+            .order_by(Project.name))).all():
+            projs.setdefault(cid, []).append({"id": pid, "name": pn})
+    out = []
+    for c in rows:
+        d = _client_out(c, names.get(c.am_id))
+        d["projects"] = projs.get(c.id, [])
+        out.append(d)
+    return out
 
 
 @router.post("/clients", status_code=201)
@@ -1062,13 +1076,25 @@ async def create_client(body: ClientCreate,
     name = _clean(body.name)
     if not name:
         raise HTTPException(422, "name is required")
-    return await _commit_new(session, Client(
-        name=name,
-        contact=_clean(body.contact),
-        notes=_clean(body.notes),
-        am_id=user["id"] or None,
-        is_active=True,
-    ))
+    uid = user["id"] or None
+    client = Client(name=name, contact=_clean(body.contact),
+                    notes=_clean(body.notes), am_id=uid, is_active=True)
+    session.add(client)
+    await session.flush()
+    project = Project(client_id=client.id, name=_clean(body.project_name) or name,
+                      am_id=uid, is_active=True)
+    session.add(project)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "не удалось создать клиента")
+    await session.refresh(client)
+    await session.refresh(project)
+    await _log(session, "project", "created", project.id, uid, project.name)
+    out = _client_out(client, user.get("full_name"))
+    out["projects"] = [{"id": project.id, "name": project.name}]
+    return out
 
 
 @router.get("/projects")

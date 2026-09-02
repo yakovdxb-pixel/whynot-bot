@@ -2169,9 +2169,22 @@ async def _pg_role(telegram_id: int):
     return None
 
 
+async def _pg_user_id(telegram_id: int):
+    try:
+        from db.models import AsyncSessionLocal, User
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as s:
+            return (await s.execute(
+                select(User.id).where(User.telegram_id == telegram_id))).scalar_one_or_none()
+    except Exception as e:
+        logger.warning(f"_pg_user_id failed: {e}")
+        return None
+
+
 async def bind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/bind — inside a group topic: attach this topic to a project so task
-    notifications land here. admin / am only."""
+    """/bind [название] — в теме супергруппы: привязать тему к проекту, чтобы
+    уведомления по нему падали сюда. С аргументом — сразу создаёт клиента и
+    проект с этим именем. admin / am / director."""
     msg = update.effective_message
     chat = update.effective_chat
     if chat.type not in ("group", "supergroup"):
@@ -2181,6 +2194,41 @@ async def bind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if role not in ("admin", "am", "director"):
         await msg.reply_text("Привязывать темы к проектам может админ, АМ или Директор.")
         return
+
+    thread_id = getattr(msg, "message_thread_id", None) or 0
+    arg = " ".join(context.args).strip() if context.args else ""
+
+    # ── /bind Название → создать клиента + проект + привязать ──
+    if arg:
+        name = arg[:80]
+        uid = await _pg_user_id(update.effective_user.id)
+        try:
+            from db.models import AsyncSessionLocal, Client, Project, ProjectChat
+            from sqlalchemy import delete as sa_delete
+            async with AsyncSessionLocal() as s:
+                client = Client(name=name, am_id=uid, telegram_id=chat.id, is_active=True)
+                s.add(client)
+                await s.flush()
+                project = Project(client_id=client.id, name=name, am_id=uid, is_active=True)
+                s.add(project)
+                await s.flush()
+                await s.execute(sa_delete(ProjectChat).where(
+                    ProjectChat.chat_id == chat.id,
+                    ProjectChat.thread_id == (thread_id or None)))
+                s.add(ProjectChat(project_id=project.id, chat_id=chat.id,
+                                  thread_id=thread_id or None, title=chat.title, bound_by=uid))
+                await s.commit()
+        except Exception as e:
+            logger.warning(f"bind create failed: {e}")
+            await msg.reply_text("Не получилось создать клиента. Попробуй позже.")
+            return
+        await msg.reply_text(
+            f"✅ Клиент и проект «{name}» созданы, эта тема привязана.\n"
+            f"Задачи, контент и съёмки по проекту будут падать сюда. "
+            f"Переименовать или добавить данные — в приложении: Ещё → Клиенты.")
+        return
+
+    # ── /bind без аргумента → список проектов + подсказка ──
     try:
         from db.models import AsyncSessionLocal, Project, Client
         from sqlalchemy import select
@@ -2195,16 +2243,19 @@ async def bind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"bind_cmd list failed: {e}")
         await msg.reply_text("Не получилось загрузить проекты. Попробуй позже.")
         return
+
+    hint = "Новый клиент: напиши  /bind Название клиента"
     if not rows:
-        await msg.reply_text("Сначала добавь проект в приложении (Команда → Клиенты).")
+        await msg.reply_text(
+            "Пока нет ни одного проекта.\n\n" + hint)
         return
-    thread_id = getattr(msg, "message_thread_id", None) or 0
     kb = [[InlineKeyboardButton(
         (f"{cl} — {pn}" if cl else pn)[:60],
         callback_data=f"pcbind_{pid}_{thread_id}")] for pid, pn, cl in rows[:60]]
     await msg.reply_text(
         "К какому проекту привязать эту тему?\n"
-        "Уведомления по задачам проекта будут приходить сюда (и в личку исполнителю).",
+        "Уведомления по проекту будут приходить сюда (и в личку исполнителю).\n\n"
+        + hint,
         reply_markup=InlineKeyboardMarkup(kb))
 
 
@@ -2296,7 +2347,7 @@ async def _post_init(app: Application):
         await app.bot.set_my_commands([
             BotCommand("start",   "Открыть приложение"),
             BotCommand("install", "Поставить иконку на телефон"),
-            BotCommand("bind",    "Привязать тему группы к проекту (AM)"),
+            BotCommand("bind",    "Привязать тему к проекту / завести клиента (AM)"),
         ])
         logger.info("✅ menu button + commands set")
     except Exception as e:

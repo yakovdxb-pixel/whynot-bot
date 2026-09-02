@@ -625,7 +625,7 @@ const I18N = {
     "field.hook":"Заголовок / хук","field.script":"Описание","field.caption":"Подпись к посту","field.hashtags":"Хэштеги",
     "field.smm_id":"SMM","field.copywriter_id":"Сценарист / копирайтер","field.editor_id":"Монтажёр","field.designer_id":"Дизайнер",
     "field.status":"Статус","field.pipeline_status":"Этап","field.shoot_at":"Дата и время","field.location":"Локация / адрес",
-    "field.participant_ids":"Команда на съёмке","field.notes":"Заметки","field.name":"Название","field.contact":"Контакт",
+    "field.participant_ids":"Команда на съёмке","field.notes":"Заметки","field.name":"Название клиента","field.project_name":"Название проекта (если пусто — как клиент)","field.contact":"Контакт",
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
     "sec.tasks":"Задачи","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
@@ -673,7 +673,7 @@ const I18N = {
     "field.hook":"Sarlavha / huk","field.script":"Tavsif","field.caption":"Post matni","field.hashtags":"Xeshteglar",
     "field.smm_id":"SMM","field.copywriter_id":"Ssenariynavis / kopirayter","field.editor_id":"Montajchi","field.designer_id":"Dizayner",
     "field.status":"Holat","field.pipeline_status":"Bosqich","field.shoot_at":"Sana va vaqt","field.location":"Manzil",
-    "field.participant_ids":"Suratga olish jamoasi","field.notes":"Eslatmalar","field.name":"Nomi","field.contact":"Kontakt",
+    "field.participant_ids":"Suratga olish jamoasi","field.notes":"Eslatmalar","field.name":"Mijoz nomi","field.project_name":"Loyiha nomi (bo‘sh bo‘lsa — mijoz nomi)","field.contact":"Kontakt",
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
     "sec.tasks":"Vazifalar","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
@@ -721,7 +721,7 @@ const I18N = {
     "field.hook":"Headline / hook","field.script":"Description","field.caption":"Caption","field.hashtags":"Hashtags",
     "field.smm_id":"SMM","field.copywriter_id":"Scriptwriter / copywriter","field.editor_id":"Editor","field.designer_id":"Designer",
     "field.status":"Status","field.pipeline_status":"Stage","field.shoot_at":"Date & time","field.location":"Location / address",
-    "field.participant_ids":"Shoot crew","field.notes":"Notes","field.name":"Name","field.contact":"Contact",
+    "field.participant_ids":"Shoot crew","field.notes":"Notes","field.name":"Client name","field.project_name":"Project name (blank = same as client)","field.contact":"Contact",
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
     "sec.tasks":"Tasks","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
@@ -1156,6 +1156,7 @@ function teamCard(u, canManage){
 function clientCard(c){
   const open = expandedClient === c.id;
   const active = c.is_active !== false;
+  const projs = (c.projects || []);
   return `
   <div class="card client-card" data-client="${c.id}">
     <div class="row" data-client-toggle="${c.id}">
@@ -1163,9 +1164,10 @@ function clientCard(c){
       <span class="pill ${active ? "done" : "cancelled"}">${active ? "активен" : "неактивен"}</span>
     </div>
     <div class="meta">
+      ${projs.length ? `<span>📁 ${esc(projs.map(p => p.name).join(", "))}</span>` : ""}
       ${c.contact ? `<span>${esc(c.contact)}</span>` : ""}
       ${c.am_name ? `<span>AM: ${esc(c.am_name)}</span>` : ""}
-      <span>${open ? "▲" : "▼ проекты"}</span>
+      <span class="hint">${open ? "свернуть ▴" : "изменить ▾"}</span>
     </div>
     ${open ? projectsBlock(c.id) : ""}
   </div>`;
@@ -1183,7 +1185,7 @@ function projectsBlock(clientId){
       ? projects.map(p => `<div class="proj-item">📁 ${esc(p.name)}${p.description ? ` — <span class="hint">${esc(p.description)}</span>` : ""}</div>`).join("")
       : `<div class="hint">Нет активных проектов</div>`}
     ${mgr ? `
-      <button class="act ghost" data-proj-add="${clientId}" style="margin-top:8px">＋ Проект</button>
+      <button class="act ghost" data-proj-add="${clientId}" style="margin-top:8px">＋ Ещё проект (необязательно)</button>
       <div class="proj-form" id="projForm-${clientId}" style="display:none">
         <input id="projName-${clientId}" placeholder="Название проекта *">
         <textarea id="projDesc-${clientId}" placeholder="Описание"></textarea>
@@ -1933,9 +1935,10 @@ const FORMS = {
   clients: {
     endpoint: "/api/clients",
     fields: [
-      { name:"name",    type:"text", required:true },
-      { name:"contact", type:"text" },
-      { name:"notes",   type:"textarea" },
+      { name:"name",         type:"text", required:true },
+      { name:"project_name", type:"text" },
+      { name:"contact",      type:"text" },
+      { name:"notes",        type:"textarea" },
     ],
   },
   team: {
