@@ -13,7 +13,7 @@ from telegram import (
 from telegram.ext import (
     Application, CommandHandler, ContextTypes,
     MessageHandler, filters, ConversationHandler,
-    CallbackQueryHandler
+    CallbackQueryHandler, MessageReactionHandler
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -2169,6 +2169,129 @@ async def _pg_role(telegram_id: int):
     return None
 
 
+REF_EMOJI = {"📌", "📎", "⭐", "✅"}
+
+
+async def group_media_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remember photos/files posted in group topics so a reaction can pick them as references."""
+    msg = update.effective_message
+    if not msg or update.effective_chat.type not in ("group", "supergroup"):
+        return
+    fid = kind = mime = fname = None
+    if msg.photo:
+        fid, kind = msg.photo[-1].file_id, "photo"
+    elif msg.document:
+        d = msg.document
+        fid, kind, mime, fname = d.file_id, "document", d.mime_type, d.file_name
+    if not fid:
+        return
+    try:
+        from db.models import AsyncSessionLocal, GroupMedia
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as s:
+            exists = (await s.execute(select(GroupMedia.id).where(
+                GroupMedia.chat_id == update.effective_chat.id,
+                GroupMedia.message_id == msg.message_id))).scalar_one_or_none()
+            if exists:
+                return
+            s.add(GroupMedia(chat_id=update.effective_chat.id, message_id=msg.message_id,
+                             thread_id=getattr(msg, "message_thread_id", None),
+                             tg_file_id=fid, kind=kind, mime=mime, file_name=fname))
+            await s.commit()
+    except Exception as e:
+        logger.warning(f"group_media_log: {e}")
+
+
+async def reaction_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """React to a group photo/file with 📌 → it lands in the project's references. Un-react removes it."""
+    r = update.message_reaction
+    if not r or not r.chat:
+        return
+    old = {e.emoji for e in (r.old_reaction or []) if getattr(e, "emoji", None)}
+    new = {e.emoji for e in (r.new_reaction or []) if getattr(e, "emoji", None)}
+    added = (new & REF_EMOJI) - old
+    removed = (old & REF_EMOJI) - new
+    if not (added or removed):
+        return
+    actor = r.user.id if r.user else None
+    if actor and await _pg_role(actor) not in ("admin", "am", "director"):
+        return
+    try:
+        from db.models import (AsyncSessionLocal, GroupMedia, ProjectChat,
+                               ReferenceItem, User)
+        from sqlalchemy import select, delete as sa_delete
+        async with AsyncSessionLocal() as s:
+            gm = (await s.execute(select(GroupMedia).where(
+                GroupMedia.chat_id == r.chat.id,
+                GroupMedia.message_id == r.message_id))).scalar_one_or_none()
+            if not gm:
+                return
+            proj = (await s.execute(select(ProjectChat.project_id).where(
+                ProjectChat.chat_id == r.chat.id,
+                ProjectChat.thread_id == (gm.thread_id or None)))).scalar_one_or_none()
+            if not proj:
+                proj = (await s.execute(select(ProjectChat.project_id).where(
+                    ProjectChat.chat_id == r.chat.id))).scalar_one_or_none()
+            if not proj:
+                return
+            uid = (await s.execute(select(User.id).where(User.telegram_id == actor))).scalar_one_or_none()
+            existing = (await s.execute(select(ReferenceItem).where(
+                ReferenceItem.project_id == proj,
+                ReferenceItem.tg_chat_id == r.chat.id,
+                ReferenceItem.tg_message_id == r.message_id))).scalar_one_or_none()
+            if added and not existing:
+                s.add(ReferenceItem(project_id=proj, kind="file", tg_file_id=gm.tg_file_id,
+                                    mime=gm.mime, file_name=gm.file_name or "фото",
+                                    tg_chat_id=r.chat.id, tg_message_id=r.message_id,
+                                    added_by=uid))
+                await s.commit()
+            elif removed and existing:
+                await s.execute(sa_delete(ReferenceItem).where(ReferenceItem.id == existing.id))
+                await s.commit()
+    except Exception as e:
+        logger.warning(f"reaction_ref: {e}")
+
+
+async def pg_overdue_job(context: ContextTypes.DEFAULT_TYPE):
+    """Every ~5 min: notify assignees of tasks overdue by >15 min, once each."""
+    try:
+        from db.models import AsyncSessionLocal, Task, TaskAssignee, User, ProjectChat
+        from sqlalchemy import select
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        cutoff = _dt.now(_tz.utc) - _td(minutes=15)
+        async with AsyncSessionLocal() as s:
+            tasks = (await s.execute(select(Task).where(
+                Task.deadline.isnot(None), Task.deadline < cutoff,
+                Task.status.in_(("pending", "in_progress")),
+                Task.overdue_notified_at.is_(None)).limit(50))).scalars().all()
+            for task in tasks:
+                aids = list((await s.execute(select(TaskAssignee.user_id)
+                            .where(TaskAssignee.task_id == task.id))).scalars().all())
+                if not aids and task.assignee_id:
+                    aids = [task.assignee_id]
+                tgs = list((await s.execute(select(User.telegram_id).where(
+                    User.id.in_(aids), User.telegram_id.isnot(None)))).scalars().all())
+                dl = task.deadline.strftime("%d.%m %H:%M")
+                for tg in tgs:
+                    try:
+                        await context.bot.send_message(tg, f"⏰ Просрочена задача: {task.title}\nДедлайн был {dl}")
+                    except Exception:
+                        pass
+                for chat_id, thread_id in (await s.execute(select(
+                        ProjectChat.chat_id, ProjectChat.thread_id)
+                        .where(ProjectChat.project_id == task.project_id))).all():
+                    try:
+                        await context.bot.send_message(chat_id, f"⏰ Просрочена: {task.title} (дедлайн {dl})",
+                                                       message_thread_id=thread_id or None)
+                    except Exception:
+                        pass
+                task.overdue_notified_at = _dt.now(_tz.utc)
+                task.status = "overdue"
+            await s.commit()
+    except Exception as e:
+        logger.warning(f"pg_overdue_job: {e}")
+
+
 async def _pg_user_id(telegram_id: int):
     try:
         from db.models import AsyncSessionLocal, User
@@ -2362,6 +2485,7 @@ def main():
 
     # ── Daily deadline reminder: 09:00 Uzbekistan = 04:00 UTC ────────
     app.job_queue.run_daily(deadline_reminder_job, time=dttime(4, 0, 0))
+    app.job_queue.run_repeating(pg_overdue_job, interval=300, first=90)
 
     _cancel_fb = [
         CommandHandler("cancel", cancel),
@@ -2518,8 +2642,13 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
+    # WHY NOT? OS — group media log + reaction-to-reference (separate group so they don't block the above)
+    app.add_handler(MessageHandler(
+        (filters.PHOTO | filters.Document.ALL) & filters.ChatType.GROUPS, group_media_log), group=1)
+    app.add_handler(MessageReactionHandler(reaction_ref))
+
     logger.info("✅ WhyNot бот v21 запущен!")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':

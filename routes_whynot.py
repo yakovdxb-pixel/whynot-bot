@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from db.models import (
     AsyncSessionLocal, User, Task, ContentItem, Idea, IdeaVote, Blocker,
     Client, Project, ActivityEvent, TaskAssignee, ReferenceItem,
-    ProjectChat, ShootSession, ShootParticipant, ContentAssignee,
+    ProjectChat, ShootSession, ShootParticipant, ContentAssignee, StatusEvent,
     PIPELINE_SEQUENCE, task_status_enum, user_role_enum,
     content_format_enum, task_priority_enum,
 )
@@ -274,7 +274,7 @@ class RolePatch(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    title: str
+    title: str | None = None
     description: str | None = None
     priority: str | None = "normal"
     deadline: str | None = None
@@ -289,6 +289,7 @@ class LinkRef(BaseModel):
     task_id: int | None = None
     content_id: int | None = None
     idea_id: int | None = None
+    project_id: int | None = None
     url: str
     title: str | None = None
 
@@ -471,12 +472,14 @@ async def _mine_task_ids(session, uid):
     )).scalars().all())
 
 
-async def _ref_summaries(session, *, task_ids=None, content_ids=None, idea_ids=None):
+async def _ref_summaries(session, *, task_ids=None, content_ids=None, idea_ids=None, project_ids=None):
     """id -> {"count": n, "thumbs": [{"id", "download"}]} (thumbs = up to 4 image files)."""
     if task_ids is not None:
         col, ids, key_attr = ReferenceItem.task_id, task_ids, "task_id"
     elif idea_ids is not None:
         col, ids, key_attr = ReferenceItem.idea_id, idea_ids, "idea_id"
+    elif project_ids is not None:
+        col, ids, key_attr = ReferenceItem.project_id, project_ids, "project_id"
     else:
         col, ids, key_attr = ReferenceItem.content_id, content_ids, "content_id"
     if not ids:
@@ -581,18 +584,17 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
     if not task:
         raise HTTPException(404, "Task not found")
 
+    status_changed = False
     if patch.status is not None:
         if patch.status not in TASK_STATUSES:
             raise HTTPException(422, f"status must be one of {sorted(TASK_STATUSES)}")
+        status_changed = patch.status != task.status
         task.status = patch.status
         if patch.status == "done" and task.actual_completion is None:
             task.actual_completion = _now()
 
     if patch.title is not None:
-        t = _clean(patch.title)
-        if not t:
-            raise HTTPException(422, "title cannot be empty")
-        task.title = t
+        task.title = _clean(patch.title) or task.title
     if patch.description is not None:
         task.description = _clean(patch.description)
     if patch.priority is not None:
@@ -628,6 +630,8 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
     await _log(session, "task",
                "completed" if patch.status == "done" else "updated",
                task.id, user["id"], task.title)
+    if status_changed:
+        await _log_status(session, "task", task.id, patch.status, user["id"])
 
     for a in new_notify:
         tg = await _telegram_id_for(session, a)
@@ -643,6 +647,18 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
 
     result = await _attach_assignees(session, [task])
     return result[0]
+
+
+@router.get("/tasks/{task_id}/timeline")
+async def task_timeline(task_id: int,
+                        user: dict = Depends(member), session=Depends(get_session)):
+    return await _timeline(session, "task", task_id)
+
+
+@router.get("/content/{content_id}/timeline")
+async def content_timeline(content_id: int,
+                           user: dict = Depends(member), session=Depends(get_session)):
+    return await _timeline(session, "content", content_id)
 
 
 CONTENT_PEOPLE = ("smm_id", "copywriter_id", "editor_id", "designer_id",
@@ -781,6 +797,7 @@ async def advance_content(content_id: int, bg: BackgroundTasks,
     await session.commit()
     await session.refresh(item)
     await _log(session, "content", "moved", item.id, user["id"], item.topic)
+    await _log_status(session, "content", item.id, nxt, user["id"])
     # notify the content's assignees only now (not on assign) + the project topic
     stage = CONTENT_STAGE_RU.get(nxt, nxt)
     title = item.topic or f"контент #{item.id}"
@@ -831,9 +848,12 @@ async def update_content(content_id: int, patch: ContentPatch,
         if fmt not in CONTENT_FORMATS:
             raise HTTPException(422, f"format must be one of {sorted(CONTENT_FORMATS)}")
         item.format = fmt
+    content_stage_changed = None
     if "pipeline_status" in data and data["pipeline_status"]:
         if data["pipeline_status"] not in PIPELINE_STEPS:
             raise HTTPException(422, f"status must be one of {sorted(PIPELINE_STEPS)}")
+        if data["pipeline_status"] != item.pipeline_status:
+            content_stage_changed = data["pipeline_status"]
         item.pipeline_status = data["pipeline_status"]
     if "publish_date" in data:
         item.publish_date = _parse_date(data["publish_date"])
@@ -859,6 +879,8 @@ async def update_content(content_id: int, patch: ContentPatch,
         raise HTTPException(400, "ссылка на несуществующий id")
     await session.refresh(item)
     await _log(session, "content", "updated", item.id, user["id"], item.topic)
+    if content_stage_changed:
+        await _log_status(session, "content", item.id, content_stage_changed, user["id"])
     return await _one_content(session, item, user)
 
 
@@ -952,6 +974,35 @@ async def _commit_new(session, obj):
     return row_to_dict(obj)
 
 
+async def _log_status(session, entity, entity_id, status, actor_id):
+    """Append to status_events for the executor-timing view (best-effort)."""
+    try:
+        session.add(StatusEvent(entity=entity, entity_id=entity_id,
+                                status=status, actor_id=actor_id or None))
+        await session.commit()
+    except Exception as e:  # noqa: BLE001
+        await session.rollback()
+        print(f"status log failed ({entity}/{entity_id}): {e}")
+
+
+async def _timeline(session, entity, entity_id):
+    rows = (await session.execute(
+        select(StatusEvent).where(StatusEvent.entity == entity,
+                                  StatusEvent.entity_id == entity_id)
+        .order_by(StatusEvent.created_at, StatusEvent.id))).scalars().all()
+    names = await _names_for(session, [r.actor_id for r in rows])
+    out, prev = [], None
+    for r in rows:
+        at = r.created_at
+        dur = None
+        if prev is not None and at is not None:
+            dur = int((at - prev).total_seconds())
+        out.append({"status": r.status, "at": at.isoformat() if at else None,
+                    "actor_name": names.get(r.actor_id), "since_prev_sec": dur})
+        prev = at
+    return out
+
+
 async def _log(session, entity, action, entity_id, actor_id, title=None):
     """Append an activity_events row + commit. Best-effort — never raises."""
     try:
@@ -1011,9 +1062,7 @@ async def _telegram_id_for(session, user_id):
 @router.post("/tasks", status_code=201)
 async def create_task(body: TaskCreate, bg: BackgroundTasks,
                       user: dict = Depends(member), session=Depends(get_session)):
-    title = _clean(body.title)
-    if not title:
-        raise HTTPException(422, "title is required")
+    title = _clean(body.title) or (_clean(body.description) or "").split("\n")[0][:80] or "Задача"
     prio = (_clean(body.priority) or "normal").lower()
     prio = PRIORITY_ALIASES.get(prio, prio)
     if prio not in TASK_PRIORITIES:
@@ -1024,6 +1073,12 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
     if not aids and uid:
         aids = [uid]
     deadline = _parse_dt(body.deadline)
+    project_id = body.project_id
+    if not project_id and body.client_id:
+        project_id = (await session.execute(
+            select(Project.id).where(Project.client_id == body.client_id,
+                                     Project.is_active.is_(True))
+            .order_by(Project.id).limit(1))).scalar_one_or_none()
     obj = Task(
         title=title,
         description=_clean(body.description),
@@ -1033,9 +1088,10 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
         created_by=uid,
         assignee_id=aids[0] if aids else None,   # keep the single field = first assignee
         client_id=body.client_id,
-        project_id=body.project_id,
+        project_id=project_id,
     )
     result = await _commit_new(session, obj)
+    await _log_status(session, "task", obj.id, "pending", uid)
     for a in aids:
         session.add(TaskAssignee(task_id=obj.id, user_id=a))
     ref_url = _clean(body.reference_url)
@@ -1114,6 +1170,7 @@ async def create_content(body: ContentCreate,
         await session.rollback()
         raise HTTPException(400, "исполнитель не найден")
     await _log(session, "content", "created", obj.id, uid, obj.topic)
+    await _log_status(session, "content", obj.id, CONTENT_START, uid)
     return await _one_content(session, obj, user)
 
 
@@ -1207,10 +1264,11 @@ async def list_clients(user: dict = Depends(member), session=Depends(get_session
             .order_by(Project.name))).all()
     names = await _names_for(
         session, [c.am_id for c in rows] + [r[3] for r in prows])
+    prefs = await _ref_summaries(session, project_ids=[r[0] for r in prows])
     for pid, cid, pn, pam, mp in prows:
         projs.setdefault(cid, []).append(
             {"id": pid, "name": pn, "am_id": pam, "am_name": names.get(pam),
-             "monthly_posts": mp})
+             "monthly_posts": mp, "refs_count": prefs.get(pid, {}).get("count", 0)})
     out = []
     for c in rows:
         d = _client_out(c, names.get(c.am_id))
@@ -1305,9 +1363,10 @@ async def _client_with_projects(session, c):
         .where(Project.client_id == c.id, Project.is_active.is_(True))
         .order_by(Project.name))).all()
     names = await _names_for(session, [c.am_id] + [r[2] for r in rows])
+    refs = await _ref_summaries(session, project_ids=[r[0] for r in rows])
     d = _client_out(c, names.get(c.am_id))
     d["projects"] = [{"id": pid, "name": pn, "am_id": pam, "am_name": names.get(pam),
-                      "monthly_posts": mp}
+                      "monthly_posts": mp, "refs_count": refs.get(pid, {}).get("count", 0)}
                      for pid, pn, pam, mp in rows]
     return d
 
@@ -1539,22 +1598,22 @@ def _ref_out(r, name=None):
     return {
         "id": r.id, "kind": r.kind, "url": r.url, "title": r.title,
         "file_name": r.file_name, "mime": r.mime, "added_by_name": name,
-        "task_id": r.task_id, "content_id": r.content_id, "idea_id": r.idea_id,
+        "task_id": r.task_id, "content_id": r.content_id, "idea_id": r.idea_id, "project_id": r.project_id,
         "download": f"/api/references/{r.id}/file" if r.kind == "file" else None,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
 
-async def _ref_scope(body_task, body_content, body_idea=None):
-    if not (body_task or body_content or body_idea):
-        raise HTTPException(422, "task_id / content_id / idea_id обязателен")
+async def _ref_scope(body_task, body_content, body_idea=None, body_project=None):
+    if not (body_task or body_content or body_idea or body_project):
+        raise HTTPException(422, "task_id / content_id / idea_id / project_id обязателен")
 
 
 @router.get("/references")
 async def list_references(task_id: int | None = None, content_id: int | None = None,
-                          idea_id: int | None = None,
+                          idea_id: int | None = None, project_id: int | None = None,
                           user: dict = Depends(member), session=Depends(get_session)):
-    await _ref_scope(task_id, content_id, idea_id)
+    await _ref_scope(task_id, content_id, idea_id, project_id)
     q = select(ReferenceItem)
     if task_id:
         q = q.where(ReferenceItem.task_id == task_id)
@@ -1562,6 +1621,8 @@ async def list_references(task_id: int | None = None, content_id: int | None = N
         q = q.where(ReferenceItem.content_id == content_id)
     if idea_id:
         q = q.where(ReferenceItem.idea_id == idea_id)
+    if project_id:
+        q = q.where(ReferenceItem.project_id == project_id)
     rows = (await session.execute(q.order_by(ReferenceItem.id.desc()))).scalars().all()
     names = await _names_for(session, [r.added_by for r in rows])
     return [_ref_out(r, names.get(r.added_by)) for r in rows]
@@ -1570,7 +1631,7 @@ async def list_references(task_id: int | None = None, content_id: int | None = N
 @router.post("/references", status_code=201)
 async def add_link_reference(body: LinkRef,
                              user: dict = Depends(member), session=Depends(get_session)):
-    await _ref_scope(body.task_id, body.content_id, body.idea_id)
+    await _ref_scope(body.task_id, body.content_id, body.idea_id, body.project_id)
     url = _clean(body.url)
     if not url:
         raise HTTPException(422, "url обязателен")
@@ -1578,7 +1639,8 @@ async def add_link_reference(body: LinkRef,
         url = "https://" + url
     obj = ReferenceItem(kind="link", url=url, title=_clean(body.title) or url,
                         task_id=body.task_id, content_id=body.content_id,
-                        idea_id=body.idea_id, added_by=user["id"] or None)
+                        idea_id=body.idea_id, project_id=body.project_id,
+                        added_by=user["id"] or None)
     session.add(obj)
     await session.commit()
     await session.refresh(obj)
@@ -1591,8 +1653,9 @@ async def upload_file_reference(
         task_id: int | None = Form(None),
         content_id: int | None = Form(None),
         idea_id: int | None = Form(None),
+        project_id: int | None = Form(None),
         user: dict = Depends(member), session=Depends(get_session)):
-    await _ref_scope(task_id, content_id, idea_id)
+    await _ref_scope(task_id, content_id, idea_id, project_id)
     if not (BOT_TOKEN and user.get("telegram_id")):
         raise HTTPException(400, "загрузка файлов недоступна")
     raw = await file.read()
@@ -1616,7 +1679,8 @@ async def upload_file_reference(
         kind="file", tg_file_id=fid,
         file_name=doc.get("file_name") or file.filename,
         mime=doc.get("mime_type") or file.content_type,
-        task_id=task_id, content_id=content_id, idea_id=idea_id, added_by=user["id"] or None,
+        task_id=task_id, content_id=content_id, idea_id=idea_id, project_id=project_id,
+        added_by=user["id"] or None,
     )
     session.add(obj)
     await session.commit()

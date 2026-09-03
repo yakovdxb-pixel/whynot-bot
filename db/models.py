@@ -253,6 +253,7 @@ class Task(Base):
     deadline         = Column(DateTime(timezone=True))
     status           = Column(task_status_enum, default='pending')
     actual_completion = Column(DateTime(timezone=True))
+    overdue_notified_at = Column(DateTime(timezone=True))
     overdue_reason   = Column(overdue_reason_enum)
     overdue_comment  = Column(Text)
     related_links    = Column(JSONB, default=list)
@@ -430,6 +431,41 @@ class TaskAssignee(Base):
     )
 
 
+class GroupMedia(Base):
+    """Photos / files posted in a Telegram group topic — so a reaction can mark them as a reference."""
+    __tablename__ = 'group_media'
+
+    id            = Column(Integer, primary_key=True)
+    chat_id       = Column(BigInteger, nullable=False)
+    message_id    = Column(BigInteger, nullable=False)
+    thread_id     = Column(Integer)
+    tg_file_id    = Column(Text, nullable=False)
+    kind          = Column(Text)                       # 'photo' | 'document'
+    mime          = Column(Text)
+    file_name     = Column(Text)
+    created_at    = Column(DateTime(timezone=True), server_default=text('NOW()'))
+
+    __table_args__ = (
+        UniqueConstraint('chat_id', 'message_id', name='uq_group_media_msg'),
+    )
+
+
+class StatusEvent(Base):
+    """Every status change on a task / content item, for the executor-timing view."""
+    __tablename__ = 'status_events'
+
+    id         = Column(Integer, primary_key=True)
+    entity     = Column(Text, nullable=False)          # 'task' | 'content'
+    entity_id  = Column(Integer, nullable=False)
+    status     = Column(Text, nullable=False)
+    actor_id   = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'))
+    created_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
+
+    __table_args__ = (
+        Index('idx_status_event_entity', 'entity', 'entity_id'),
+    )
+
+
 class ContentAssignee(Base):
     __tablename__ = 'content_assignees'
 
@@ -450,6 +486,9 @@ class ReferenceItem(Base):
     task_id    = Column(Integer, ForeignKey('tasks.id', ondelete='CASCADE'))
     content_id = Column(Integer, ForeignKey('content_items.id', ondelete='CASCADE'))
     idea_id    = Column(Integer, ForeignKey('ideas.id', ondelete='CASCADE'))
+    project_id = Column(Integer, ForeignKey('projects.id', ondelete='CASCADE'))
+    tg_chat_id    = Column(BigInteger)
+    tg_message_id = Column(BigInteger)
     kind       = Column(Text, nullable=False)          # 'link' | 'file'
     url        = Column(Text)                          # links
     title      = Column(Text)
@@ -544,6 +583,10 @@ _MIGRATIONS = [
     "UPDATE content_items SET pipeline_status='script' WHERE pipeline_status IN ('idea','shoot','edit')",
     "UPDATE content_items SET pipeline_status='approval' WHERE pipeline_status IN ('review','client')",
     "UPDATE content_items SET pipeline_status='published' WHERE pipeline_status='analytics'",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS overdue_notified_at TIMESTAMPTZ",
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE",
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS tg_chat_id BIGINT",
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS tg_message_id BIGINT",
 ]
 
 

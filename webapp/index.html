@@ -47,15 +47,33 @@
     --fab:#1ec89a;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html{height:100%}
+  html{height:100%; background:var(--bg)}
   body{
-    margin:0; padding:0;
+    margin:0 auto; padding:0;
     background:var(--bg); color:var(--text);
     font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
     height:100vh; height:100dvh;
     display:flex; flex-direction:column;
     overflow:hidden; overscroll-behavior:none;
+    position:relative;
+  }
+  /* on a wide screen (desktop browser) show the app as a phone-sized window */
+  @media (min-width:820px){
+    html{ background:#0b0410; }
+    body{
+      max-width:460px;
+      box-shadow:0 0 0 1px var(--sep), 0 24px 70px rgba(0,0,0,.55);
+      border-radius:18px;
+      height:min(880px, calc(100dvh - 40px));
+      margin-top:20px;
+    }
+    .fab{ right:calc(50vw - 230px + 18px) !important; }
+    .sheet, .sheet-backdrop{
+      left:calc(50vw - 230px) !important; right:auto !important;
+      width:460px !important;
+    }
+    #installBanner{ left:calc(50vw - 230px) !important; width:460px !important; }
   }
   /* --- title bar: a normal thin row; in fullscreen it floats between
          Telegram's Close pill and the ⋯ menu, reclaiming the whole row --- */
@@ -368,7 +386,14 @@
     background:var(--card); border:1px solid var(--sep); border-radius:10px;
     padding:10px 12px; outline:none; -webkit-appearance:none; appearance:none;
   }
-  .field textarea{min-height:74px; resize:vertical}
+  .field textarea{min-height:74px; max-height:280px; overflow-y:auto; resize:none}
+  .timeline{display:flex; flex-direction:column; gap:0}
+  .tl-row{display:flex; gap:10px; padding:7px 0; position:relative}
+  .tl-row:not(:last-child)::before{content:""; position:absolute; left:4px; top:18px; bottom:-7px; width:2px; background:var(--sep)}
+  .tl-dot{width:10px; height:10px; border-radius:50%; background:var(--link); flex:none; margin-top:5px; z-index:1}
+  .tl-status{font-size:14px; font-weight:600}
+  .tl-dur{color:var(--link); font-weight:600}
+  .tl-meta{font-size:12px; color:var(--hint); margin-top:1px}
   .field select{background-image:none}
   .field input::placeholder, .field textarea::placeholder,
   .proj-form input::placeholder, .proj-form textarea::placeholder{color:var(--hint)}
@@ -1183,7 +1208,8 @@ function clientCard(c, members){
     <div class="field" style="margin:10px 0 0">
       <label>${esc(L("План публикаций в месяц","Oylik nashrlar rejasi","Posts per month"))}</label>
       <input type="number" inputmode="numeric" min="0" data-client-target="${c.id}" value="${target != null ? target : ""}">
-    </div>`;
+    </div>
+    ${projs.map(p => `<button type="button" class="act ghost" style="margin-top:8px" data-refs="project:${p.id}">📎 ${esc(L("Референсы проекта","Loyiha namunalari","Project references"))}${p.refs_count ? " · " + p.refs_count : ""}</button>`).join("")}`;
   }
   return `
   <div class="card client-card" data-client="${c.id}">
@@ -1843,7 +1869,7 @@ function closeRefSheet(){
   sheetBackOff();
   if (refDirty){ refDirty = false; load(currentTab); }
 }
-const REF_KEY = { task:"task_id", content:"content_id", idea:"idea_id" };
+const REF_KEY = { task:"task_id", content:"content_id", idea:"idea_id", project:"project_id" };
 function refKey(){ return REF_KEY[refScope.kind] || "content_id"; }
 function refQuery(){ return refKey() + "=" + refScope.id; }
 function refFileUrl(r){
@@ -1956,13 +1982,12 @@ const FORMS = {
   home: {
     endpoint: "/api/tasks",
     fields: [
-      { name:"title",       type:"text", required:true },
+      { name:"title",       type:"text" },
       { name:"description",  type:"textarea" },
       { name:"priority",     type:"select", value:"normal", optsKey:"priority" },
       { name:"deadline",     type:"datetime" },
       { name:"assignee_ids", type:"mpick", dynamic:"members" },
       { name:"client_id",    type:"select", value:"", coerce:"int", dynamic:"clients", options:[["","—"]] },
-      { name:"project_id",   type:"select", value:"", coerce:"int", dynamic:"projects", dependsOn:"client_id", options:[["","—"]] },
       { name:"refs", type:"refs" },
     ],
   },
@@ -2107,6 +2132,33 @@ async function fillDynamic(f){
 let editState = null;   // {formKey, title, endpoint, method, submitLabel, prefill, extraFields}
 let sheetFields = [];
 
+function fmtDur(sec){
+  if (sec == null) return "";
+  if (sec < 45) return "меньше минуты";
+  const m = Math.round(sec / 60);
+  if (m < 60) return m + " мин";
+  const h = Math.floor(m / 60), mm = m % 60;
+  if (h < 24) return h + "ч" + (mm ? " " + mm + "м" : "");
+  const dd = Math.floor(h / 24);
+  return dd + "д " + (h % 24) + "ч";
+}
+function timelineHtml(rows){
+  if (!rows || !rows.length) return "";
+  const stLabel = s => STATUS_LABELS[s] || PIPELINE_LABELS[s] || s;
+  const items = rows.map(r => `
+    <div class="tl-row">
+      <span class="tl-dot"></span>
+      <div>
+        <div class="tl-status">${esc(stLabel(r.status))}${r.since_prev_sec != null ? ` <span class="tl-dur">· ${esc(fmtDur(r.since_prev_sec))}</span>` : ""}</div>
+        <div class="tl-meta">${esc(fmtDateTime(r.at) || "")}${r.actor_name ? " · " + esc(r.actor_name) : ""}</div>
+      </div>
+    </div>`).join("");
+  return `<div class="field" style="margin-top:14px">
+    <label>${esc(LANG === "ru" ? "История статусов" : LANG === "uz" ? "Holat tarixi" : "Status history")}</label>
+    <div class="timeline">${items}</div>
+  </div>`;
+}
+
 function openTaskEdit(t){
   editState = {
     formKey: "home",
@@ -2116,6 +2168,7 @@ function openTaskEdit(t){
     extraFields: [{ name:"status", type:"select", optsKey:"status" }],
     omitFields: ["refs"],
     refsFor: { kind: "task", id: t.id },
+    timelineFor: { kind: "task", id: t.id },
     prefill: {
       title: t.title || "",
       description: t.description || "",
@@ -2139,6 +2192,7 @@ function openContentEdit(c){
     extraFields: [{ name:"pipeline_status", type:"select", optsKey:"pipeline" }],
     omitFields: ["refs"],
     refsFor: { kind: "content", id: c.id },
+    timelineFor: { kind: "content", id: c.id },
     prefill: {
       topic: c.topic || "",
       content_kind: c.content_kind || "",
@@ -2296,6 +2350,13 @@ async function openSheet(){
       `<button type="button" class="act ghost" id="editRefsBtn" style="margin-top:4px">${esc(t("btn.refs"))}</button>`);
     document.getElementById("editRefsBtn").addEventListener("click", () => openRefSheet(r.kind, r.id));
   }
+  if (editState && editState.timelineFor){
+    const tf = editState.timelineFor;
+    formFields.insertAdjacentHTML("beforeend", `<div id="tlBox"></div>`);
+    api(`/api/${tf.kind === "task" ? "tasks" : "content"}/${tf.id}/timeline`)
+      .then(rows => { const el = document.getElementById("tlBox"); if (el) el.innerHTML = timelineHtml(rows); })
+      .catch(() => {});
+  }
   pendingRefs = [];
   const rfBox = formFields.querySelector(".refs-field");
   if (rfBox) wirePendingRefs(rfBox);
@@ -2342,6 +2403,7 @@ async function openSheet(){
     applyPrefill(draft);
     toast(t("draft.restored"));
   }
+  formFields.querySelectorAll("textarea").forEach(autoGrow);
   _draftReady = true;
 }
 
@@ -2454,7 +2516,12 @@ formFields.addEventListener("click", e => {
   const opt = e.target.closest(".mp-opt");
   if (opt){ opt.classList.toggle("on"); haptic(); scheduleDraftSave(); }
 });
-formFields.addEventListener("input", scheduleDraftSave);
+function autoGrow(el){
+  if (!el || el.tagName !== "TEXTAREA") return;
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight + 2, 280) + "px";
+}
+formFields.addEventListener("input", e => { autoGrow(e.target); scheduleDraftSave(); });
 formFields.addEventListener("change", scheduleDraftSave);
 // also snapshot when the app is backgrounded / minimised
 document.addEventListener("visibilitychange", () => { if (document.hidden) saveDraft(); });
