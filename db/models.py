@@ -257,12 +257,15 @@ class Task(Base):
     overdue_reason   = Column(overdue_reason_enum)
     overdue_comment  = Column(Text)
     related_links    = Column(JSONB, default=list)
+    job_kind         = Column(Text)   # NULL = normal task; 'shoot'|'design'|'edit' = content production job
+    location         = Column(Text)   # shoot address etc.
     created_at       = Column(DateTime(timezone=True), server_default=text('NOW()'))
     updated_at       = Column(DateTime(timezone=True), server_default=text('NOW()'))
 
     __table_args__ = (
         Index('idx_tasks_assignee_status', 'assignee_id', 'status'),
         Index('idx_tasks_project', 'project_id'),
+        Index('idx_tasks_content', 'content_id'),
     )
 
 
@@ -587,6 +590,8 @@ _MIGRATIONS = [
     "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE",
     "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS tg_chat_id BIGINT",
     "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS tg_message_id BIGINT",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_kind TEXT",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS location TEXT",
 ]
 
 

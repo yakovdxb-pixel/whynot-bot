@@ -1,7 +1,7 @@
 /* WHY NOT? OS service worker.
    App shell + static assets: stale-while-revalidate — serve from cache
    instantly, refresh in the background. API calls (/api/*): network only. */
-const CACHE = "whynot-os-v4";
+const CACHE = "whynot-os-v5";
 const SHELL = [
   "/webapp",
   "/static/manifest.json",

@@ -265,6 +265,15 @@ class TaskPatch(BaseModel):
     assignee_ids: list[int] | None = None
     client_id: int | None = None
     project_id: int | None = None
+    location: str | None = None
+
+
+class ContentJobCreate(BaseModel):
+    assignee_ids: list[int] | None = None
+    assignee_id: int | None = None
+    deadline: str | None = None
+    location: str | None = None
+    description: str | None = None
 
 
 class RolePatch(BaseModel):
@@ -604,6 +613,8 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
         task.priority = p
     if patch.deadline is not None:
         task.deadline = _parse_dt(patch.deadline)
+    if patch.location is not None:
+        task.location = _clean(patch.location)
     if patch.client_id is not None:
         task.client_id = patch.client_id or None
     if patch.project_id is not None:
@@ -676,6 +687,30 @@ CONTENT_NEXT = {
 CONTENT_STAGE_RU = {"script": "В процессе", "approval": "На одобрении",
                     "revisions": "Правка", "done": "Готов", "published": "Опубликовано"}
 
+# production jobs dispatched from a content card (stored as linked tasks)
+CJOB_KINDS = ("shoot", "design", "edit")
+CJOB_RU = {"shoot": "Съёмка", "design": "Дизайн", "edit": "Монтаж"}
+CJOB_EMOJI = {"shoot": "🎥", "design": "🎨", "edit": "✂️"}
+
+
+async def _content_jobs(session, cids):
+    """content_id -> [job dicts] (linked tasks with a job_kind)."""
+    if not cids:
+        return {}
+    rows = (await session.execute(
+        select(Task).where(Task.content_id.in_(cids), Task.job_kind.isnot(None))
+        .order_by(Task.id))).scalars().all()
+    names = await _names_for(session, [t.assignee_id for t in rows])
+    out = {}
+    for t in rows:
+        out.setdefault(t.content_id, []).append({
+            "id": t.id, "kind": t.job_kind, "status": t.status, "title": t.title,
+            "assignee_id": t.assignee_id, "assignee_name": names.get(t.assignee_id),
+            "deadline": t.deadline.isoformat() if t.deadline else None,
+            "location": t.location, "notes": t.description,
+        })
+    return out
+
 
 async def _content_assignees(session, cids):
     if not cids:
@@ -709,7 +744,7 @@ async def _sync_content_assignees(session, cid, ids):
     return ids
 
 
-def _content_out(c, names, projects, refs, assignees=None, can_edit=True):
+def _content_out(c, names, projects, refs, assignees=None, can_edit=True, jobs=None):
     d = row_to_dict(c)
     for col in CONTENT_PEOPLE:
         d[col.replace("_id", "_name")] = names.get(getattr(c, col, None))
@@ -717,6 +752,7 @@ def _content_out(c, names, projects, refs, assignees=None, can_edit=True):
     d["publish_at"] = c.publish_at.isoformat() if c.publish_at else None
     d["content_kind"] = getattr(c, "content_kind", None)
     d["assignees"] = [{"id": i, "name": names.get(i)} for i in (assignees or [])]
+    d["jobs"] = jobs or []
     d["can_edit"] = bool(can_edit)
     s = refs.get(c.id, {})
     d["refs_count"] = s.get("count", 0)
@@ -766,13 +802,15 @@ async def list_content(client_id: int | None = None, project_id: int | None = No
     rows = (await session.execute(q)).scalars().all()
     refs = await _ref_summaries(session, content_ids=[c.id for c in rows])
     assg = await _content_assignees(session, [c.id for c in rows])
+    jobs = await _content_jobs(session, [c.id for c in rows])
     uids = {getattr(c, col, None) for c in rows for col in CONTENT_PEOPLE}
     uids |= {u for lst in assg.values() for u in lst}
     names = await _names_for(session, uids)
     projects = await _projects_map(session, [c.project_id for c in rows])
     my_pids = await _my_project_ids(session, user["id"])
     return [_content_out(c, names, projects, refs, assg.get(c.id, []),
-                         _can_edit_content(user, c, my_pids, assg.get(c.id, [])))
+                         _can_edit_content(user, c, my_pids, assg.get(c.id, [])),
+                         jobs.get(c.id, []))
             for c in rows]
 
 
@@ -810,20 +848,94 @@ async def advance_content(content_id: int, bg: BackgroundTasks,
     return await _one_content(session, item, user)
 
 
+@router.post("/content/{content_id}/jobs/{kind}", status_code=201)
+async def create_content_job(content_id: int, kind: str, body: ContentJobCreate,
+                             bg: BackgroundTasks,
+                             user: dict = Depends(member), session=Depends(get_session)):
+    """Dispatch a production job (shoot / design / edit) from a content card.
+    Stored as a linked task so it shows up in the assignee's Главная + overdue flow."""
+    if kind not in CJOB_KINDS:
+        raise HTTPException(422, f"kind must be one of {list(CJOB_KINDS)}")
+    item = (await session.execute(
+        select(ContentItem).where(ContentItem.id == content_id))).scalar_one_or_none()
+    if not item:
+        raise HTTPException(404, "Content not found")
+    assg = (await _content_assignees(session, [item.id])).get(item.id, [])
+    my_pids = await _my_project_ids(session, user["id"])
+    if not _can_edit_content(user, item, my_pids, assg):
+        raise HTTPException(403, "можно ставить задачи только по своему контенту")
+    uid = user["id"] or None
+    aids = list(dict.fromkeys(
+        body.assignee_ids or ([] if body.assignee_id is None else [body.assignee_id])))
+    due = _parse_dt(body.deadline)
+    topic = item.topic or f"контент #{item.id}"
+    obj = Task(
+        title=f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]}: {topic}"[:120],
+        description=_clean(body.description),
+        job_kind=kind,
+        location=_clean(body.location) if kind == "shoot" else None,
+        type="content_pipeline",
+        priority="normal",
+        deadline=due,
+        status="pending",
+        created_by=uid,
+        assignee_id=aids[0] if aids else None,
+        content_id=item.id,
+        client_id=item.client_id,
+        project_id=item.project_id,
+    )
+    session.add(obj)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "ссылка на несуществующий id")
+    await session.refresh(obj)
+    for a in aids:
+        session.add(TaskAssignee(task_id=obj.id, user_id=a))
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "исполнитель не найден")
+    await _log(session, "task", "created", obj.id, uid, obj.title)
+    await _log_status(session, "task", obj.id, "pending", uid)
+
+    dl = due.strftime("%d.%m.%Y %H:%M") if due else "без срока"
+    for a in aids:
+        tg = await _telegram_id_for(session, a)
+        if tg:
+            lines = [f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]} · контент «{topic}»",
+                     f"Дедлайн: {dl}"]
+            if obj.location:
+                lines.append(f"Адрес: {obj.location}")
+            if obj.description:
+                lines.append(f"Заметки: {obj.description}")
+            bg.add_task(_tg_send, tg, "\n".join(lines))
+    who = ", ".join(filter(None, (await _names_for(session, aids)).values())) or "—"
+    await _notify_project(
+        bg, session, item.project_id,
+        f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]} по контенту «{topic}»\n"
+        f"Исполнитель: {who}\nДедлайн: {dl}")
+    return await _one_content(session, item, user)
+
+
 PIPELINE_STEPS = set(PIPELINE_ORDER)
 
 
 async def _one_content(session, item, user=None):
     refs = await _ref_summaries(session, content_ids=[item.id])
     assg = (await _content_assignees(session, [item.id])).get(item.id, [])
+    jobs = (await _content_jobs(session, [item.id])).get(item.id, [])
     ids = {getattr(item, c, None) for c in CONTENT_PEOPLE} | set(assg)
+    ids |= {j["assignee_id"] for j in jobs}
     names = await _names_for(session, ids)
     projects = await _projects_map(session, [item.project_id])
     can_edit = True
     if user is not None:
         my_pids = await _my_project_ids(session, user["id"])
         can_edit = _can_edit_content(user, item, my_pids, assg)
-    return _content_out(item, names, projects, refs, assg, can_edit)
+    return _content_out(item, names, projects, refs, assg, can_edit, jobs)
 
 
 @router.patch("/content/{content_id}")
