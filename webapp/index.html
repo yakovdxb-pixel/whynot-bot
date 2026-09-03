@@ -58,7 +58,9 @@
     overflow:hidden; overscroll-behavior:none;
     position:relative;
   }
-  /* on a wide screen (desktop browser) show the app as a phone-sized window */
+  /* wide desktop browser, or any desktop/web Telegram client → floating window.
+     fixed children are re-anchored to <body> (position:relative) via absolute,
+     so no viewport math is needed and they always track the window. */
   @media (min-width:820px){
     html{ background:#0b0410; }
     body{
@@ -66,15 +68,34 @@
       box-shadow:0 0 0 1px var(--sep), 0 24px 70px rgba(0,0,0,.55);
       border-radius:18px;
       height:min(880px, calc(100dvh - 40px));
-      margin-top:20px;
+      margin:20px auto;
     }
-    .fab{ right:calc(50vw - 230px + 18px) !important; }
-    .sheet, .sheet-backdrop{
-      left:calc(50vw - 230px) !important; right:auto !important;
-      width:460px !important;
-    }
-    #installBanner{ left:calc(50vw - 230px) !important; width:460px !important; }
+    .fab, .sheet, .sheet-backdrop, #installBanner, .toast{ position:absolute !important; }
+    .fab{ right:16px !important; }
+    .sheet, .sheet-backdrop{ left:0 !important; right:0 !important; width:auto !important; }
+    .sheet{ max-height:88% !important; border-radius:16px 16px 0 0 }
+    #installBanner{ left:0 !important; right:0 !important; width:auto !important; }
+    .toast{ left:50% !important }
   }
+  html.tg-desktop{ background:#0b0410; }
+  html.tg-desktop body{
+    max-width:460px;
+    box-shadow:0 0 0 1px var(--sep), 0 24px 70px rgba(0,0,0,.55);
+    border-radius:18px;
+    height:min(880px, calc(100dvh - 32px));
+    margin:16px auto;
+  }
+  html.tg-desktop .fab,
+  html.tg-desktop .sheet,
+  html.tg-desktop .sheet-backdrop,
+  html.tg-desktop #installBanner,
+  html.tg-desktop .toast{ position:absolute !important; }
+  html.tg-desktop .fab{ right:16px !important; }
+  html.tg-desktop .sheet,
+  html.tg-desktop .sheet-backdrop{ left:0 !important; right:0 !important; width:auto !important; }
+  html.tg-desktop .sheet{ max-height:88% !important; border-radius:16px 16px 0 0 }
+  html.tg-desktop #installBanner{ left:0 !important; right:0 !important; width:auto !important; }
+  html.tg-desktop .toast{ left:50% !important }
   /* --- title bar: a normal thin row; in fullscreen it floats between
          Telegram's Close pill and the ⋯ menu, reclaiming the whole row --- */
   #fsSpacer{flex:0 0 auto; height:0}
@@ -538,9 +559,15 @@ const IN_TELEGRAM = !!INIT_DATA;
     try { tg.onEvent && tg.onEvent(ev, applyInsets); } catch(e){}
   });
 
-  // open edge-to-edge for maximum working area (Bot API 8.0+)
+  // desktop / web Telegram clients → show as a floating window, never fullscreen
+  const DESKTOP_TG = /^(tdesktop|macos|weba|webk|web|unigram)$/.test(tg.platform || "");
+  if (DESKTOP_TG) rootEl.classList.add("tg-desktop");
+
+  // open edge-to-edge for maximum working area (Bot API 8.0+) — mobile only
   try {
-    if (atLeast("8.0") && tg.requestFullscreen && !tg.isFullscreen){
+    if (DESKTOP_TG){
+      if (atLeast("8.0") && tg.exitFullscreen && tg.isFullscreen) tg.exitFullscreen();
+    } else if (atLeast("8.0") && tg.requestFullscreen && !tg.isFullscreen){
       tg.requestFullscreen();
     }
   } catch(e){}
@@ -2009,7 +2036,7 @@ const FORMS = {
   shoots: {
     endpoint: "/api/shoots",
     fields: [
-      { name:"title",     type:"text", required:true },
+      { name:"title",     type:"text", required:true, i18nKey:"field.format" },
       { name:"client_id", type:"select", value:"", coerce:"int", dynamic:"clients", options:[["","—"]], i18nKey:"field.company" },
       { name:"participant_ids", type:"mpick", dynamic:"members" },
       { name:"shoot_at",  type:"datetime" },
