@@ -224,8 +224,21 @@
 
   .client-card .row{cursor:pointer}
   .proj-block{margin-top:12px; border-top:1px solid var(--sep); padding-top:10px}
-  .proj-item{font-size:14px; padding:5px 0}
-  .proj-item .hint{color:var(--hint)}
+  .proj-item{font-size:14px; padding:7px 0; border-bottom:1px solid var(--sep)}
+  .proj-item:last-of-type{border-bottom:none}
+  .proj-item .hint{color:var(--hint); margin-top:2px}
+  .proj-item-row{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .proj-item-name{font-weight:600}
+  .proj-del{
+    flex:0 0 auto; border:none; background:transparent; color:var(--st-overdue);
+    font-size:15px; cursor:pointer; padding:2px 4px; opacity:.75;
+  }
+  .proj-del:active{opacity:1}
+  .proj-desc{
+    width:100%; margin-top:5px; font:13px inherit; color:var(--text); background:var(--bg);
+    border:1px solid var(--sep); border-radius:8px; padding:6px 9px; outline:none;
+    min-height:36px; resize:vertical;
+  }
   .proj-form{margin-top:8px; display:flex; flex-direction:column; gap:8px}
   .proj-form input, .proj-form textarea{
     width:100%; font:14px inherit; color:var(--text); background:var(--bg);
@@ -435,6 +448,7 @@
   .field select{background-image:none}
   .field input::placeholder, .field textarea::placeholder,
   .proj-form input::placeholder, .proj-form textarea::placeholder{color:var(--hint)}
+  .proj-desc::placeholder{color:var(--hint)}
   .field select option{background:var(--card); color:var(--text)}
   .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--link)}
   .field.bad input, .field.bad textarea, .field.bad select{border-color:var(--st-overdue)}
@@ -1280,8 +1294,7 @@ function clientCard(c, members){
     <div class="field" style="margin:10px 0 0">
       <label>${esc(L("План публикаций в месяц","Oylik nashrlar rejasi","Posts per month"))}</label>
       <input type="number" inputmode="numeric" min="0" data-client-target="${c.id}" value="${target != null ? target : ""}">
-    </div>
-    ${projs.map(p => `<button type="button" class="act ghost" style="margin-top:8px" data-refs="project:${p.id}">📎 ${esc(L("Референсы проекта","Loyiha namunalari","Project references"))}${p.refs_count ? " · " + p.refs_count : ""}</button>`).join("")}`;
+    </div>`;
   }
   return `
   <div class="card client-card" data-client="${c.id}">
@@ -1310,13 +1323,22 @@ function projectsBlock(clientId){
   return `
   <div class="proj-block">
     ${projects.length
-      ? projects.map(p => `<div class="proj-item">📁 ${esc(p.name)}${p.description ? ` — <span class="hint">${esc(p.description)}</span>` : ""}</div>`).join("")
+      ? projects.map(p => `
+        <div class="proj-item">
+          <div class="proj-item-row">
+            <span class="proj-item-name">📁 ${esc(p.name)}</span>
+            ${mgr ? `<button type="button" class="proj-del" data-proj-del="${p.id}" data-proj-del-client="${clientId}" title="Удалить проект">🗑</button>` : ""}
+          </div>
+          ${mgr
+            ? `<textarea class="proj-desc" data-proj-desc="${p.id}" placeholder="О проекте">${esc(p.description || "")}</textarea>`
+            : (p.description ? `<div class="hint">${esc(p.description)}</div>` : "")}
+        </div>`).join("")
       : `<div class="hint">Нет активных проектов</div>`}
     ${mgr ? `
       <button class="act ghost" data-proj-add="${clientId}" style="margin-top:8px">＋ Ещё проект (необязательно)</button>
       <div class="proj-form" id="projForm-${clientId}" style="display:none">
         <input id="projName-${clientId}" placeholder="Название проекта *">
-        <textarea id="projDesc-${clientId}" placeholder="Описание"></textarea>
+        <textarea id="projDesc-${clientId}" placeholder="О проекте"></textarea>
         <button class="act" data-proj-save="${clientId}">Создать проект</button>
       </div>` : ""}
   </div>`;
@@ -1639,6 +1661,18 @@ view.addEventListener("change", async e => {
       await load("team");
     } catch(err){ toast(err.message); tgt.disabled = false; }
     finally { busy = false; }
+    return;
+  }
+  const pdesc = e.target.closest("[data-proj-desc]");
+  if (pdesc && !busy){
+    busy = true; pdesc.disabled = true;
+    try {
+      await api("/api/projects/" + pdesc.dataset.projDesc, {
+        method: "PATCH", body: { description: pdesc.value },
+      });
+      haptic("medium"); toast(t("toast.saved"));
+    } catch(err){ toast(err.message); }
+    finally { busy = false; pdesc.disabled = false; }
   }
 });
 
@@ -1794,6 +1828,23 @@ view.addEventListener("click", async e => {
       clientProjects[cid] = await api("/api/projects?client_id=" + cid);
       renderTeam();
     } catch(err){ toast(err.message); projSave.disabled = false; projSave.textContent = "Создать проект"; }
+    finally { busy = false; }
+    return;
+  }
+
+  const projDel = e.target.closest("[data-proj-del]");
+  if (projDel && !busy){
+    const pid = +projDel.dataset.projDel;
+    const cid = projDel.dataset.projDelClient;
+    const nm = projDel.closest(".proj-item")?.querySelector(".proj-item-name")?.textContent.replace(/^📁\s*/, "") || "";
+    if (!(await askConfirm(`Удалить проект «${nm}»?`))) return;
+    busy = true; projDel.disabled = true;
+    try {
+      await api("/api/projects/" + pid, { method: "DELETE" });
+      haptic("medium"); toast("Проект удалён");
+      clientProjects[cid] = await api("/api/projects?client_id=" + cid);
+      renderTeam();
+    } catch(err){ toast(err.message); projDel.disabled = false; }
     finally { busy = false; }
     return;
   }

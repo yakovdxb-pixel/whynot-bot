@@ -1370,17 +1370,18 @@ async def list_clients(user: dict = Depends(member), session=Depends(get_session
     if rows:
         prows = (await session.execute(
             select(Project.id, Project.client_id, Project.name, Project.am_id,
-                   Project.monthly_posts)
+                   Project.monthly_posts, Project.description)
             .where(Project.client_id.in_([c.id for c in rows]),
                    Project.is_active.is_(True))
             .order_by(Project.name))).all()
     names = await _names_for(
         session, [c.am_id for c in rows] + [r[3] for r in prows])
     prefs = await _ref_summaries(session, project_ids=[r[0] for r in prows])
-    for pid, cid, pn, pam, mp in prows:
+    for pid, cid, pn, pam, mp, pdesc in prows:
         projs.setdefault(cid, []).append(
             {"id": pid, "name": pn, "am_id": pam, "am_name": names.get(pam),
-             "monthly_posts": mp, "refs_count": prefs.get(pid, {}).get("count", 0)})
+             "monthly_posts": mp, "description": pdesc,
+             "refs_count": prefs.get(pid, {}).get("count", 0)})
     out = []
     for c in rows:
         d = _client_out(c, names.get(c.am_id))
@@ -1471,15 +1472,16 @@ async def create_project(body: ProjectCreate,
 
 async def _client_with_projects(session, c):
     rows = (await session.execute(
-        select(Project.id, Project.name, Project.am_id, Project.monthly_posts)
+        select(Project.id, Project.name, Project.am_id, Project.monthly_posts, Project.description)
         .where(Project.client_id == c.id, Project.is_active.is_(True))
         .order_by(Project.name))).all()
     names = await _names_for(session, [c.am_id] + [r[2] for r in rows])
     refs = await _ref_summaries(session, project_ids=[r[0] for r in rows])
     d = _client_out(c, names.get(c.am_id))
     d["projects"] = [{"id": pid, "name": pn, "am_id": pam, "am_name": names.get(pam),
-                      "monthly_posts": mp, "refs_count": refs.get(pid, {}).get("count", 0)}
-                     for pid, pn, pam, mp in rows]
+                      "monthly_posts": mp, "description": pdesc,
+                      "refs_count": refs.get(pid, {}).get("count", 0)}
+                     for pid, pn, pam, mp, pdesc in rows]
     return d
 
 
@@ -1551,6 +1553,38 @@ async def update_project(project_id: int, patch: ProjectPatch,
     await session.refresh(p)
     cn = await _client_names(session, [p.client_id])
     return _project_out(p, cn.get(p.client_id))
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: int,
+                         user: dict = Depends(member), session=Depends(get_session)):
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "only admin / am can delete projects")
+    p = (await session.execute(
+        select(Project).where(Project.id == project_id))).scalar_one_or_none()
+    if not p:
+        raise HTTPException(404, "project not found")
+
+    # refuse to silently cascade-delete real work — only empty/unused projects go
+    checks = [(ContentItem, "контент"), (Task, "задачи"),
+              (ShootSession, "съёмки"), (Idea, "идеи"), (Blocker, "блокеры")]
+    used = []
+    for model, label in checks:
+        n = (await session.execute(
+            select(func.count()).select_from(model).where(model.project_id == project_id)
+        )).scalar_one()
+        if n:
+            used.append(f"{label}: {n}")
+    if used:
+        raise HTTPException(
+            400, "нельзя удалить — есть данные (" + ", ".join(used) +
+                 "). Можно деактивировать проект вместо удаления.")
+
+    name = p.name
+    await session.execute(sa_delete(Project).where(Project.id == project_id))
+    await session.commit()
+    await _log(session, "project", "deleted", project_id, user["id"], name)
+    return {"ok": True}
 
 
 # ── members (lightweight list for assignee pickers — any member) ─
