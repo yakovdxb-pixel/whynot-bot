@@ -1567,7 +1567,8 @@ async def delete_project(project_id: int,
 
     # refuse to silently cascade-delete real work — only empty/unused projects go
     checks = [(ContentItem, "контент"), (Task, "задачи"),
-              (ShootSession, "съёмки"), (Idea, "идеи"), (Blocker, "блокеры")]
+              (ShootSession, "съёмки"), (Idea, "идеи"), (Blocker, "блокеры"),
+              (ReferenceItem, "референсы")]
     used = []
     for model, label in checks:
         n = (await session.execute(
