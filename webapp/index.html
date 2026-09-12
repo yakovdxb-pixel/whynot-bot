@@ -408,10 +408,13 @@
     position:fixed; left:0; right:0; bottom:0; z-index:31;
     background:var(--bg); color:var(--text);
     border-radius:16px 16px 0 0; padding:0 16px calc(20px + env(safe-area-inset-bottom));
-    transform:translateY(100%); transition:transform .26s cubic-bezier(.32,.72,0,1);
+    transform:translateY(100%); visibility:hidden;
+    transition:transform .26s cubic-bezier(.32,.72,0,1), visibility 0s linear .26s;
     max-height:88vh; overflow-y:auto;
   }
-  .sheet.open{transform:translateY(0)}
+  /* visibility (not just the off-screen transform) guards against some Telegram
+     WebViews rendering a sliver of the "closed" sheet at the bottom of the window */
+  .sheet.open{transform:translateY(0); visibility:visible; transition:transform .26s cubic-bezier(.32,.72,0,1)}
   .sheet .hint{color:var(--hint); font-size:13px}
   .sheet-head{
     position:sticky; top:0; z-index:3; background:var(--bg);
