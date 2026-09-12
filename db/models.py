@@ -153,6 +153,11 @@ class Client(Base):
     am_id       = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'))
     is_active   = Column(Boolean, default=True)
     notes       = Column(Text)
+    # brand brief (2026-09-12) — company-level, shared across all of the client's projects
+    goals         = Column(Text)   # цели компании
+    audience      = Column(Text)   # аудитория
+    tone_of_voice = Column(Text)   # тон оф войс
+    competitors   = Column(Text)   # конкуренты
     created_at  = Column(DateTime(timezone=True), server_default=text('NOW()'))
     updated_at  = Column(DateTime(timezone=True), server_default=text('NOW()'))
 
@@ -592,6 +597,10 @@ _MIGRATIONS = [
     "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS tg_message_id BIGINT",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_kind TEXT",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS location TEXT",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS goals TEXT",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS audience TEXT",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS tone_of_voice TEXT",
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS competitors TEXT",
 ]
 
 

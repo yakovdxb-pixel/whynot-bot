@@ -239,13 +239,6 @@
     border:1px solid var(--sep); border-radius:8px; padding:6px 9px; outline:none;
     min-height:36px; resize:vertical;
   }
-  .proj-form{margin-top:8px; display:flex; flex-direction:column; gap:8px}
-  .proj-form input, .proj-form textarea{
-    width:100%; font:14px inherit; color:var(--text); background:var(--bg);
-    border:1px solid var(--sep); border-radius:9px; padding:8px 10px; outline:none;
-  }
-  .proj-form textarea{min-height:52px; resize:vertical}
-
   .vote{
     display:flex; align-items:center; gap:6px; border:1px solid var(--sep);
     background:transparent; color:var(--text); border-radius:999px;
@@ -446,8 +439,7 @@
   .tl-dur{color:var(--link); font-weight:600}
   .tl-meta{font-size:12px; color:var(--hint); margin-top:1px}
   .field select{background-image:none}
-  .field input::placeholder, .field textarea::placeholder,
-  .proj-form input::placeholder, .proj-form textarea::placeholder{color:var(--hint)}
+  .field input::placeholder, .field textarea::placeholder{color:var(--hint)}
   .proj-desc::placeholder{color:var(--hint)}
   .field select option{background:var(--card); color:var(--text)}
   .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--link)}
@@ -1294,6 +1286,22 @@ function clientCard(c, members){
     <div class="field" style="margin:10px 0 0">
       <label>${esc(L("План публикаций в месяц","Oylik nashrlar rejasi","Posts per month"))}</label>
       <input type="number" inputmode="numeric" min="0" data-client-target="${c.id}" value="${target != null ? target : ""}">
+    </div>
+    <div class="field" style="margin:10px 0 0">
+      <label>${esc(L("Цели компании","Kompaniya maqsadlari","Company goals"))}</label>
+      <textarea data-client-goals="${c.id}">${esc(c.goals || "")}</textarea>
+    </div>
+    <div class="field" style="margin:10px 0 0">
+      <label>${esc(L("Аудитория","Auditoriya","Audience"))}</label>
+      <textarea data-client-audience="${c.id}">${esc(c.audience || "")}</textarea>
+    </div>
+    <div class="field" style="margin:10px 0 0">
+      <label>${esc(L("Тон оф войс","Ohang (tone of voice)","Tone of voice"))}</label>
+      <textarea data-client-tone="${c.id}">${esc(c.tone_of_voice || "")}</textarea>
+    </div>
+    <div class="field" style="margin:10px 0 0">
+      <label>${esc(L("Конкуренты","Raqobatchilar","Competitors"))}</label>
+      <textarea data-client-competitors="${c.id}">${esc(c.competitors || "")}</textarea>
     </div>`;
   }
   return `
@@ -1334,13 +1342,6 @@ function projectsBlock(clientId){
             : (p.description ? `<div class="hint">${esc(p.description)}</div>` : "")}
         </div>`).join("")
       : `<div class="hint">Нет активных проектов</div>`}
-    ${mgr ? `
-      <button class="act ghost" data-proj-add="${clientId}" style="margin-top:8px">＋ Ещё проект (необязательно)</button>
-      <div class="proj-form" id="projForm-${clientId}" style="display:none">
-        <input id="projName-${clientId}" placeholder="Название проекта *">
-        <textarea id="projDesc-${clientId}" placeholder="О проекте"></textarea>
-        <button class="act" data-proj-save="${clientId}">Создать проект</button>
-      </div>` : ""}
   </div>`;
 }
 
@@ -1673,6 +1674,23 @@ view.addEventListener("change", async e => {
       haptic("medium"); toast(t("toast.saved"));
     } catch(err){ toast(err.message); }
     finally { busy = false; pdesc.disabled = false; }
+    return;
+  }
+  const CLIENT_BRIEF_ATTRS = {
+    clientGoals: "goals", clientAudience: "audience",
+    clientTone: "tone_of_voice", clientCompetitors: "competitors",
+  };
+  const briefKey = Object.keys(CLIENT_BRIEF_ATTRS).find(k => e.target.dataset[k] != null);
+  if (briefKey && !busy){
+    const el = e.target;
+    busy = true; el.disabled = true;
+    try {
+      await api("/api/clients/" + el.dataset[briefKey], {
+        method: "PATCH", body: { [CLIENT_BRIEF_ATTRS[briefKey]]: el.value },
+      });
+      haptic("medium"); toast(t("toast.saved"));
+    } catch(err){ toast(err.message); }
+    finally { busy = false; el.disabled = false; }
   }
 });
 
@@ -1794,7 +1812,7 @@ view.addEventListener("click", async e => {
   }
 
   const clientToggle = e.target.closest("[data-client-toggle]");
-  if (clientToggle && !e.target.closest("[data-proj-add],[data-proj-save],.proj-form")){
+  if (clientToggle){
     const cid = +clientToggle.dataset.clientToggle;
     expandedClient = expandedClient === cid ? null : cid;
     haptic();
@@ -1805,30 +1823,6 @@ view.addEventListener("click", async e => {
         .catch(() => { clientProjects[expandedClient] = []; renderTeam(); });
     }
     renderTeam();
-    return;
-  }
-
-  const projAdd = e.target.closest("[data-proj-add]");
-  if (projAdd){
-    const f = document.getElementById("projForm-" + projAdd.dataset.projAdd);
-    if (f) f.style.display = f.style.display === "none" ? "flex" : "none";
-    return;
-  }
-
-  const projSave = e.target.closest("[data-proj-save]");
-  if (projSave && !busy){
-    const cid = +projSave.dataset.projSave;
-    const name = (document.getElementById("projName-" + cid).value || "").trim();
-    const desc = (document.getElementById("projDesc-" + cid).value || "").trim();
-    if (!name){ toast("Укажи название проекта"); return; }
-    busy = true; projSave.disabled = true; projSave.textContent = "…";
-    try {
-      await api("/api/projects", {method:"POST", body:{client_id: cid, name, description: desc || undefined}});
-      haptic("medium"); toast("Проект создан");
-      clientProjects[cid] = await api("/api/projects?client_id=" + cid);
-      renderTeam();
-    } catch(err){ toast(err.message); projSave.disabled = false; projSave.textContent = "Создать проект"; }
-    finally { busy = false; }
     return;
   }
 

@@ -322,6 +322,10 @@ class ClientPatch(BaseModel):
     am_id: int | None = None
     is_active: bool | None = None
     monthly_posts: int | None = None   # applied to the client's project(s)
+    goals: str | None = None
+    audience: str | None = None
+    tone_of_voice: str | None = None
+    competitors: str | None = None
 
 
 class ProjectPatch(BaseModel):
@@ -1348,7 +1352,9 @@ async def create_blocker(body: BlockerCreate, bg: BackgroundTasks,
 
 def _client_out(c, am_name=None):
     return {"id": c.id, "name": c.name, "contact": c.contact, "notes": c.notes,
-            "am_id": c.am_id, "am_name": am_name, "is_active": c.is_active}
+            "am_id": c.am_id, "am_name": am_name, "is_active": c.is_active,
+            "goals": c.goals, "audience": c.audience,
+            "tone_of_voice": c.tone_of_voice, "competitors": c.competitors}
 
 
 def _project_out(p, client_name=None, bound=0, is_mine=False):
@@ -1497,7 +1503,7 @@ async def update_client(client_id: int, patch: ClientPatch,
     data = patch.model_dump(exclude_unset=True)
     if "name" in data and _clean(data["name"]):
         c.name = _clean(data["name"])
-    for f in ("contact", "notes"):
+    for f in ("contact", "notes", "goals", "audience", "tone_of_voice", "competitors"):
         if f in data:
             setattr(c, f, _clean(data[f]))
     if "is_active" in data and data["is_active"] is not None:

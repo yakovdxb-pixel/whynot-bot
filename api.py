@@ -350,7 +350,8 @@ async def health():
             cols = (await conn.execute(_sql_text(
                 "SELECT count(*) FROM information_schema.columns WHERE "
                 "(table_name='tasks' AND column_name IN ('overdue_notified_at','job_kind')) OR "
-                "(table_name='reference_items' AND column_name IN ('project_id','tg_message_id'))"
+                "(table_name='reference_items' AND column_name IN ('project_id','tg_message_id')) OR "
+                "(table_name='clients' AND column_name IN ('goals','audience','tone_of_voice','competitors'))"
             ))).scalar()
         return {"db": "ok", "new_tables": int(tbls), "sep_cols": int(cols)}
     except Exception as e:
