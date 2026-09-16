@@ -733,6 +733,7 @@ const I18N = {
     "toast.fileTooBig":"Файл больше 20 МБ","toast.fillRequired":"Заполни обязательные поля",
     "confirm.refDelete":"Удалить этот референс?","err.load":"Не удалось загрузить","err.save":"Не удалось сохранить",
     "btn.delete":"🗑 Удалить","confirm.delete":"Удалить?","confirm.deleteTask":"Удалить эту задачу?","toast.deleted":"Удалено",
+    "confirm.deleteContent":"Удалить этот контент? Связанные задачи (съёмка/дизайн/монтаж) тоже удалятся.",
     "role.admin":"Админ","role.am":"AM","role.director":"Директор","role.editor":"Монтажёр","role.designer":"Дизайнер",
     "role.videographer":"Видеограф","role.mobilographer":"Мобилограф","role.driver":"Водитель","role.intern":"Стажёр",
     "role.producer":"Продюсер","role.smm":"SMM","role.photographer":"Фотограф","role.copywriter":"Копирайтер",
@@ -745,7 +746,7 @@ const I18N = {
     "field.content_kind":"Вид контента","field.company":"Компания","scope.mineIdeas":"Мои","cscope.mine":"Мои проекты",
     "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Другое","pf.none":"—",
     "ss.planned":"Запланирована","ss.done":"Отснята","ss.cancelled":"Отменена",
-    "pr.normal":"Обычный","pr.high":"Высокий","pr.urgent":"Срочный",
+    "pr.normal":"Обычный","pr.high":"Высокий","pr.urgent":"Срочный","task.assignedBy":"Поставил",
     "fmt.post":"Пост","fmt.reels":"Reels","fmt.story":"Сторис","fmt.carousel":"Карусель","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Другое",
     "tn.toWork":"▶ В работу","tn.toDone":"✅ Готово","tn.doneMark":"✅ Выполнено",
     "misc.loading":"Загрузка…","misc.noDeadline":"без срока","misc.editArrow":"изменить ›",
@@ -789,6 +790,7 @@ const I18N = {
     "toast.fileTooBig":"Fayl 20 MB dan katta","toast.fillRequired":"Majburiy maydonlarni toʻldiring",
     "confirm.refDelete":"Ushbu namunani oʻchirasizmi?","err.load":"Yuklab boʻlmadi","err.save":"Saqlab boʻlmadi",
     "btn.delete":"🗑 Oʻchirish","confirm.delete":"Oʻchirilsinmi?","confirm.deleteTask":"Bu vazifani oʻchirasizmi?","toast.deleted":"Oʻchirildi",
+    "confirm.deleteContent":"Bu kontent oʻchirilsinmi? Bogʻliq vazifalar (suratga olish/dizayn/montaj) ham oʻchadi.",
     "role.admin":"Admin","role.am":"AM","role.director":"Direktor","role.editor":"Montajchi","role.designer":"Dizayner",
     "role.videographer":"Videograf","role.mobilographer":"Mobilograf","role.driver":"Haydovchi","role.intern":"Stajyor",
     "role.producer":"Prodyuser","role.smm":"SMM","role.photographer":"Fotograf","role.copywriter":"Kopirayter",
@@ -801,7 +803,7 @@ const I18N = {
     "field.content_kind":"Kontent turi","field.company":"Kompaniya","scope.mineIdeas":"Meniki","cscope.mine":"Mening loyihalarim",
     "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Boshqa","pf.none":"—",
     "ss.planned":"Rejalashtirilgan","ss.done":"Suratga olingan","ss.cancelled":"Bekor qilingan",
-    "pr.normal":"Oddiy","pr.high":"Yuqori","pr.urgent":"Shoshilinch",
+    "pr.normal":"Oddiy","pr.high":"Yuqori","pr.urgent":"Shoshilinch","task.assignedBy":"Tayinladi",
     "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Storis","fmt.carousel":"Karusel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Boshqa",
     "tn.toWork":"▶ Ishga","tn.toDone":"✅ Tayyor","tn.doneMark":"✅ Bajarildi",
     "misc.loading":"Yuklanmoqda…","misc.noDeadline":"muddatsiz","misc.editArrow":"tahrirlash ›",
@@ -845,6 +847,7 @@ const I18N = {
     "toast.fileTooBig":"File over 20 MB","toast.fillRequired":"Fill in the required fields",
     "confirm.refDelete":"Delete this reference?","err.load":"Could not load","err.save":"Could not save",
     "btn.delete":"🗑 Delete","confirm.delete":"Delete?","confirm.deleteTask":"Delete this task?","toast.deleted":"Deleted",
+    "confirm.deleteContent":"Delete this content? Linked jobs (shoot/design/edit) will be deleted too.",
     "role.admin":"Admin","role.am":"AM","role.director":"Director","role.editor":"Editor","role.designer":"Designer",
     "role.videographer":"Videographer","role.mobilographer":"Mobilographer","role.driver":"Driver","role.intern":"Intern",
     "role.producer":"Producer","role.smm":"SMM","role.photographer":"Photographer","role.copywriter":"Copywriter",
@@ -857,7 +860,7 @@ const I18N = {
     "field.content_kind":"Content type","field.company":"Company","scope.mineIdeas":"Mine","cscope.mine":"My projects",
     "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Other","pf.none":"—",
     "ss.planned":"Planned","ss.done":"Shot","ss.cancelled":"Cancelled",
-    "pr.normal":"Normal","pr.high":"High","pr.urgent":"Urgent",
+    "pr.normal":"Normal","pr.high":"High","pr.urgent":"Urgent","task.assignedBy":"Assigned by",
     "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Story","fmt.carousel":"Carousel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Other",
     "tn.toWork":"▶ Start","tn.toDone":"✅ Done","tn.doneMark":"✅ Completed",
     "misc.loading":"Loading…","misc.noDeadline":"no deadline","misc.editArrow":"edit ›",
@@ -1069,6 +1072,7 @@ function taskCard(tk){
     ${tk.description ? `<p class="desc">${esc(tk.description)}</p>` : ""}
     <div class="meta">
       <span>${deadlineMeta(tk.deadline)}</span>
+      ${tk.created_by_name ? `<span>📌 ${esc(t("task.assignedBy"))}: ${esc(tk.created_by_name)}</span>` : ""}
       ${who ? `<span>${who}</span>` : ""}
       ${tk.priority && tk.priority !== "normal" ? `<span>❗ ${esc(t("pr." + tk.priority) || tk.priority)}</span>` : ""}
     </div>
@@ -2427,6 +2431,7 @@ function openContentEdit(c){
     omitFields: ["refs"],
     refsFor: { kind: "content", id: c.id },
     timelineFor: { kind: "content", id: c.id },
+    deleteFor: { endpoint: "/api/content/" + c.id, confirmKey: "confirm.deleteContent" },
     prefill: {
       topic: c.topic || "",
       content_kind: c.content_kind || "",

@@ -523,6 +523,7 @@ async def _attach_assignees(session, tasks):
     for tid, uid in rows:
         by_task.setdefault(tid, []).append(uid)
     all_uids = {u for lst in by_task.values() for u in lst} | {t.assignee_id for t in tasks}
+    all_uids |= {t.created_by for t in tasks}
     names = await _names_for(session, all_uids)
     refs = await _ref_summaries(session, task_ids=ids)
     out = []
@@ -531,6 +532,7 @@ async def _attach_assignees(session, tasks):
         aids = by_task.get(t.id) or ([t.assignee_id] if t.assignee_id else [])
         d["assignees"] = [{"id": i, "name": names.get(i)} for i in aids]
         d["assignee_name"] = names.get(t.assignee_id) or (d["assignees"][0]["name"] if d["assignees"] else None)
+        d["created_by_name"] = names.get(t.created_by)
         s = refs.get(t.id, {})
         d["refs_count"] = s.get("count", 0)
         d["ref_thumbs"] = s.get("thumbs", [])
@@ -1132,6 +1134,34 @@ async def update_content(content_id: int, patch: ContentPatch,
     if content_stage_changed:
         await _log_status(session, "content", item.id, content_stage_changed, user["id"])
     return await _one_content(session, item, user)
+
+
+@router.delete("/content/{content_id}")
+async def delete_content(content_id: int,
+                         user: dict = Depends(member), session=Depends(get_session)):
+    item = (await session.execute(
+        select(ContentItem).where(ContentItem.id == content_id))).scalar_one_or_none()
+    if not item:
+        return {"ok": True}
+    assg = (await _content_assignees(session, [item.id])).get(item.id, [])
+    my_pids = await _my_project_ids(session, user["id"])
+    if not _can_edit_content(user, item, my_pids, assg):
+        raise HTTPException(403, "можно удалять только свой контент")
+    # drop dispatched production jobs (shoot/design/edit) and other soft references
+    # first — content_items has no CASCADE from Task.content_id / Blocker.content_id
+    await session.execute(sa_delete(Task).where(Task.content_id == content_id))
+    await session.execute(sa_delete(Blocker).where(Blocker.content_id == content_id))
+    await session.execute(sa_update(Idea).where(Idea.implemented_content_id == content_id)
+                          .values(implemented_content_id=None))
+    topic = item.topic
+    try:
+        await session.execute(sa_delete(ContentItem).where(ContentItem.id == content_id))
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "не удалось удалить — есть связанные данные")
+    await _log(session, "content", "deleted", content_id, user["id"], topic)
+    return {"ok": True}
 
 
 @router.get("/ideas")
