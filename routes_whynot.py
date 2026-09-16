@@ -1241,6 +1241,22 @@ async def list_blockers(user: dict = Depends(member), session=Depends(get_sessio
     return out
 
 
+@router.delete("/blockers/{blocker_id}")
+async def delete_blocker(blocker_id: int,
+                         user: dict = Depends(member), session=Depends(get_session)):
+    b = (await session.execute(
+        select(Blocker).where(Blocker.id == blocker_id))).scalar_one_or_none()
+    if not b:
+        return {"ok": True}
+    if (user["role"] not in MANAGER_ROLES
+            and user["id"] not in (b.reported_by, b.assigned_to)):
+        raise HTTPException(403, "удалить блокер может автор, назначенный или admin/am/director")
+    await session.execute(sa_delete(Blocker).where(Blocker.id == blocker_id))
+    await session.commit()
+    await _log(session, "blocker", "deleted", blocker_id, user["id"], b.title)
+    return {"ok": True}
+
+
 # ── creation (from the Mini App forms) ─────────────────────────
 
 async def _commit_new(session, obj):
@@ -1691,6 +1707,41 @@ async def update_client(client_id: int, patch: ClientPatch,
         raise HTTPException(400, "ссылка на несуществующий id")
     await session.refresh(c)
     return await _client_with_projects(session, c)
+
+
+@router.delete("/clients/{client_id}")
+async def delete_client(client_id: int,
+                        user: dict = Depends(member), session=Depends(get_session)):
+    """Delete a client — only if none of its projects have real data yet
+    (deleting the client cascades to its projects, which would silently
+    wipe content/tasks otherwise)."""
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "only admin / am can delete clients")
+    c = (await session.execute(
+        select(Client).where(Client.id == client_id))).scalar_one_or_none()
+    if not c:
+        return {"ok": True}
+    pids = (await session.execute(
+        select(Project.id).where(Project.client_id == client_id))).scalars().all()
+    used = []
+    if pids:
+        for model, label in [(ContentItem, "контент"), (Task, "задачи"),
+                             (ShootSession, "съёмки"), (Idea, "идеи"),
+                             (Blocker, "блокеры"), (ReferenceItem, "референсы")]:
+            n = (await session.execute(
+                select(func.count()).select_from(model).where(model.project_id.in_(pids))
+            )).scalar_one()
+            if n:
+                used.append(f"{label}: {n}")
+    if used:
+        raise HTTPException(
+            400, "нельзя удалить — есть данные (" + ", ".join(used) +
+                 "). Удали их или деактивируй клиента вместо удаления.")
+    name = c.name
+    await session.execute(sa_delete(Client).where(Client.id == client_id))
+    await session.commit()
+    await _log(session, "project", "deleted", client_id, user["id"], name)
+    return {"ok": True}
 
 
 @router.patch("/projects/{project_id}")

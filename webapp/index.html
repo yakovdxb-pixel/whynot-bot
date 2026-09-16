@@ -734,6 +734,7 @@ const I18N = {
     "confirm.refDelete":"Удалить этот референс?","err.load":"Не удалось загрузить","err.save":"Не удалось сохранить",
     "btn.delete":"🗑 Удалить","confirm.delete":"Удалить?","confirm.deleteTask":"Удалить эту задачу?","toast.deleted":"Удалено",
     "confirm.deleteContent":"Удалить этот контент? Связанные задачи (съёмка/дизайн/монтаж) тоже удалятся.",
+    "confirm.deleteClient":"Удалить клиента","confirm.deleteBlocker":"Удалить этот блокер?",
     "role.admin":"Админ","role.am":"AM","role.director":"Директор","role.editor":"Монтажёр","role.designer":"Дизайнер",
     "role.videographer":"Видеограф","role.mobilographer":"Мобилограф","role.driver":"Водитель","role.intern":"Стажёр",
     "role.producer":"Продюсер","role.smm":"SMM","role.photographer":"Фотограф","role.copywriter":"Копирайтер",
@@ -791,6 +792,7 @@ const I18N = {
     "confirm.refDelete":"Ushbu namunani oʻchirasizmi?","err.load":"Yuklab boʻlmadi","err.save":"Saqlab boʻlmadi",
     "btn.delete":"🗑 Oʻchirish","confirm.delete":"Oʻchirilsinmi?","confirm.deleteTask":"Bu vazifani oʻchirasizmi?","toast.deleted":"Oʻchirildi",
     "confirm.deleteContent":"Bu kontent oʻchirilsinmi? Bogʻliq vazifalar (suratga olish/dizayn/montaj) ham oʻchadi.",
+    "confirm.deleteClient":"Mijozni oʻchirish","confirm.deleteBlocker":"Bu blokerni oʻchirasizmi?",
     "role.admin":"Admin","role.am":"AM","role.director":"Direktor","role.editor":"Montajchi","role.designer":"Dizayner",
     "role.videographer":"Videograf","role.mobilographer":"Mobilograf","role.driver":"Haydovchi","role.intern":"Stajyor",
     "role.producer":"Prodyuser","role.smm":"SMM","role.photographer":"Fotograf","role.copywriter":"Kopirayter",
@@ -848,6 +850,7 @@ const I18N = {
     "confirm.refDelete":"Delete this reference?","err.load":"Could not load","err.save":"Could not save",
     "btn.delete":"🗑 Delete","confirm.delete":"Delete?","confirm.deleteTask":"Delete this task?","toast.deleted":"Deleted",
     "confirm.deleteContent":"Delete this content? Linked jobs (shoot/design/edit) will be deleted too.",
+    "confirm.deleteClient":"Delete client","confirm.deleteBlocker":"Delete this blocker?",
     "role.admin":"Admin","role.am":"AM","role.director":"Director","role.editor":"Editor","role.designer":"Designer",
     "role.videographer":"Videographer","role.mobilographer":"Mobilographer","role.driver":"Driver","role.intern":"Intern",
     "role.producer":"Producer","role.smm":"SMM","role.photographer":"Photographer","role.copywriter":"Copywriter",
@@ -1089,10 +1092,12 @@ function taskCard(tk){
 }
 
 function blockerCard(b){
+  const canDel = isManager() || (ME && (b.reported_by === ME.id || b.assigned_to === ME.id));
   return `
   <div class="card">
     <div class="row">
       <p class="title">🚫 ${esc(b.title || t("blocker.word"))}</p>
+      ${canDel ? `<button type="button" class="proj-del" data-blocker-del="${b.id}" title="${esc(t("btn.delete"))}">🗑</button>` : ""}
     </div>
     ${b.description ? `<p class="desc">${esc(b.description)}</p>` : ""}
     <div class="meta">
@@ -1382,6 +1387,7 @@ function clientCard(c, members){
     </div>
     ${amBlock}
     ${open ? projectsBlock(c.id) : ""}
+    ${open && isManager() ? `<button type="button" class="act ghost danger" data-client-del="${c.id}" style="margin-top:10px">${esc(t("btn.delete"))}</button>` : ""}
   </div>`;
 }
 
@@ -1902,6 +1908,35 @@ view.addEventListener("click", async e => {
       clientProjects[cid] = await api("/api/projects?client_id=" + cid);
       renderTeam();
     } catch(err){ toast(err.message); projDel.disabled = false; }
+    finally { busy = false; }
+    return;
+  }
+
+  const clientDel = e.target.closest("[data-client-del]");
+  if (clientDel && !busy){
+    const cid = clientDel.dataset.clientDel;
+    const nm = clientDel.closest(".client-card")?.querySelector(".title")?.textContent || "";
+    if (!(await askConfirm(`${t("confirm.deleteClient")} «${nm}»?`))) return;
+    busy = true; clientDel.disabled = true;
+    try {
+      await api("/api/clients/" + cid, { method: "DELETE" });
+      haptic("medium"); toast(t("toast.deleted"));
+      expandedClient = null;
+      renderTeam();
+    } catch(err){ toast(err.message); clientDel.disabled = false; }
+    finally { busy = false; }
+    return;
+  }
+
+  const blockerDel = e.target.closest("[data-blocker-del]");
+  if (blockerDel && !busy){
+    if (!(await askConfirm(t("confirm.deleteBlocker")))) return;
+    busy = true; blockerDel.disabled = true;
+    try {
+      await api("/api/blockers/" + blockerDel.dataset.blockerDel, { method: "DELETE" });
+      haptic("medium"); toast(t("toast.deleted"));
+      await load(currentTab);
+    } catch(err){ toast(err.message); blockerDel.disabled = false; }
     finally { busy = false; }
     return;
   }
