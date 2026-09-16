@@ -195,6 +195,7 @@
   }
   button.act:active{opacity:.7}
   button.act.ghost{background:transparent; color:var(--link); border:1px solid var(--sep)}
+  button.act.ghost.danger{color:var(--st-overdue); border-color:color-mix(in srgb, var(--st-overdue) 45%, transparent)}
   button.act[disabled]{opacity:.45; cursor:default}
 
   .seg{
@@ -731,6 +732,7 @@ const I18N = {
     "toast.created":"Создано","toast.saved":"Сохранено","toast.added":"Добавлено","draft.restored":"Черновик восстановлен",
     "toast.fileTooBig":"Файл больше 20 МБ","toast.fillRequired":"Заполни обязательные поля",
     "confirm.refDelete":"Удалить этот референс?","err.load":"Не удалось загрузить","err.save":"Не удалось сохранить",
+    "btn.delete":"🗑 Удалить","confirm.delete":"Удалить?","confirm.deleteTask":"Удалить эту задачу?","toast.deleted":"Удалено",
     "role.admin":"Админ","role.am":"AM","role.director":"Директор","role.editor":"Монтажёр","role.designer":"Дизайнер",
     "role.videographer":"Видеограф","role.mobilographer":"Мобилограф","role.driver":"Водитель","role.intern":"Стажёр",
     "role.producer":"Продюсер","role.smm":"SMM","role.photographer":"Фотограф","role.copywriter":"Копирайтер",
@@ -786,6 +788,7 @@ const I18N = {
     "toast.created":"Yaratildi","toast.saved":"Saqlandi","toast.added":"Qoʻshildi","draft.restored":"Qoralama tiklandi",
     "toast.fileTooBig":"Fayl 20 MB dan katta","toast.fillRequired":"Majburiy maydonlarni toʻldiring",
     "confirm.refDelete":"Ushbu namunani oʻchirasizmi?","err.load":"Yuklab boʻlmadi","err.save":"Saqlab boʻlmadi",
+    "btn.delete":"🗑 Oʻchirish","confirm.delete":"Oʻchirilsinmi?","confirm.deleteTask":"Bu vazifani oʻchirasizmi?","toast.deleted":"Oʻchirildi",
     "role.admin":"Admin","role.am":"AM","role.director":"Direktor","role.editor":"Montajchi","role.designer":"Dizayner",
     "role.videographer":"Videograf","role.mobilographer":"Mobilograf","role.driver":"Haydovchi","role.intern":"Stajyor",
     "role.producer":"Prodyuser","role.smm":"SMM","role.photographer":"Fotograf","role.copywriter":"Kopirayter",
@@ -841,6 +844,7 @@ const I18N = {
     "toast.created":"Created","toast.saved":"Saved","toast.added":"Added","draft.restored":"Draft restored",
     "toast.fileTooBig":"File over 20 MB","toast.fillRequired":"Fill in the required fields",
     "confirm.refDelete":"Delete this reference?","err.load":"Could not load","err.save":"Could not save",
+    "btn.delete":"🗑 Delete","confirm.delete":"Delete?","confirm.deleteTask":"Delete this task?","toast.deleted":"Deleted",
     "role.admin":"Admin","role.am":"AM","role.director":"Director","role.editor":"Editor","role.designer":"Designer",
     "role.videographer":"Videographer","role.mobilographer":"Mobilographer","role.driver":"Driver","role.intern":"Intern",
     "role.producer":"Producer","role.smm":"SMM","role.photographer":"Photographer","role.copywriter":"Copywriter",
@@ -2398,6 +2402,7 @@ function openTaskEdit(t){
     omitFields: ["refs"],
     refsFor: { kind: "task", id: t.id },
     timelineFor: { kind: "task", id: t.id },
+    deleteFor: { endpoint: "/api/tasks/" + t.id, confirmKey: "confirm.deleteTask" },
     prefill: {
       title: t.title || "",
       description: t.description || "",
@@ -2457,6 +2462,7 @@ function openContentJobEdit(j){
     method: "PATCH",
     extraFields: [{ name:"status", type:"select", optsKey:"status" }],
     timelineFor: { kind: "task", id: j.id },
+    deleteFor: { endpoint: "/api/tasks/" + j.id, confirmKey: "confirm.deleteTask" },
     prefill: {
       assignee_ids: j.assignee_id ? [j.assignee_id] : [],
       deadline: j.deadline ? toLocalInput(j.deadline) : "",
@@ -2630,6 +2636,25 @@ async function openSheet(){
     api(`/api/${tf.kind === "task" ? "tasks" : "content"}/${tf.id}/timeline`)
       .then(rows => { const el = document.getElementById("tlBox"); if (el) el.innerHTML = timelineHtml(rows); })
       .catch(() => {});
+  }
+  if (editState && editState.deleteFor){
+    const df = editState.deleteFor;
+    formFields.insertAdjacentHTML("beforeend",
+      `<button type="button" class="act ghost danger" id="editDeleteBtn" style="margin-top:10px">${esc(t("btn.delete"))}</button>`);
+    document.getElementById("editDeleteBtn").addEventListener("click", async () => {
+      if (busy) return;
+      if (!(await askConfirm(t(df.confirmKey || "confirm.delete")))) return;
+      busy = true;
+      try {
+        await api(df.endpoint, { method: "DELETE" });
+        haptic("medium");
+        clearDraft(); _draftReady = false;
+        closeSheet();
+        toast(t("toast.deleted"));
+        await load(currentTab);
+      } catch(err){ toast(err.message); }
+      finally { busy = false; }
+    });
   }
   pendingRefs = [];
   const rfBox = formFields.querySelector(".refs-field");

@@ -665,6 +665,22 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
     return result[0]
 
 
+@router.delete("/tasks/{task_id}")
+async def delete_task(task_id: int,
+                      user: dict = Depends(member), session=Depends(get_session)):
+    """Delete a task — a regular one from Главная, or a content-plan job
+    (shoot/design/edit, see job_kind). Manager or whoever created it."""
+    task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        return {"ok": True}
+    if user["role"] not in MANAGER_ROLES and task.created_by != user["id"]:
+        raise HTTPException(403, "удалить задачу может создатель или admin/am/director")
+    await session.execute(sa_delete(Task).where(Task.id == task_id))
+    await session.commit()
+    await _log(session, "task", "deleted", task_id, user["id"], task.title)
+    return {"ok": True}
+
+
 class TaskRevisionBody(BaseModel):
     comment: str | None = None
 
