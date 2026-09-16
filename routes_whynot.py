@@ -242,8 +242,8 @@ async def member(user: dict = Depends(current_user)) -> dict:
 
 # ── models ──────────────────────────────────────────────────────
 
-TASK_STATUSES = set(task_status_enum.enums)
-OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue")
+TASK_STATUSES = {"pending", "in_progress", "review", "revision", "done", "published", "cancelled", "overdue"}
+OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue", "revision")
 USER_ROLES = {"admin", "am", "director", "editor", "designer",
               "videographer", "mobilographer", "driver", "intern"}
 MANAGER_ROLES = ("admin", "am", "director")   # full access: team, clients, dashboard, /bind
@@ -253,7 +253,8 @@ CONTENT_FORMATS = set(content_format_enum.enums)
 PRIORITY_ALIASES = {"critical": "urgent", "medium": "normal"}
 FORMAT_ALIASES = {"reel": "reels", "video": "youtube_long", "article": "other"}
 STATUS_RU = {"pending": "Ожидает", "in_progress": "В работе", "done": "Готово",
-             "overdue": "Просрочено", "cancelled": "Отменено"}
+             "overdue": "Просрочено", "cancelled": "Отменено",
+             "review": "На проверке", "revision": "На доработке", "published": "Опубликовано"}
 
 
 class TaskPatch(BaseModel):
@@ -662,6 +663,123 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
 
     result = await _attach_assignees(session, [task])
     return result[0]
+
+
+class TaskRevisionBody(BaseModel):
+    comment: str | None = None
+
+
+async def _task_assignee_ids(session, task_id, fallback_assignee_id=None):
+    ids = list((await session.execute(
+        select(TaskAssignee.user_id).where(TaskAssignee.task_id == task_id))).scalars().all())
+    return ids or ([fallback_assignee_id] if fallback_assignee_id else [])
+
+
+@router.post("/tasks/{task_id}/approve")
+async def approve_task(task_id: int, bg: BackgroundTasks,
+                       user: dict = Depends(member), session=Depends(get_session)):
+    """Manager accepts a submitted file — status -> done."""
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "принимать задачи может только admin/am/director")
+    task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    task.status = "done"
+    if task.actual_completion is None:
+        task.actual_completion = _now()
+    task.updated_at = _now()
+    await session.commit()
+    await _log_status(session, "task", task.id, "done", user["id"])
+    for a in await _task_assignee_ids(session, task.id, task.assignee_id):
+        tg = await _telegram_id_for(session, a)
+        if tg:
+            bg.add_task(_tg_send, tg, f"✅ Принято! Задача «{task.title}»")
+    result = await _attach_assignees(session, [task])
+    return result[0]
+
+
+@router.post("/tasks/{task_id}/revision")
+async def revision_task(task_id: int, body: TaskRevisionBody, bg: BackgroundTasks,
+                        user: dict = Depends(member), session=Depends(get_session)):
+    """Manager sends a submitted file back — status -> revision, with an optional comment."""
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "отправлять на доработку может только admin/am/director")
+    task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    comment = _clean(body.comment)
+    task.status = "revision"
+    task.review_comment = comment
+    task.updated_at = _now()
+    await session.commit()
+    await _log_status(session, "task", task.id, "revision", user["id"])
+    text = f"🔄 На доработку: {comment}" if comment else "🔄 Задача возвращена на доработку"
+    for a in await _task_assignee_ids(session, task.id, task.assignee_id):
+        tg = await _telegram_id_for(session, a)
+        if tg:
+            bg.add_task(_tg_send, tg, f"{text}\nЗадача: «{task.title}»")
+    result = await _attach_assignees(session, [task])
+    return result[0]
+
+
+@router.post("/tasks/{task_id}/publish")
+async def publish_task(task_id: int, bg: BackgroundTasks,
+                       user: dict = Depends(member), session=Depends(get_session)):
+    """Manager marks an accepted task as published."""
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "публиковать может только admin/am/director")
+    task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    task.status = "published"
+    task.updated_at = _now()
+    await session.commit()
+    await _log_status(session, "task", task.id, "published", user["id"])
+    for a in await _task_assignee_ids(session, task.id, task.assignee_id):
+        tg = await _telegram_id_for(session, a)
+        if tg:
+            bg.add_task(_tg_send, tg, f"🚀 Опубликовано! Задача «{task.title}»")
+    result = await _attach_assignees(session, [task])
+    return result[0]
+
+
+@router.get("/tasks/{task_id}/file")
+async def task_file(task_id: int, request: Request, ia: str | None = None,
+                    session=Depends(get_session)):
+    """Proxy a file submitted via a bound Telegram topic (see bot.py submit_file_prompt)."""
+    init_data = (request.headers.get("X-Init-Data")
+                 or request.headers.get("X-Telegram-Init-Data") or ia or "")
+    ok = not BOT_TOKEN
+    if init_data and BOT_TOKEN:
+        try:
+            ok = bool(_validate_init_data(init_data).get("id"))
+        except HTTPException:
+            ok = False
+    if not ok:
+        tok = request.cookies.get("wn_session")
+        ok = bool(tok and _read_session(tok))
+    if not ok:
+        raise HTTPException(403, "нет доступа")
+
+    t = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not t or not t.file_id:
+        raise HTTPException(404, "файл не найден")
+    async with httpx.AsyncClient(timeout=60) as c:
+        gf = (await c.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
+                          params={"file_id": t.file_id})).json()
+        path = gf.get("result", {}).get("file_path")
+        if not path:
+            raise HTTPException(410, "файл больше недоступен")
+        fr = await c.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{path}")
+    mime = ("video/mp4" if t.file_type == "video"
+            else "image/jpeg" if t.file_type == "photo" else "application/octet-stream")
+    return Response(
+        content=fr.content, media_type=mime,
+        headers={
+            "Content-Disposition": f'inline; filename="task-{task_id}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 
 @router.get("/tasks/{task_id}/timeline")

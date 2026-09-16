@@ -256,7 +256,9 @@ class Task(Base):
     created_by       = Column(Integer, ForeignKey('users.id'))
     priority         = Column(task_priority_enum, default='normal')
     deadline         = Column(DateTime(timezone=True))
-    status           = Column(task_status_enum, default='pending')
+    # status is TEXT (not the pg enum) — validated in Python (routes_whynot.TASK_STATUSES),
+    # same pattern as users.role, so new statuses (review/revision/published) are just a set update
+    status           = Column(Text, default='pending')
     actual_completion = Column(DateTime(timezone=True))
     overdue_notified_at = Column(DateTime(timezone=True))
     overdue_reason   = Column(overdue_reason_enum)
@@ -264,6 +266,11 @@ class Task(Base):
     related_links    = Column(JSONB, default=list)
     job_kind         = Column(Text)   # NULL = normal task; 'shoot'|'design'|'edit' = content production job
     location         = Column(Text)   # shoot address etc.
+    # file submitted from a bound Telegram topic (see bot.py submit_file_prompt) (2026-09-15)
+    file_id          = Column(Text)          # Telegram file_id of the submitted photo/video/document
+    file_type        = Column(Text)          # 'photo' | 'video' | 'document'
+    submitted_at     = Column(DateTime(timezone=True))
+    review_comment   = Column(Text)          # manager's note when sending back for revision
     created_at       = Column(DateTime(timezone=True), server_default=text('NOW()'))
     updated_at       = Column(DateTime(timezone=True), server_default=text('NOW()'))
 
@@ -601,6 +608,12 @@ _MIGRATIONS = [
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS audience TEXT",
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS tone_of_voice TEXT",
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS competitors TEXT",
+    # file-submission review flow (2026-09-15)
+    "ALTER TABLE tasks ALTER COLUMN status TYPE TEXT USING status::text",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS file_id TEXT",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS file_type TEXT",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_comment TEXT",
 ]
 
 

@@ -44,6 +44,9 @@
     --st-done:#2ecb6a;
     --st-overdue:#ff5147;
     --st-cancelled:#8f8f96;
+    --st-review:#ffb020;
+    --st-revision:#ff8a3d;
+    --st-published:#0ea86c;
     --fab:#1ec89a;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -168,6 +171,20 @@
   .pill.in_progress{background:var(--st-in_progress)}
   .pill.done{background:var(--st-done)}
   .pill.overdue{background:var(--st-overdue)}
+  .pill.review{background:var(--st-review); color:#241a08}
+  .pill.revision{background:var(--st-revision)}
+  .pill.published{background:var(--st-published)}
+  .review-note{
+    margin-top:8px; font-size:13px; color:var(--st-review);
+    background:color-mix(in srgb, var(--st-review) 16%, transparent);
+    border-radius:9px; padding:7px 10px;
+  }
+  a.task-file.review-note{ display:block; text-decoration:none; margin-top:8px }
+  a.task-file.review-note span{ display:block }
+  .task-file-thumb{
+    display:block; max-width:100%; max-height:220px; width:auto; border-radius:8px;
+    margin-bottom:6px; object-fit:cover;
+  }
   .pill.cancelled{background:var(--st-cancelled)}
   .pill.stage{background:var(--link)}
 
@@ -718,6 +735,9 @@ const I18N = {
     "role.videographer":"Видеограф","role.mobilographer":"Мобилограф","role.driver":"Водитель","role.intern":"Стажёр",
     "role.producer":"Продюсер","role.smm":"SMM","role.photographer":"Фотограф","role.copywriter":"Копирайтер",
     "st.pending":"ожидает","st.in_progress":"в работе","st.done":"готово","st.overdue":"просрочено","st.cancelled":"отменено",
+    "st.review":"на проверке","st.revision":"на доработке","st.published":"опубликовано",
+    "task.fileSubmitted":"Файл сдан на проверку","task.approve":"Принять","task.revision":"На доработку","task.publish":"Опубликовать",
+    "scope.review":"На проверке","form.taskRevision":"Комментарий к доработке","btn.sendRevision":"Отправить на доработку",
     "pipe.script":"В процессе","pipe.approval":"На одобрении","pipe.revisions":"Правка","pipe.done":"Готов","pipe.published":"Опубликовано",
     "kind.info":"Информационный","kind.sales":"Продающий","kind.image":"Имиджевый","kind.engage":"Вовлекающий","kind.entertain":"Развлекательный","kind.other":"Другое",
     "field.content_kind":"Вид контента","field.company":"Компания","scope.mineIdeas":"Мои","cscope.mine":"Мои проекты",
@@ -770,6 +790,9 @@ const I18N = {
     "role.videographer":"Videograf","role.mobilographer":"Mobilograf","role.driver":"Haydovchi","role.intern":"Stajyor",
     "role.producer":"Prodyuser","role.smm":"SMM","role.photographer":"Fotograf","role.copywriter":"Kopirayter",
     "st.pending":"kutilmoqda","st.in_progress":"ishda","st.done":"tayyor","st.overdue":"muddati oʻtgan","st.cancelled":"bekor qilingan",
+    "st.review":"tekshiruvda","st.revision":"qayta ishlashda","st.published":"chop etilgan",
+    "task.fileSubmitted":"Fayl tekshiruvga yuborildi","task.approve":"Qabul qilish","task.revision":"Qayta ishlashga","task.publish":"Chop etish",
+    "scope.review":"Tekshiruvda","form.taskRevision":"Qayta ishlash uchun izoh","btn.sendRevision":"Qayta ishlashga yuborish",
     "pipe.script":"Jarayonda","pipe.approval":"Tasdiqda","pipe.revisions":"Tuzatish","pipe.done":"Tayyor","pipe.published":"Chop etilgan",
     "kind.info":"Axborot","kind.sales":"Sotuvchi","kind.image":"Imidj","kind.engage":"Jalb qiluvchi","kind.entertain":"Koʻngilochar","kind.other":"Boshqa",
     "field.content_kind":"Kontent turi","field.company":"Kompaniya","scope.mineIdeas":"Meniki","cscope.mine":"Mening loyihalarim",
@@ -822,6 +845,9 @@ const I18N = {
     "role.videographer":"Videographer","role.mobilographer":"Mobilographer","role.driver":"Driver","role.intern":"Intern",
     "role.producer":"Producer","role.smm":"SMM","role.photographer":"Photographer","role.copywriter":"Copywriter",
     "st.pending":"pending","st.in_progress":"in progress","st.done":"done","st.overdue":"overdue","st.cancelled":"cancelled",
+    "st.review":"in review","st.revision":"needs revision","st.published":"published",
+    "task.fileSubmitted":"File submitted for review","task.approve":"Approve","task.revision":"Send back","task.publish":"Publish",
+    "scope.review":"In review","form.taskRevision":"Revision comment","btn.sendRevision":"Send back",
     "pipe.script":"In progress","pipe.approval":"In review","pipe.revisions":"Revision","pipe.done":"Ready","pipe.published":"Published",
     "kind.info":"Informational","kind.sales":"Sales","kind.image":"Brand","kind.engage":"Engaging","kind.entertain":"Entertaining","kind.other":"Other",
     "field.content_kind":"Content type","field.company":"Company","scope.mineIdeas":"Mine","cscope.mine":"My projects",
@@ -872,7 +898,7 @@ function buildLabels(){
              blockers:t("nav.blockers"), shoots:t("nav.shoots"), team:t("nav.team"), dash:t("nav.dash") };
   _setArr(PLATFORM_OPTS, [["","—"], ...opts("pf.", ["instagram","tiktok","youtube","telegram","vk","other"])]);
   _setArr(SHOOT_STATUS_OPTS, opts("ss.", ["planned","done","cancelled"]));
-  _setArr(STATUS_OPTS, opts("st.", ["pending","in_progress","done","overdue","cancelled"]));
+  _setArr(STATUS_OPTS, opts("st.", ["pending","in_progress","review","revision","done","published","overdue","cancelled"]));
   _setArr(PIPELINE_OPTS, opts("pipe.", _PIPE));
   _setArr(PRIORITY_OPTS, opts("pr.", ["normal","high","urgent"]));
   _setArr(FORMAT_OPTS, opts("fmt.", _FMT));
@@ -882,13 +908,14 @@ function buildLabels(){
   KIND_LABEL = Object.fromEntries(KIND_OPTS);
   ROLE_LABELS = {}; [..._ROLES, ..._ROLES_LEGACY].forEach(r => ROLE_LABELS[r] = t("role."+r));
   PIPELINE_LABELS = {}; _PIPE.forEach(p => PIPELINE_LABELS[p] = t("pipe."+p));
-  STATUS_LABELS = {}; ["pending","in_progress","done","overdue","cancelled"].forEach(s => STATUS_LABELS[s] = t("st."+s));
+  STATUS_LABELS = {}; ["pending","in_progress","done","overdue","cancelled","review","revision","published"].forEach(s => STATUS_LABELS[s] = t("st."+s));
   PLATFORM_LABEL = Object.fromEntries(PLATFORM_OPTS);
   SHOOT_STATUS_LABEL = Object.fromEntries(SHOOT_STATUS_OPTS);
   TASK_NEXT = {
     pending:     { to:"in_progress", label:t("tn.toWork") },
     overdue:     { to:"in_progress", label:t("tn.toWork") },
     in_progress: { to:"done",        label:t("tn.toDone") },
+    revision:    { to:"in_progress", label:t("tn.toWork") },
   };
 }
 buildLabels();
@@ -917,7 +944,7 @@ const ROLE_COLORS = {
 const view = document.getElementById("view");
 const screenTitle = document.getElementById("screenTitle");
 let currentTab = "home";
-let homeScope = "mine";   // "mine" | "all" — Главная tasks filter
+let homeScope = "mine";   // "mine" | "all" | "review" — Главная tasks filter
 let teamSub = "team";     // "team" | "clients" — Команда sub-section
 let contentClientId = ""; // "" = all — Контент client filter (legacy)
 let contentProjectId = ""; // "" = all — Контент project filter
@@ -1009,11 +1036,26 @@ function refStrip(kind, id, count, thumbs){
   </div>`;
 }
 
+function taskFileLink(tk){
+  const url = "/api/tasks/" + tk.id + "/file" + (INIT_DATA ? "?ia=" + encodeURIComponent(INIT_DATA) : "");
+  const emoji = tk.file_type === "video" ? "🎥" : tk.file_type === "photo" ? "🖼" : "📎";
+  const thumb = tk.file_type === "photo" ? `<img class="task-file-thumb" src="${url}" alt="">` : "";
+  return `<a class="task-file review-note" href="${url}" target="_blank" rel="noopener">${thumb}<span>${emoji} ${esc(t("task.fileSubmitted"))}</span></a>`;
+}
+
 function taskCard(tk){
   taskById[tk.id] = tk;
   const st = tk.status || "pending";
   const next = TASK_NEXT[st];
   const who = assigneesLabel(tk);
+  const mgr = isManager();
+  const reviewBtns = st === "review" && mgr ? `
+    <div class="cjob-btns">
+      <button class="act" data-task-approve="${tk.id}">✅ ${esc(t("task.approve"))}</button>
+      <button class="act ghost" data-task-revision="${tk.id}">🔄 ${esc(t("task.revision"))}</button>
+    </div>` : "";
+  const publishBtn = st === "done" && mgr
+    ? `<button class="act ghost" data-task-publish="${tk.id}">🚀 ${esc(t("task.publish"))}</button>` : "";
   return `
   <div class="card tappable" data-task-edit="${tk.id}">
     <div class="row">
@@ -1026,10 +1068,15 @@ function taskCard(tk){
       ${who ? `<span>${who}</span>` : ""}
       ${tk.priority && tk.priority !== "normal" ? `<span>❗ ${esc(t("pr." + tk.priority) || tk.priority)}</span>` : ""}
     </div>
+    ${st === "review"
+      ? (tk.file_id ? taskFileLink(tk) : `<div class="review-note">📎 ${esc(t("task.fileSubmitted"))}</div>`)
+      : (st === "done" || st === "published") && tk.file_id ? taskFileLink(tk) : ""}
+    ${st === "revision" && tk.review_comment ? `<div class="review-note">🔄 ${esc(tk.review_comment)}</div>` : ""}
     ${refStrip("task", tk.id, tk.refs_count || 0, tk.ref_thumbs)}
-    ${next
+    ${reviewBtns}${publishBtn}
+    ${next && st !== "review"
       ? `<button class="act" data-task-to="${next.to}" data-task-id="${tk.id}">${next.label}</button>`
-      : st === "done" ? `<div class="done-mark">${esc(t("tn.doneMark"))}</div>` : ""}
+      : (st === "done" && !mgr) ? `<div class="done-mark">${esc(t("tn.doneMark"))}</div>` : ""}
   </div>`;
 }
 
@@ -1051,25 +1098,30 @@ function blockerCard(b){
 /* ── screens ─────────────────────────────────────────────── */
 
 async function renderHome(){
-  const [d, tasks] = await Promise.all([
+  const wantReview = homeScope === "review";
+  const [d, ownTasks, reviewTasks] = await Promise.all([
     api("/api/home"),
-    api("/api/tasks?my=" + (homeScope === "mine" ? "true" : "false")),
+    wantReview ? Promise.resolve(null) : api("/api/tasks?my=" + (homeScope === "mine" ? "true" : "false")),
+    api("/api/tasks?status=review"),
   ]);
   ME = d.user;
   setWhoami(d.user);
   taskById = {};
   const parts = [];
+  const tasks = wantReview ? reviewTasks : ownTasks;
+  const reviewCount = reviewTasks.length;
 
   parts.push(`
     <div class="seg" id="scopeSeg">
       <button data-scope="mine" class="${homeScope === "mine" ? "on" : ""}">${esc(t("scope.mine"))}</button>
       <button data-scope="all"  class="${homeScope === "all"  ? "on" : ""}">${esc(t("scope.all"))}</button>
+      <button data-scope="review" class="${homeScope === "review" ? "on" : ""}">${esc(t("scope.review"))}${reviewCount ? ` 🔴${reviewCount}` : ""}</button>
     </div>`);
 
   parts.push(`<div class="section-title">${esc(t("sec.tasks"))}</div>`);
   parts.push(tasks.length
     ? tasks.map(taskCard).join("")
-    : `<div class="empty">${homeScope === "mine" ? esc(t("empty.tasks")) : esc(t("empty.tasksAll"))}</div>`);
+    : `<div class="empty">${wantReview ? esc(t("empty.tasksAll")) : homeScope === "mine" ? esc(t("empty.tasks")) : esc(t("empty.tasksAll"))}</div>`);
 
   parts.push(`<div class="section-title">${esc(t("sec.myBlockers"))}</div>`);
   parts.push(d.my_blockers.length
@@ -1846,6 +1898,35 @@ view.addEventListener("click", async e => {
     return;
   }
 
+  const taskApprove = e.target.closest("[data-task-approve]");
+  if (taskApprove && !busy){
+    busy = true; taskApprove.disabled = true; taskApprove.textContent = "…";
+    try {
+      await api(`/api/tasks/${taskApprove.dataset.taskApprove}/approve`, {method:"POST"});
+      haptic("medium"); toast(t("toast.saved"));
+      await load(currentTab);
+    } catch(err){ toast(err.message); taskApprove.disabled = false; taskApprove.textContent = "✅ " + t("task.approve"); }
+    finally { busy = false; }
+    return;
+  }
+  const taskRevisionBtn = e.target.closest("[data-task-revision]");
+  if (taskRevisionBtn && !busy){
+    const tk = taskById[+taskRevisionBtn.dataset.taskRevision];
+    if (tk){ haptic(); openTaskRevision(tk); }
+    return;
+  }
+  const taskPublish = e.target.closest("[data-task-publish]");
+  if (taskPublish && !busy){
+    busy = true; taskPublish.disabled = true; taskPublish.textContent = "…";
+    try {
+      await api(`/api/tasks/${taskPublish.dataset.taskPublish}/publish`, {method:"POST"});
+      haptic("medium"); toast(t("toast.saved"));
+      await load(currentTab);
+    } catch(err){ toast(err.message); taskPublish.disabled = false; taskPublish.textContent = "🚀 " + t("task.publish"); }
+    finally { busy = false; }
+    return;
+  }
+
   const stBtn = e.target.closest("[data-task-to]");
   const advBtn = e.target.closest("[data-advance]");
   const voteBtn = e.target.closest("[data-vote]");
@@ -2198,6 +2279,9 @@ const _cjobFields = (withLoc) => [
 FORMS.cjob_shoot  = { endpoint:"", fields:_cjobFields(true)  };
 FORMS.cjob_design = { endpoint:"", fields:_cjobFields(false) };
 FORMS.cjob_edit   = { endpoint:"", fields:_cjobFields(false) };
+FORMS.taskRevision = { endpoint:"", fields:[
+  { name:"comment", type:"textarea", required:true, i18nKey:"form.taskRevision" },
+] };
 
 const sheet = document.getElementById("sheet");
 const sheetBackdrop = document.getElementById("sheetBackdrop");
@@ -2384,6 +2468,19 @@ function openContentJobEdit(j){
   openSheet();
 }
 
+function openTaskRevision(t){
+  editState = {
+    formKey: "taskRevision",
+    titleKey: "form.taskRevision",
+    endpoint: "/api/tasks/" + t.id + "/revision",
+    method: "POST",
+    isCreate: true,
+    submitLabelKey: "btn.sendRevision",
+    prefill: {},
+  };
+  openSheet();
+}
+
 function openShootEdit(s){
   editState = {
     formKey: "shoots",
@@ -2538,7 +2635,8 @@ async function openSheet(){
   const rfBox = formFields.querySelector(".refs-field");
   if (rfBox) wirePendingRefs(rfBox);
   formSubmit.disabled = false;
-  formSubmit.textContent = editState ? t("btn.save") : t("btn.create");
+  formSubmit.textContent = editState && editState.submitLabelKey ? t(editState.submitLabelKey)
+    : editState ? t("btn.save") : t("btn.create");
   sheetBackdrop.classList.add("open");
   sheet.classList.add("open");
   sheetBackOn(closeSheet);
@@ -2679,7 +2777,8 @@ async function submitForm(){
   } catch(e){
     setFormError(e.message || t("err.save"));
     formSubmit.disabled = false;
-    formSubmit.textContent = wasEdit ? t("btn.save") : t("btn.create");
+    formSubmit.textContent = editState && editState.submitLabelKey ? t(editState.submitLabelKey)
+      : wasEdit ? t("btn.save") : t("btn.create");
   } finally {
     busy = false;
   }

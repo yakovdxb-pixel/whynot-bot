@@ -2252,6 +2252,137 @@ async def reaction_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"reaction_ref: {e}")
 
 
+async def submit_file_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """A photo/video/document dropped in a project's bound topic -> ask which active task it's for."""
+    msg = update.effective_message
+    if not msg or update.effective_chat.type not in ("group", "supergroup"):
+        return
+    fid = ftype = None
+    if msg.photo:
+        fid, ftype = msg.photo[-1].file_id, "photo"
+    elif msg.video:
+        fid, ftype = msg.video.file_id, "video"
+    elif msg.document:
+        fid, ftype = msg.document.file_id, "document"
+    if not fid:
+        return
+
+    thread_id = getattr(msg, "message_thread_id", None) or 0
+    try:
+        from db.models import AsyncSessionLocal, ProjectChat, Project, Client, Task
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as s:
+            proj_id = (await s.execute(select(ProjectChat.project_id).where(
+                ProjectChat.chat_id == msg.chat_id,
+                ProjectChat.thread_id == (thread_id or None)))).scalar_one_or_none()
+            if not proj_id:
+                proj_id = (await s.execute(select(ProjectChat.project_id).where(
+                    ProjectChat.chat_id == msg.chat_id))).scalar_one_or_none()
+            if not proj_id:
+                return  # chat/topic isn't bound to a project (see /bind) — nothing to do
+            proj = (await s.execute(select(Project.name, Project.client_id)
+                    .where(Project.id == proj_id))).first()
+            if not proj:
+                return
+            client_name = proj[0]
+            if proj[1]:
+                cn = (await s.execute(select(Client.name).where(Client.id == proj[1]))).scalar_one_or_none()
+                client_name = cn or client_name
+            tasks = (await s.execute(select(Task.id, Task.title).where(
+                Task.project_id == proj_id,
+                Task.status.notin_(("done", "published"))
+            ).order_by(Task.deadline.is_(None), Task.deadline).limit(30))).all()
+    except Exception as e:
+        logger.warning(f"submit_file_prompt: {e}")
+        return
+
+    if not tasks:
+        await msg.reply_text(f"У клиента {client_name} нет активных задач",
+                             message_thread_id=thread_id or None)
+        return
+
+    # stash the file — the callback can't carry it (64-byte callback_data limit)
+    context.chat_data[f"subfile_{msg.message_id}"] = {
+        "file_id": fid, "file_type": ftype, "from_user": update.effective_user.id,
+    }
+    kb = [[InlineKeyboardButton(f"📋 {title}"[:64], callback_data=f"subfile_{msg.message_id}_{tid}")]
+          for tid, title in tasks]
+    await msg.reply_text("📎 К какой задаче относится файл?",
+                         message_thread_id=thread_id or None,
+                         reply_markup=InlineKeyboardMarkup(kb))
+
+
+async def subfile_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Executor picked which task the submitted file belongs to -> status=review, notify managers."""
+    q = update.callback_query
+    await q.answer()
+    m = re.match(r"^subfile_(\d+)_(\d+)$", q.data or "")
+    if not m:
+        return
+    orig_msg_id, task_id = int(m.group(1)), int(m.group(2))
+    pending = context.chat_data.pop(f"subfile_{orig_msg_id}", None)
+    if not pending:
+        await q.edit_message_text("⌛ Файл потерян (бот перезапускался) — отправь его ещё раз.")
+        return
+
+    task = None
+    cname = None
+    submitter_name = "Кто-то"
+    admins = []
+    try:
+        from db.models import AsyncSessionLocal, Task, User, Project, Client
+        from sqlalchemy import select
+        from datetime import datetime as _dt, timezone as _tz
+        async with AsyncSessionLocal() as s:
+            task = (await s.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+            if not task:
+                await q.edit_message_text("Задача не найдена (возможно, удалена).")
+                return
+            task.file_id = pending["file_id"]
+            task.file_type = pending["file_type"]
+            task.status = "review"
+            task.submitted_at = _dt.now(_tz.utc)
+            await s.commit()
+
+            row = (await s.execute(select(User.full_name).where(
+                User.telegram_id == pending["from_user"]))).first()
+            if row:
+                submitter_name = row[0]
+
+            if task.project_id:
+                proj = (await s.execute(select(Project.name, Project.client_id)
+                        .where(Project.id == task.project_id))).first()
+                if proj:
+                    cname = proj[0]
+                    if proj[1]:
+                        cn = (await s.execute(select(Client.name)
+                              .where(Client.id == proj[1]))).scalar_one_or_none()
+                        cname = cn or cname
+
+            admins = list((await s.execute(select(User.telegram_id).where(
+                User.role.in_(("admin", "am")), User.telegram_id.isnot(None),
+                User.is_active.is_(True)))).scalars().all())
+    except Exception as e:
+        logger.warning(f"subfile_pick_cb: {e}")
+        await q.edit_message_text("Что-то пошло не так, попробуй ещё раз.")
+        return
+
+    await q.edit_message_text(f"✅ Файл прикреплён к задаче «{task.title}». Статус: На проверке 📎")
+
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))
+    ]])
+    who = f" по клиенту {cname}" if cname else ""
+    for tg in admins:
+        if tg == pending["from_user"]:
+            continue
+        try:
+            await context.bot.send_message(
+                tg, f"📎 {submitter_name} сдал задачу «{task.title}»{who}", reply_markup=kb)
+        except Exception:
+            pass
+
+
 async def pg_overdue_job(context: ContextTypes.DEFAULT_TYPE):
     """Every ~5 min: notify assignees of tasks overdue by >15 min, once each."""
     try:
@@ -2646,6 +2777,11 @@ def main():
     app.add_handler(MessageHandler(
         (filters.PHOTO | filters.Document.ALL) & filters.ChatType.GROUPS, group_media_log), group=1)
     app.add_handler(MessageReactionHandler(reaction_ref))
+    # WHY NOT? OS — file submission -> "which task?" prompt, in its own group too
+    app.add_handler(MessageHandler(
+        (filters.PHOTO | filters.VIDEO | filters.Document.ALL) & filters.ChatType.GROUPS,
+        submit_file_prompt), group=2)
+    app.add_handler(CallbackQueryHandler(subfile_pick_cb, pattern=r"^subfile_\d+_\d+$"))
 
     logger.info("✅ WhyNot бот v21 запущен!")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
