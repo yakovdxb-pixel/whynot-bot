@@ -226,7 +226,6 @@
   .cjob-chip.st-overdue{border-left-color:var(--st-overdue)}
   .cjob-chip.st-cancelled{opacity:.5; text-decoration:line-through}
   .cjob-btns{display:flex; gap:6px; margin-top:9px}
-  button.act.cjob-b{margin-top:0; flex:1; padding:9px 4px; font-size:13px}
 
   .pills-row{
     display:flex; gap:6px; overflow-x:auto; margin:2px 0 12px; padding-bottom:4px;
@@ -754,7 +753,7 @@ const I18N = {
     "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
     "login.title":"Вход в WHY NOT? OS","login.sub":"Войди через Telegram — так приложение работает в браузере отдельно от чатов.","login.noBot":"Вход через браузер пока не настроен. Открой приложение из бота.",
     "content.advance":"Продвинуть →","content.final":"Финальный этап",
-    "cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж",
+    "cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи",
     "cjob.new.shoot":"Съёмка по контенту","cjob.new.design":"Дизайн по контенту","cjob.new.edit":"Монтаж по контенту",
     "cjob.st.pending":"ожидает","cjob.st.in_progress":"в работе","cjob.st.done":"готово","cjob.st.overdue":"просрочено","cjob.st.cancelled":"отменено",
     "blocker.word":"Блокер","blocker.by":"сообщил","blocker.to":"на",
@@ -812,7 +811,7 @@ const I18N = {
     "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
     "login.title":"WHY NOT? OS ga kirish","login.sub":"Telegram orqali kiring — ilova brauzerda chatlardan alohida ishlaydi.","login.noBot":"Brauzer orqali kirish hali sozlanmagan. Ilovani botdan oching.",
     "content.advance":"Keyingi bosqich →","content.final":"Yakuniy bosqich",
-    "cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj",
+    "cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga",
     "cjob.new.shoot":"Kontent uchun suratga olish","cjob.new.design":"Kontent uchun dizayn","cjob.new.edit":"Kontent uchun montaj",
     "cjob.st.pending":"kutilmoqda","cjob.st.in_progress":"jarayonda","cjob.st.done":"tayyor","cjob.st.overdue":"muddati o‘tgan","cjob.st.cancelled":"bekor qilingan",
     "blocker.word":"Toʻsiq","blocker.by":"xabar berdi","blocker.to":"kimga",
@@ -870,7 +869,7 @@ const I18N = {
     "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
     "login.title":"Sign in to WHY NOT? OS","login.sub":"Sign in with Telegram — the app then runs in the browser, separate from your chats.","login.noBot":"Browser sign-in isn\u2019t set up yet. Open the app from the bot.",
     "content.advance":"Advance →","content.final":"Final stage",
-    "cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit",
+    "cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks",
     "cjob.new.shoot":"Shoot for content","cjob.new.design":"Design for content","cjob.new.edit":"Edit for content",
     "cjob.st.pending":"pending","cjob.st.in_progress":"in progress","cjob.st.done":"done","cjob.st.overdue":"overdue","cjob.st.cancelled":"cancelled",
     "blocker.word":"Blocker","blocker.by":"reported by","blocker.to":"for",
@@ -1149,7 +1148,6 @@ async function renderHome(){
 }
 
 
-const _CJOBS = ["shoot", "design", "edit"];
 const _CJOB_EMOJI = { shoot:"🎥", design:"🎨", edit:"✂️" };
 const _CJOB_ST_EMOJI = { pending:"⏳", in_progress:"🔧", done:"✅", overdue:"🔴", cancelled:"✖️" };
 
@@ -1171,11 +1169,11 @@ function contentCard(c, {advance=true, jobs=true}={}){
   const when = c.publish_at ? fmtDateTime(c.publish_at)
              : c.publish_date ? fmtDate(c.publish_date) : null;
   const who = (c.assignees || []).map(a => a.name).filter(Boolean).join(", ");
-  const jobList = jobs && (c.jobs || []).length
+  const hasJobs = (c.jobs || []).length > 0;
+  const jobList = jobs && hasJobs
     ? `<div class="cjob-list">${c.jobs.map(j => cjobChip(c, j)).join("")}</div>` : "";
-  const jobBtns = jobs && canEdit
-    ? `<div class="cjob-btns">${_CJOBS.map(k =>
-        `<button class="act ghost cjob-b" data-cjob="${k}" data-cid="${c.id}">${_CJOB_EMOJI[k]} ${esc(t("cjob." + k))}</button>`).join("")}</div>` : "";
+  const jobBtns = jobs && canEdit && !hasJobs
+    ? `<button class="act" data-cjob-dispatch="${c.id}">${esc(t("cjob.toTasks"))}</button>` : "";
   return `
   <div class="card${canEdit ? " tappable" : ""}"${canEdit ? ` data-content-edit="${c.id}"` : ""}>
     <div class="row">
@@ -1845,10 +1843,15 @@ view.addEventListener("click", async e => {
     return;
   }
 
-  const cjobBtn = e.target.closest("[data-cjob]");
-  if (cjobBtn){
-    haptic();
-    openContentJob(+cjobBtn.dataset.cid, cjobBtn.dataset.cjob);
+  const cjobDispatch = e.target.closest("[data-cjob-dispatch]");
+  if (cjobDispatch && !busy){
+    busy = true; cjobDispatch.disabled = true; cjobDispatch.textContent = "…";
+    try {
+      await api(`/api/content/${cjobDispatch.dataset.cjobDispatch}/dispatch-jobs`, {method:"POST"});
+      haptic("medium"); toast(t("toast.saved"));
+      await load(currentTab);
+    } catch(err){ toast(err.message); cjobDispatch.disabled = false; cjobDispatch.textContent = t("cjob.toTasks"); }
+    finally { busy = false; }
     return;
   }
   const cjobChipEl = e.target.closest("[data-cjob-open]");
@@ -2477,18 +2480,6 @@ function openContentEdit(c){
       assignee_ids: (c.assignees || []).map(a => a.id),
       pipeline_status: c.pipeline_status || "script",
     },
-  };
-  openSheet();
-}
-
-function openContentJob(cid, kind){
-  editState = {
-    formKey: "cjob_" + kind,
-    titleKey: "cjob.new." + kind,
-    endpoint: "/api/content/" + cid + "/jobs/" + kind,
-    method: "POST",
-    isCreate: true,
-    prefill: {},
   };
   openSheet();
 }

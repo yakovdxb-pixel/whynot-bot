@@ -1060,6 +1060,54 @@ async def create_content_job(content_id: int, kind: str, body: ContentJobCreate,
     return await _one_content(session, item, user)
 
 
+@router.post("/content/{content_id}/dispatch-jobs", status_code=201)
+async def dispatch_content_jobs(content_id: int, bg: BackgroundTasks,
+                                user: dict = Depends(member), session=Depends(get_session)):
+    """One click: create all 3 production tasks (shoot/design/edit) for a content
+    item, unassigned. Assignment then happens like any other task, in Главная."""
+    item = (await session.execute(
+        select(ContentItem).where(ContentItem.id == content_id))).scalar_one_or_none()
+    if not item:
+        raise HTTPException(404, "Content not found")
+    assg = (await _content_assignees(session, [item.id])).get(item.id, [])
+    my_pids = await _my_project_ids(session, user["id"])
+    if not _can_edit_content(user, item, my_pids, assg):
+        raise HTTPException(403, "можно ставить задачи только по своему контенту")
+    existing = (await session.execute(
+        select(func.count()).select_from(Task)
+        .where(Task.content_id == content_id, Task.job_kind.isnot(None))
+    )).scalar_one()
+    if existing:
+        raise HTTPException(400, "задачи уже созданы")
+
+    uid = user["id"] or None
+    topic = item.topic or f"контент #{item.id}"
+    objs = []
+    for kind in CJOB_KINDS:
+        obj = Task(
+            title=f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]}: {topic}"[:120],
+            job_kind=kind, type="content_pipeline", priority="normal",
+            status="pending", created_by=uid,
+            content_id=item.id, client_id=item.client_id, project_id=item.project_id,
+        )
+        session.add(obj)
+        objs.append(obj)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(400, "ссылка на несуществующий id")
+    for obj in objs:
+        await session.refresh(obj)
+        await _log(session, "task", "created", obj.id, uid, obj.title)
+        await _log_status(session, "task", obj.id, "pending", uid)
+    await _notify_project(
+        bg, session, item.project_id,
+        f"🗂 Задачи по контенту «{topic}» созданы: съёмка, дизайн, монтаж — "
+        f"назначь исполнителей в приложении.")
+    return await _one_content(session, item, user)
+
+
 PIPELINE_STEPS = set(PIPELINE_ORDER)
 
 
