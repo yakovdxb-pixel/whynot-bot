@@ -614,6 +614,12 @@ _MIGRATIONS = [
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS file_type TEXT",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_comment TEXT",
+    # backfill: content-plan jobs dispatched before the description carried the
+    # content's script over — one-time, only touches rows still missing it
+    "UPDATE tasks SET description = content_items.script "
+    "FROM content_items "
+    "WHERE tasks.content_id = content_items.id AND tasks.job_kind IS NOT NULL "
+    "AND tasks.description IS NULL AND content_items.script IS NOT NULL",
 ]
 
 

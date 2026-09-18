@@ -244,6 +244,7 @@ async def member(user: dict = Depends(current_user)) -> dict:
 
 TASK_STATUSES = {"pending", "in_progress", "review", "revision", "done", "published", "cancelled", "overdue"}
 OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue", "revision")
+CLOSED_TASK_STATUSES = ("done", "published", "cancelled")
 USER_ROLES = {"admin", "am", "director", "editor", "designer",
               "videographer", "mobilographer", "driver", "intern"}
 MANAGER_ROLES = ("admin", "am", "director")   # full access: team, clients, dashboard, /bind
@@ -586,7 +587,8 @@ async def list_tasks(my: bool = False, status: str | None = None,
         q = q.where(or_(Task.assignee_id == user["id"], Task.id.in_(mine)))
     if status:
         q = q.where(Task.status == status)
-    q = q.order_by(Task.deadline.is_(None), Task.deadline, Task.id.desc()).limit(200)
+    q = q.order_by(Task.status.in_(CLOSED_TASK_STATUSES),
+                   Task.deadline.is_(None), Task.deadline, Task.id.desc()).limit(200)
     rows = (await session.execute(q)).scalars().all()
     return await _attach_assignees(session, rows)
 
@@ -1082,10 +1084,21 @@ async def dispatch_content_jobs(content_id: int, bg: BackgroundTasks,
 
     uid = user["id"] or None
     topic = item.topic or f"контент #{item.id}"
+    # carry the content brief over so the executor actually sees the script/hook/caption
+    # the AM wrote for the content — they land on the task, not just on the content item
+    brief = []
+    if item.hook:
+        brief.append(f"Хук: {item.hook}")
+    if item.script:
+        brief.append(item.script)
+    if item.caption:
+        brief.append(f"Подпись: {item.caption}")
+    job_description = "\n\n".join(brief) or None
     objs = []
     for kind in CJOB_KINDS:
         obj = Task(
             title=f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]}: {topic}"[:120],
+            description=job_description,
             job_kind=kind, type="content_pipeline", priority="normal",
             status="pending", created_by=uid,
             content_id=item.id, client_id=item.client_id, project_id=item.project_id,

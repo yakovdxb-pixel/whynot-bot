@@ -1169,10 +1169,13 @@ function contentCard(c, {advance=true, jobs=true}={}){
   const when = c.publish_at ? fmtDateTime(c.publish_at)
              : c.publish_date ? fmtDate(c.publish_date) : null;
   const who = (c.assignees || []).map(a => a.name).filter(Boolean).join(", ");
-  const hasJobs = (c.jobs || []).length > 0;
-  const jobList = jobs && hasJobs
-    ? `<div class="cjob-list">${c.jobs.map(j => cjobChip(c, j)).join("")}</div>` : "";
-  const jobBtns = jobs && canEdit && !hasJobs
+  const hasAnyJobs = (c.jobs || []).length > 0;
+  // once a job is taken into work it "moves" to Главная — only still-pending
+  // (not started) jobs stay visible here, so the content plan doesn't duplicate it
+  const pendingJobs = (c.jobs || []).filter(j => j.status === "pending");
+  const jobList = jobs && pendingJobs.length
+    ? `<div class="cjob-list">${pendingJobs.map(j => cjobChip(c, j)).join("")}</div>` : "";
+  const jobBtns = jobs && canEdit && !hasAnyJobs
     ? `<button class="act" data-cjob-dispatch="${c.id}">${esc(t("cjob.toTasks"))}</button>` : "";
   return `
   <div class="card${canEdit ? " tappable" : ""}"${canEdit ? ` data-content-edit="${c.id}"` : ""}>
