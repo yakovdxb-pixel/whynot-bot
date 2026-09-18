@@ -2390,7 +2390,10 @@ async function fillDynamic(f){
       const cid = dep && dep.value;
       sel.disabled = false;
       const q = cid ? "?client_id=" + encodeURIComponent(cid) : "";
-      items = (await api("/api/projects" + q)).map(p => [p.id, p.label || p.name]);
+      let projs = await api("/api/projects" + q);
+      // AM/director pick from their own projects only — everyone else (admin) sees all
+      if (ME && (ME.role === "am" || ME.role === "director")) projs = projs.filter(p => p.is_mine);
+      items = projs.map(p => [p.id, p.label || p.name]);
     }
     if (!sel.isConnected) return;
     items.forEach(([v,l]) => {
