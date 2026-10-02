@@ -14,11 +14,7 @@ import os
 
 import asyncpg
 
-# Prefer the service's own DATABASE_URL; fall back to the internal default.
-DB_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://whynot:whynot_secret_2026@postgres.railway.internal:5432/whynot_os",
-)
+DB_URL = os.environ["DATABASE_URL"]  # railway run injects the service's own value
 # asyncpg wants a plain postg:// scheme, not SQLAlchemy's postgresql+asyncpg://
 DB_URL = DB_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
 
