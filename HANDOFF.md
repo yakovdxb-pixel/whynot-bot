@@ -274,6 +274,14 @@ Proxy). У worker `DATABASE_URL` = `${{postgres-v2.DATABASE_URL}}` — ссыл�
 `postgresql://whynot:<пароль>@postgres.railway.internal:5432/whynot_os`
 (данные, внесённые после 19:50, в старой базе отсутствуют).
 
+**Ежедневный бэкап (с 2026-10-03):** на Mac владельца launchd-задача
+`~/Library/LaunchAgents/com.whynot.db-backup.plist` каждый день в 14:00
+(если Mac спал — при пробуждении) запускает `~/.local/share/whynot-backup/backup.sh`:
+`pg_dump` из `postgres-v2` через `railway ssh` → `~/WhyNot-backups/whynot_*.sql.gz`,
+хранятся последние 30, журнал в `~/WhyNot-backups/backup.log`, при ошибке —
+уведомление macOS. Если выключенный Mac — бэкапа в этот день нет. Встроенные
+бэкапы volume Railway на тарифе Hobby через API недоступны («Not Authorized»).
+
 **Как снимать/заливать дампы без psql на Mac** (через `railway ssh`, SSH-ключ
 `~/.ssh/id_ed25519` зарегистрирован в Railway):
 ```bash
