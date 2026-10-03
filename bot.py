@@ -20,6 +20,8 @@ from telegram.ext import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# httpx logs every request URL at INFO, and Telegram URLs contain the bot token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 TOKEN = os.getenv('BOT_TOKEN')
 WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://worker-production-7137.up.railway.app/webapp"
@@ -64,7 +66,8 @@ async def _pg_role(telegram_id: int):
     return None
 
 
-REF_EMOJI = {"📌", "📎", "⭐", "✅"}
+# 🏆 is in Telegram's free reaction set; the others need Premium (kept for those who have it).
+REF_EMOJI = {"🏆", "✍", "✍️", "📌", "📎", "⭐", "✅"}
 
 
 async def group_media_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -98,7 +101,7 @@ async def group_media_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reaction_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """React to a group photo/file with 📌 → it lands in the project's references. Un-react removes it."""
+    """React to a group photo/file with 🏆 (or 📌/✍ with Premium) → it lands in the project's references. Un-react removes it."""
     r = update.message_reaction
     if not r or not r.chat:
         return

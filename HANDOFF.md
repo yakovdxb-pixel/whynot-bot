@@ -46,9 +46,11 @@ routes_whynot.py — вся актуальная REST API ("WHY NOT? OS"): кл�
                     проекты, контент-план, задачи, съёмки, идеи, блокеры,
                     команда, референсы, дашборд. Это самый большой и самый
                     живой файл.
-bot.py           — Telegram-бот. Смесь старого sqlite-бота (ConversationHandler-
-                    меню) и новых Postgres-хендлеров (/bind, /unbind, приём
-                    файлов из топиков, реакции-в-референсы, просрочки).
+bot.py           — Telegram-бот, только Postgres: /start, /install, /bind,
+                    /unbind, приём файлов из тем, реакция 🏆 → референс,
+                    просрочки. Старый sqlite-бот удалён (2026-10). Бот должен
+                    быть АДМИНОМ группы, иначе (privacy mode) не видит фото,
+                    файлы и реакции — только команды.
 db/models.py     — SQLAlchemy-модели + engine + _MIGRATIONS + init_db().
 webapp/index.html — весь Mini App: разметка, стили, вся JS-логика одним
                     файлом. webapp/sw.js — service worker.
@@ -147,6 +149,17 @@ python main.py
 (`brew install postgresql` / Docker), либо прокинуть публичный
 connection string из Railway (Settings → Postgres service → Connect,
 там есть внешний хост/порт).
+
+### Тестовый бот локально
+`@whynot_test_yakov_bot`, токен только в `.env.test` (в .gitignore, не в
+Railway). Тестовая база — pgserver (Postgres 16) в
+`~/.local/share/whynot-testdb/pgdata`, база `whynot_test`. Запуск:
+```bash
+set -a && . ./.env.test && set +a && .venv/bin/python bot.py
+```
+Если pgserver не запущен (после перезагрузки Mac):
+`~/.local/share/whynot-testdb/.venv/bin/python -c "import pgserver; pgserver.get_server('$HOME/.local/share/whynot-testdb/pgdata', cleanup_mode=None)"`.
+Тестовая группа «whynot test» с темами, бот в ней админ.
 
 ## 6. Инструменты и версии
 
