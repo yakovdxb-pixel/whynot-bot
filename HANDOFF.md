@@ -22,8 +22,7 @@
 - **DB**: PostgreSQL (Railway managed, `postgres.railway.internal`).
   Схема — чистый SQLAlchemy `Base.metadata.create_all()` при старте
   + список идемпотентных `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` в
-  `db/models.py::_MIGRATIONS` (никакого Alembic, хотя пакет в requirements
-  есть — не используется, можно игнорировать).
+  `db/models.py::_MIGRATIONS` (никакого Alembic).
 - **Frontend**: один файл `webapp/index.html` — ванильный JS SPA (без
   сборки, без npm, без фреймворков), Telegram Mini App SDK
   (`telegram-web-app.js` с CDN), service worker `webapp/sw.js` для
@@ -97,9 +96,6 @@ scripts/         — разовые утилиты (очистка тестов�
 с защитой от случайного сноса связанных данных.
 
 ### TODO / известные незавершённые хвосты
-- `requirements.txt` содержит `alembic`, но миграции ведутся вручную
-  списком в `db/models.py` — либо перейти на alembic по-настоящему, либо
-  убрать зависимость (сейчас просто мёртвый пакет).
 - **Postgres на Railway без volume (риск потери данных)** — см. раздел 10.
   Не перезапускать и не редеплоить сервис `postgres`, пока не выяснено,
   где лежат данные, и не сделан бэкап (`pg_dump`).

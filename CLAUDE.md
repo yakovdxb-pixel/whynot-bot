@@ -27,7 +27,7 @@ Python (FastAPI + python-telegram-bot + SQLAlchemy async/asyncpg) на
 
 ## Как вносить изменения в схему БД
 
-Нет Alembic в реальности (хотя пакет в requirements). Новую колонку —
+Alembic нет (пакет убран из requirements). Новую колонку —
 добавлять и в класс модели, и отдельной строкой
 `"ALTER TABLE x ADD COLUMN IF NOT EXISTS y TYPE"` в `_MIGRATIONS` в
 `db/models.py`. Список выполняется целиком при каждом старте процесса,
