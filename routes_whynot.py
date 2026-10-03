@@ -1242,8 +1242,10 @@ async def list_ideas(scope: str | None = None,
         mine = await _my_project_ids(session, user["id"])
         q = q.where(or_(Idea.proposed_by == user["id"],
                         Idea.project_id.in_(mine) if mine else False))
+    # open ideas first (new / in work), then rejected / already in the content plan
     rows = (await session.execute(
-        q.order_by(Idea.votes_count.desc(), Idea.created_at.desc()).limit(200)
+        q.order_by(Idea.status.in_(("rejected", "implemented")),
+                   Idea.created_at.desc()).limit(200)
     )).scalars().all()
     voted = set()
     if user["id"]:
@@ -1252,16 +1254,86 @@ async def list_ideas(scope: str | None = None,
         )).scalars().all())
     proposers = await _names_for(session, [r.proposed_by for r in rows])
     refs = await _ref_summaries(session, idea_ids=[r.id for r in rows])
+    pids = {r.project_id for r in rows if r.project_id}
+    proj = {pid: (pn, cn) for pid, pn, cn in (await session.execute(
+        select(Project.id, Project.name, Client.name)
+        .join(Client, Client.id == Project.client_id, isouter=True)
+        .where(Project.id.in_(pids)))).all()} if pids else {}
     out = []
     for r in rows:
         d = row_to_dict(r)
         d["voted"] = r.id in voted
         d["proposed_by_name"] = proposers.get(r.proposed_by)
+        pn, cn = proj.get(r.project_id, (None, None))
+        d["project_name"], d["client_name"] = pn, cn
         s = refs.get(r.id, {})
         d["refs_count"] = s.get("count", 0)
         d["ref_thumbs"] = s.get("thumbs", [])
         out.append(d)
     return out
+
+
+IDEA_STATUSES_EDITABLE = ("new", "under_review", "rejected")
+
+
+class IdeaPatch(BaseModel):
+    status: str
+
+
+async def _idea_for_edit(session, idea_id, user, managers_only=False):
+    idea = (await session.execute(select(Idea).where(Idea.id == idea_id))).scalar_one_or_none()
+    if not idea:
+        raise HTTPException(404, "Idea not found")
+    is_mgr = user["role"] in MANAGER_ROLES
+    if not is_mgr and (managers_only or idea.proposed_by != user["id"]):
+        raise HTTPException(403, "Только автор идеи или admin/am/director")
+    return idea
+
+
+@router.patch("/ideas/{idea_id}")
+async def update_idea(idea_id: int, patch: IdeaPatch,
+                      user: dict = Depends(member), session=Depends(get_session)):
+    """Status: new (новая) / under_review (в работе) / rejected (отклонена)."""
+    if patch.status not in IDEA_STATUSES_EDITABLE:
+        raise HTTPException(422, f"status must be one of {IDEA_STATUSES_EDITABLE}")
+    idea = await _idea_for_edit(session, idea_id, user)
+    idea.status = patch.status
+    idea.updated_at = _now()
+    await session.commit()
+    await _log(session, "idea", "updated", idea.id, user["id"], idea.title)
+    return {"id": idea.id, "status": idea.status}
+
+
+@router.post("/ideas/{idea_id}/to-content", status_code=201)
+async def idea_to_content(idea_id: int,
+                          user: dict = Depends(member), session=Depends(get_session)):
+    """Create a draft content item from the idea (topic, script, refs) and mark it implemented."""
+    idea = await _idea_for_edit(session, idea_id, user, managers_only=True)
+    if idea.implemented_content_id:
+        raise HTTPException(409, "Идея уже в контент-плане")
+    client_id = idea.client_id
+    if idea.project_id and not client_id:
+        client_id = (await session.execute(
+            select(Project.client_id).where(Project.id == idea.project_id))).scalar_one_or_none()
+    uid = user["id"] or None
+    obj = ContentItem(format=idea.format or "post", topic=idea.title, script=idea.description,
+                      project_id=idea.project_id, client_id=client_id,
+                      pipeline_status=CONTENT_START, created_by=uid, author_id=uid)
+    session.add(obj)
+    await session.flush()
+    for r in (await session.execute(
+            select(ReferenceItem).where(ReferenceItem.idea_id == idea.id))).scalars().all():
+        session.add(ReferenceItem(
+            content_id=obj.id, kind=r.kind, url=r.url, title=r.title, tg_file_id=r.tg_file_id,
+            file_name=r.file_name, mime=r.mime, added_by=r.added_by,
+            preview_title=r.preview_title, preview_image=r.preview_image,
+            preview_site=r.preview_site, preview_fetched_at=r.preview_fetched_at))
+    idea.status = "implemented"
+    idea.implemented_content_id = obj.id
+    idea.updated_at = _now()
+    await session.commit()
+    await _log(session, "content", "created", obj.id, uid, obj.topic)
+    return {"content_id": obj.id, "idea_id": idea.id}
 
 
 @router.post("/ideas/{idea_id}/vote")

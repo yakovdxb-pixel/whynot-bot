@@ -277,6 +277,14 @@
     padding:6px 12px; font-size:14px; font-weight:600; cursor:pointer;
   }
   .vote.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+  .vote.mini{display:inline-flex; padding:2px 9px; font-size:12px; gap:4px}
+  .pill.idea-new{background:#4aa3ff} .pill.idea-under_review,.pill.idea-approved{background:var(--st-review); color:#241a08}
+  .pill.idea-rejected{background:var(--st-cancelled)} .pill.idea-implemented{background:var(--st-published)}
+  .idea-seg{display:flex; gap:6px; margin:4px 0 12px}
+  .idea-seg button{flex:1; border:1px solid var(--sep); background:transparent; color:var(--text);
+    border-radius:10px; padding:9px 4px; font:inherit; font-size:13px; font-weight:600; cursor:pointer}
+  .idea-seg button.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+  #ideaViewSheet .iv-refs{display:flex; flex-direction:column; gap:8px; margin:10px 0}
 
   .empty{color:var(--hint); text-align:center; padding:34px 10px; font-size:14px}
   .loader{color:var(--hint); text-align:center; padding:34px 10px}
@@ -477,8 +485,9 @@
     margin:0 auto; transition:width .15s, background .15s}
   .sheet-head:active .grabber{width:52px; background:var(--hint)}
   .sheet-x{
-    position:absolute; right:0; top:8px; width:32px; height:32px; border:none; border-radius:50%;
-    background:var(--card); color:var(--hint); font-size:15px; line-height:32px; padding:0; cursor:pointer;
+    position:absolute; right:0; top:50%; transform:translateY(-50%); width:28px; height:28px;
+    border:none; border-radius:50%; background:var(--card); color:var(--hint);
+    font-size:14px; line-height:28px; padding:0; cursor:pointer;
   }
   .sheet-x:hover{color:var(--text)}
   .sheet h2{font-size:17px; font-weight:700; margin:6px 0 14px; line-height:1.35; padding-top:2px}
@@ -593,6 +602,12 @@
 <div class="sheet" id="taskViewSheet" role="dialog" aria-modal="true">
   <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
   <div id="taskViewBody"></div>
+</div>
+
+<div class="sheet-backdrop" id="ideaViewBackdrop"></div>
+<div class="sheet" id="ideaViewSheet" role="dialog" aria-modal="true">
+  <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
+  <div id="ideaViewBody"></div>
 </div>
 
 <div class="sheet-backdrop" id="refBackdrop"></div>
@@ -772,7 +787,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
     "sec.tasks":"Задачи","sec.stale":"Зависшие — просрочка больше 7 дней","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
-    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — предложи первую в боте",
+    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
     "empty.shoots":"Съёмок пока нет — добавь через «+»",
     "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
@@ -830,7 +845,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
     "sec.tasks":"Vazifalar","sec.stale":"Osilib qolganlar — 7 kundan ortiq kechikkan","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
-    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — botda birinchisini taklif qiling",
+    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
     "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
     "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
@@ -888,7 +903,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
     "sec.tasks":"Tasks","sec.stale":"Stuck — overdue by more than 7 days","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
-    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — suggest the first one in the bot",
+    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
     "empty.shoots":"No shoots yet — add one with “+”",
     "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
@@ -1500,21 +1515,112 @@ async function renderIdeas(){
     return;
   }
   const fromW = L("от", "muallif:", "by");
-  view.innerHTML = seg + ideas.map(i => `
-    <div class="card">
+  ideaById = {};
+  view.innerHTML = seg + ideas.map(i => {
+    ideaById[i.id] = i;
+    const st = i.status || "new";
+    return `
+    <div class="card tappable" data-idea-open="${i.id}">
       <div class="row">
         <p class="title">💡 ${esc(i.title || t("nav.ideas"))}</p>
-        <button class="vote ${i.voted ? "on":""}" data-vote="${i.id}">👍 <span>${i.votes_count||0}</span></button>
+        <span class="pill idea-${esc(st)}">${esc(t("idea.st." + st))}</span>
       </div>
-      ${i.description ? `<p class="desc">${esc(i.description)}</p>` : ""}
+      ${i.description ? `<p class="desc clamp">${esc(i.description)}</p>` : ""}
       <div class="meta">
+        ${i.client_name || i.project_name ? `<span>📁 ${esc(i.client_name || i.project_name)}</span>` : ""}
         ${i.format ? `<span>🎞 ${esc(t("fmt." + i.format) || i.format)}</span>` : ""}
         ${i.proposed_by_name ? `<span>${fromW} ${esc(i.proposed_by_name)}</span>` : ""}
-        <span class="ref-open" data-refs="idea:${i.id}" style="cursor:pointer">📎${i.refs_count ? " " + i.refs_count : ""}</span>
+        ${i.refs_count ? `<span>📎 ${i.refs_count}</span>` : ""}
+        <button class="vote mini ${i.voted ? "on":""}" data-vote="${i.id}">👍 <span>${i.votes_count||0}</span></button>
       </div>
-      ${(i.ref_thumbs && i.ref_thumbs.length) ? refStrip("idea", i.id, i.refs_count || 0, i.ref_thumbs) : ""}
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
+
+let ideaById = {};
+const ideaViewSheet = document.getElementById("ideaViewSheet");
+const ideaViewBackdrop = document.getElementById("ideaViewBackdrop");
+
+function canEditIdea(i){ return isManager() || (!!ME && i.proposed_by === ME.id); }
+
+async function openIdeaView(i){
+  const st = i.status || "new";
+  const canEdit = canEditIdea(i) && st !== "implemented";
+  const segSt = st === "approved" ? "under_review" : st;
+  document.getElementById("ideaViewBody").innerHTML = `
+    <div class="tv-head">
+      <h2>💡 ${esc(i.title || "—")}</h2>
+      <span class="pill idea-${esc(st)}">${esc(t("idea.st." + st))}</span>
+    </div>
+    ${i.description ? `<p class="tv-desc">${esc(i.description)}</p>` : `<p class="hint">${esc(t("tv.noDesc"))}</p>`}
+    <div class="tv-meta">
+      ${i.client_name || i.project_name ? `<span>📁 ${esc([i.client_name, i.project_name].filter((v, k, a) => v && a.indexOf(v) === k).join(" · "))}</span>` : ""}
+      ${i.format ? `<span>🎞 ${esc(t("fmt." + i.format) || i.format)}</span>` : ""}
+      ${i.proposed_by_name ? `<span>👤 ${esc(i.proposed_by_name)}</span>` : ""}
+      <button class="vote mini ${i.voted ? "on":""}" data-iv-vote="${i.id}">👍 <span>${i.votes_count||0}</span></button>
+    </div>
+    ${canEdit ? `<div class="hint">${esc(t("idea.status"))}</div>
+    <div class="idea-seg">${["new", "under_review", "rejected"].map(s =>
+      `<button data-iv-status="${s}" class="${segSt === s ? "on" : ""}">${esc(t("idea.st." + s))}</button>`).join("")}</div>` : ""}
+    <div class="iv-refs" id="ivRefs">${i.refs_count ? `<div class="hint">${esc(t("misc.loading"))}</div>` : ""}</div>
+    <button class="act ghost" data-refs="idea:${i.id}">${esc(t("btn.refs"))}${i.refs_count ? " · " + i.refs_count : ""}</button>
+    <div class="tv-actions">
+      ${st === "implemented" ? `<div class="done-mark">${esc(t("idea.inContent"))}</div>`
+        : isManager() ? `<button class="submit" data-iv-content="${i.id}">${esc(t("idea.toContent"))}</button>` : ""}
+    </div>`;
+  ideaViewSheet.dataset.ideaId = i.id;
+  ideaViewSheet.classList.add("open");
+  ideaViewBackdrop.classList.add("open");
+  sheetBackOn(closeIdeaView);
+  if (i.refs_count){
+    try {
+      const refs = await api("/api/references?idea_id=" + i.id);
+      const box = document.getElementById("ivRefs");
+      if (box) box.innerHTML = refs.map(r => `<div class="ref-item">${r.kind === "link" ? refLinkCard(r)
+        : `<div class="ri-row">${r.mime && r.mime.indexOf("image/") === 0 ? `<img class="ri-thumb" src="${esc(refFileUrl(r))}" alt="">` : ""}
+           <div class="ri-main"><div class="ri-name"><a href="${esc(refFileUrl(r))}" target="_blank" rel="noopener">${esc(r.file_name || "файл")}</a></div></div></div>`}</div>`).join("");
+    } catch(e){}
+  }
+}
+function closeIdeaView(){
+  ideaViewSheet.classList.remove("open");
+  ideaViewBackdrop.classList.remove("open");
+  sheetBackOff();
+}
+ideaViewBackdrop.addEventListener("click", closeIdeaView);
+attachSheetDismiss(ideaViewSheet, closeIdeaView);
+ideaViewSheet.addEventListener("click", async e => {
+  const id = +ideaViewSheet.dataset.ideaId;
+  const refBtn = e.target.closest("[data-refs]");
+  if (refBtn){ openRefSheet("idea", id); return; }
+  if (e.target.closest("[data-ref-shot]")){ openRefSheet("idea", id); return; }
+  if (busy) return;
+  const stBtn = e.target.closest("[data-iv-status]");
+  const voteBtn = e.target.closest("[data-iv-vote]");
+  const toContent = e.target.closest("[data-iv-content]");
+  if (!stBtn && !voteBtn && !toContent) return;
+  busy = true;
+  try {
+    if (stBtn){
+      await api("/api/ideas/" + id, {method:"PATCH", body:{status: stBtn.dataset.ivStatus}});
+      haptic(); toast(t("toast.saved"));
+    } else if (voteBtn){
+      const r = await api(`/api/ideas/${id}/vote`, {method:"POST"});
+      haptic();
+      voteBtn.classList.toggle("on", r.voted);
+      voteBtn.querySelector("span").textContent = r.votes_count;
+      busy = false; await load(currentTab); return;
+    } else {
+      toContent.disabled = true;
+      await api(`/api/ideas/${id}/to-content`, {method:"POST"});
+      haptic("medium"); toast(t("idea.toContentDone"));
+    }
+    closeIdeaView();
+    busy = false;
+    await load(currentTab);
+  } catch(err){ toast(err.message); if (toContent) toContent.disabled = false; }
+  finally { busy = false; }
+});
 
 async function renderBlockers(){
   const list = await api("/api/blockers");
@@ -2081,6 +2187,13 @@ view.addEventListener("click", async e => {
   if (copyCap){
     const c = contentById[+copyCap.dataset.copyCaption];
     if (c && c.caption && await copyText(c.caption)){ haptic(); toast(t("toast.captionCopied")); }
+    return;
+  }
+
+  const ideaCard = e.target.closest("[data-idea-open]");
+  if (ideaCard && !e.target.closest("button, a")){
+    const i = ideaById[+ideaCard.dataset.ideaOpen];
+    if (i){ haptic(); openIdeaView(i); }
     return;
   }
 
