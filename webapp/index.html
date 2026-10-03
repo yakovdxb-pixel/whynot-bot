@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>WHY NOT? OS</title>
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#1a0820">
+<meta name="theme-color" content="#F6F4FA">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,26 +28,75 @@
   }
 </script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+  /* Light theme by default; dark when Telegram itself is dark. Runs before first paint
+     and again on Telegram's themeChanged. Also paints Telegram's top bar to match. */
+  (function () {
+    var tg = window.Telegram && window.Telegram.WebApp;
+    function applyTheme() {
+      var dark = !!(tg && tg.colorScheme === "dark");
+      document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      var bg = dark ? "#16101E" : "#F6F4FA";
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", bg);
+      try { if (tg && tg.setHeaderColor) tg.setHeaderColor(bg); } catch (e) {}
+      try { if (tg && tg.setBackgroundColor) tg.setBackgroundColor(bg); } catch (e) {}
+    }
+    window.applyTheme = applyTheme;
+    applyTheme();
+    try { if (tg && tg.onEvent) tg.onEvent("themeChanged", applyTheme); } catch (e) {}
+  })();
+</script>
 <style>
+  /* ── colour tokens ───────────────────────────────────────────
+     Light is the default; html[data-theme="dark"] (set from Telegram's colorScheme,
+     see the script right after telegram-web-app.js) switches to the dark set.
+     --st-* are the status hues (dots, bars, borders); --st-*-ink are the same hues
+     shifted just enough for text to reach >= 4.5:1 on cards and on status tints. */
   :root{
-    /* WHY NOT? brand — fixed dark plum theme */
-    --bg:#1a0820;
-    --card:#2c1636;
-    --text:#f4eff7;
-    --hint:#a290ae;
-    --link:#25dcac;
-    --btn:#1ec89a;
-    --btn-text:#04231b;
-    --sep:rgba(255,255,255,.10);
-    --st-pending:#8f8f96;
-    --st-in_progress:#4aa3ff;
-    --st-done:#2ecb6a;
-    --st-overdue:#ff5147;
-    --st-cancelled:#8f8f96;
-    --st-review:#ffb020;
-    --st-revision:#ff8a3d;
-    --st-published:#0ea86c;
-    --fab:#1ec89a;
+    --bg:#F6F4FA;  --card:#FFFFFF;  --border:#E7E2F0;  --sep:#E7E2F0;
+    --text:#1E1530; --hint:#6E6680;
+    --accent:#6B3FD6; --accent-hover:#5A32BC; --accent-soft:#EFE9FC; --on-accent:#FFFFFF;
+    --link:#6B3FD6;                       /* accent used as text */
+    --btn:var(--accent); --btn-text:var(--on-accent); --fab:var(--accent);
+    --seg-bg:#F0EDF7; --hover:#F3F0F9; --on-danger:#FFFFFF;
+    --shadow:0 1px 2px rgba(30,21,48,.05), 0 4px 14px rgba(30,21,48,.06);
+    --shadow-pop:0 10px 28px rgba(30,21,48,.16);
+    --overlay:rgba(30,21,48,.38);
+    --outer:#E9E4F2;                      /* page behind the floating desktop window */
+    --sheet-bg:#FFFFFF; --sheet-card:#F6F4FA;
+    --toast-bg:#1E1530; --toast-text:#FFFFFF;
+    --st-done:#1F9D6B;        --st-done-ink:#187751;
+    --st-overdue:#E0445A;     --st-overdue-ink:#B53749;
+    --st-review:#E08A00;      --st-review-ink:#965C00;
+    --st-in_progress:#3B82F6; --st-in_progress-ink:#2E65C0;
+    --st-pending:#8A8398;     --st-pending-ink:#6C6677;
+    --st-revision:#D9622B;    --st-revision-ink:#A94C22;
+    --st-published:#12805A;   --st-published-ink:#107452;
+    --st-cancelled:#8A8398;   --st-cancelled-ink:#6C6677;
+    color-scheme:light;
+  }
+  html[data-theme="dark"]{
+    --bg:#16101E;  --card:#221A2D;  --border:#382D47;  --sep:#382D47;
+    --text:#F1EDF7; --hint:#ABA1BC;
+    --accent:#6B3FD6; --accent-hover:#7D55E0; --accent-soft:#2E2147; --on-accent:#FFFFFF;
+    --link:#A98BF5;
+    --seg-bg:#1B1424; --hover:rgba(255,255,255,.06); --on-danger:#1E1530;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.28);
+    --shadow-pop:0 10px 28px rgba(0,0,0,.5);
+    --overlay:rgba(0,0,0,.5);
+    --outer:#0B0710;
+    --sheet-bg:#1E1628; --sheet-card:#2A2036;
+    --toast-bg:#F1EDF7; --toast-text:#1E1530;
+    --st-done:#34C48A;        --st-done-ink:#34C48A;
+    --st-overdue:#F2687B;     --st-overdue-ink:#F26D7F;
+    --st-review:#F0A030;      --st-review-ink:#F0A030;
+    --st-in_progress:#5B9BFF; --st-in_progress-ink:#5B9BFF;
+    --st-pending:#A29BB0;     --st-pending-ink:#A29BB0;
+    --st-revision:#F08A55;    --st-revision-ink:#F08A55;
+    --st-published:#2FB07E;   --st-published-ink:#2FB07E;
+    --st-cancelled:#A29BB0;   --st-cancelled-ink:#A29BB0;
+    color-scheme:dark;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{height:100%; background:var(--bg)}
@@ -65,10 +114,10 @@
      fixed children are re-anchored to <body> (position:relative) via absolute,
      so no viewport math is needed and they always track the window. */
   @media (min-width:820px){
-    html{ background:#0b0410; }
+    html{ background:var(--outer); }
     body{
       max-width:460px;
-      box-shadow:0 0 0 1px var(--sep), 0 24px 70px rgba(0,0,0,.55);
+      box-shadow:0 0 0 1px var(--border), 0 24px 70px rgba(30,21,48,.18);
       border-radius:18px;
       height:min(880px, calc(100dvh - 40px));
       margin:20px auto;
@@ -80,10 +129,10 @@
     #installBanner{ left:0 !important; right:0 !important; width:auto !important; }
     .toast{ left:50% !important }
   }
-  html.tg-desktop{ background:#0b0410; }
+  html.tg-desktop{ background:var(--outer); }
   html.tg-desktop body{
     max-width:460px;
-    box-shadow:0 0 0 1px var(--sep), 0 24px 70px rgba(0,0,0,.55);
+    box-shadow:0 0 0 1px var(--border), 0 24px 70px rgba(30,21,48,.18);
     border-radius:18px;
     height:min(880px, calc(100dvh - 32px));
     margin:16px auto;
@@ -150,7 +199,7 @@
     overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
     padding:14px 16px calc(96px + env(safe-area-inset-bottom));
   }
-  .section-title{font-size:13px; font-weight:600; color:var(--hint);
+  .section-title{font-size:13px; font-weight:700; color:var(--link);
     text-transform:uppercase; letter-spacing:.04em; margin:18px 2px 8px}
   .section-title:first-child{margin-top:4px}
   details.stale-block > summary{cursor:pointer; list-style:none}
@@ -159,8 +208,8 @@
   details.stale-block[open] > summary::before{content:"▾ "}
 
   .card{
-    background:var(--card); border:1px solid rgba(255,255,255,.05); border-radius:14px;
-    padding:13px 14px; margin-bottom:10px; box-shadow:0 2px 8px rgba(0,0,0,.35);
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:13px 14px; margin-bottom:10px; box-shadow:var(--shadow);
   }
   .card .row{display:flex; align-items:flex-start; justify-content:space-between; gap:10px}
   .card .title{font-weight:600; font-size:15px; margin:0}
@@ -177,20 +226,22 @@
   .card .meta{color:var(--hint); font-size:12px; margin-top:7px; display:flex; gap:10px; flex-wrap:wrap}
 
   .pill{
-    display:inline-block; font-size:11px; font-weight:600; padding:3px 9px;
-    border-radius:999px; color:#fff; white-space:nowrap; text-transform:lowercase;
+    --c:var(--st-pending); --ci:var(--st-pending-ink);
+    display:inline-block; font-size:11px; font-weight:700; padding:3px 9px;
+    border-radius:999px; white-space:nowrap; text-transform:lowercase;
+    background:color-mix(in srgb, var(--c) 16%, var(--card)); color:var(--ci);
   }
-  .pill.pending{background:var(--st-pending)}
-  .pill.in_progress{background:var(--st-in_progress)}
-  .pill.done{background:var(--st-done)}
-  .pill.overdue{background:var(--st-overdue)}
+  .pill.pending{--c:var(--st-pending); --ci:var(--st-pending-ink)}
+  .pill.in_progress{--c:var(--st-in_progress); --ci:var(--st-in_progress-ink)}
+  .pill.done{--c:var(--st-done); --ci:var(--st-done-ink)}
+  .pill.overdue{--c:var(--st-overdue); --ci:var(--st-overdue-ink)}
   .pill-group{display:inline-flex; gap:4px; flex:none; flex-wrap:wrap; justify-content:flex-end}
-  .meta .late{color:var(--st-overdue); font-weight:600}
-  .pill.review{background:var(--st-review); color:#241a08}
-  .pill.revision{background:var(--st-revision)}
-  .pill.published{background:var(--st-published)}
+  .meta .late{color:var(--st-overdue-ink); font-weight:600}
+  .pill.review{--c:var(--st-review); --ci:var(--st-review-ink)}
+  .pill.revision{--c:var(--st-revision); --ci:var(--st-revision-ink)}
+  .pill.published{--c:var(--st-published); --ci:var(--st-published-ink)}
   .review-note{
-    margin-top:8px; font-size:13px; color:var(--st-review);
+    margin-top:8px; font-size:13px; color:var(--st-review-ink);
     background:color-mix(in srgb, var(--st-review) 16%, transparent);
     border-radius:9px; padding:7px 10px;
   }
@@ -200,17 +251,19 @@
     display:block; max-width:100%; max-height:220px; width:auto; border-radius:8px;
     margin-bottom:6px; object-fit:cover;
   }
-  .pill.cancelled{background:var(--st-cancelled)}
-  .pill.stage{background:var(--link)}
+  .pill.cancelled{--c:var(--st-cancelled); --ci:var(--st-cancelled-ink)}
+  .pill.stage{background:var(--accent-soft); color:var(--link)}
 
   button.act{
     margin-top:11px; width:100%; border:none; border-radius:10px;
     background:var(--btn); color:var(--btn-text);
     font-size:14px; font-weight:600; padding:10px; cursor:pointer;
   }
+  button.act:hover{background:var(--accent-hover)}
   button.act:active{opacity:.7}
-  button.act.ghost{background:transparent; color:var(--link); border:1px solid var(--sep)}
-  button.act.ghost.danger{color:var(--st-overdue); border-color:color-mix(in srgb, var(--st-overdue) 45%, transparent)}
+  button.act.ghost{background:transparent; color:var(--link); border:1px solid var(--border)}
+  button.act.ghost:hover{background:var(--accent-soft)}
+  button.act.ghost.danger{color:var(--st-overdue-ink); border-color:color-mix(in srgb, var(--st-overdue) 45%, transparent)}
   button.act[disabled]{opacity:.45; cursor:default}
 
   .seg{
@@ -221,10 +274,10 @@
     flex:1; border:none; background:none; color:var(--hint); cursor:pointer;
     font-size:13px; font-weight:600; padding:7px 0; border-radius:8px;
   }
-  .seg{background:rgba(0,0,0,.28)}
-  .seg button.on{background:var(--card); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .seg{background:var(--seg-bg)}
+  .seg button.on{background:var(--accent); color:var(--on-accent); box-shadow:0 1px 4px rgba(107,63,214,.3)}
 
-  .done-mark{margin-top:10px; text-align:center; color:var(--st-done); font-weight:600; font-size:14px}
+  .done-mark{margin-top:10px; text-align:center; color:var(--st-done-ink); font-weight:600; font-size:14px}
 
   /* content production jobs (shoot / design / edit) */
   .cjob-list{display:flex; flex-direction:column; gap:5px; margin-top:9px}
@@ -248,11 +301,11 @@
   }
   .pills-row::-webkit-scrollbar{display:none}
   .pill-btn{
-    flex:0 0 auto; border:1px solid var(--sep); background:transparent; color:var(--hint);
+    flex:0 0 auto; border:1px solid var(--border); background:var(--card); color:var(--hint);
     border-radius:999px; padding:6px 13px; font-size:13px; font-weight:600; cursor:pointer;
     white-space:nowrap;
   }
-  .pill-btn.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+  .pill-btn.on{background:var(--accent-soft); color:var(--link); border-color:var(--accent)}
 
   .client-card .row{cursor:pointer}
   .proj-block{margin-top:12px; border-top:1px solid var(--sep); padding-top:10px}
@@ -262,7 +315,7 @@
   .proj-item-row{display:flex; align-items:center; justify-content:space-between; gap:8px}
   .proj-item-name{font-weight:600}
   .proj-del{
-    flex:0 0 auto; border:none; background:transparent; color:var(--st-overdue);
+    flex:0 0 auto; border:none; background:transparent; color:var(--st-overdue-ink);
     font-size:15px; cursor:pointer; padding:2px 4px; opacity:.75;
   }
   .proj-del:active{opacity:1}
@@ -276,22 +329,24 @@
     background:transparent; color:var(--text); border-radius:999px;
     padding:6px 12px; font-size:14px; font-weight:600; cursor:pointer;
   }
-  .vote.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+  .vote.on{background:var(--accent-soft); color:var(--link); border-color:var(--accent)}
   .card.shoot-past{opacity:.72}
   .vote.mini{display:inline-flex; padding:2px 9px; font-size:12px; gap:4px}
-  .pill.idea-new{background:#4aa3ff} .pill.idea-under_review,.pill.idea-approved{background:var(--st-review); color:#241a08}
-  .pill.idea-rejected{background:var(--st-cancelled)} .pill.idea-implemented{background:var(--st-published)}
+  .pill.idea-new{--c:var(--accent); --ci:var(--link)}
+  .pill.idea-under_review,.pill.idea-approved{--c:var(--st-review); --ci:var(--st-review-ink)}
+  .pill.idea-rejected{--c:var(--st-cancelled); --ci:var(--st-cancelled-ink)}
+  .pill.idea-implemented{--c:var(--st-done); --ci:var(--st-done-ink)}
   .idea-seg{display:flex; gap:6px; margin:4px 0 12px}
   .idea-seg button{flex:1; border:1px solid var(--sep); background:transparent; color:var(--text);
     border-radius:10px; padding:9px 4px; font:inherit; font-size:13px; font-weight:600; cursor:pointer}
-  .idea-seg button.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+  .idea-seg button.on{background:var(--accent); color:var(--on-accent); border-color:transparent}
   #ideaViewSheet .iv-refs{display:flex; flex-direction:column; gap:8px; margin:10px 0}
 
   .empty{color:var(--hint); text-align:center; padding:34px 10px; font-size:14px}
   .loader{color:var(--hint); text-align:center; padding:34px 10px}
   .err{
     background:color-mix(in srgb, var(--st-overdue) 14%, transparent);
-    color:var(--st-overdue); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:10px;
+    color:var(--st-overdue-ink); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:10px;
   }
 
   nav{
@@ -306,19 +361,23 @@
   }
   nav button span:last-child{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   nav button .ic{font-size:19px; line-height:1}
+  nav button .ic svg{width:22px; height:22px; display:block; stroke:currentColor; fill:none;
+    stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+  nav button{font-size:10px; font-weight:600}
   nav button.active{color:var(--link)}
+  nav button.active .ic svg{stroke-width:2.2}
 
   .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px}
-  .stat{background:var(--card); border-radius:14px; padding:13px 14px; box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .stat{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:13px 14px; box-shadow:var(--shadow)}
   .stat .n{font-size:26px; font-weight:800; line-height:1.1}
   .stat .l{font-size:12px; color:var(--hint); margin-top:4px}
 
-  .wl-row{background:var(--card); border-radius:12px; padding:11px 13px; margin-bottom:8px}
+  .wl-row{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:11px 13px; margin-bottom:8px}
   .wl-top{display:flex; justify-content:space-between; align-items:baseline; font-size:14px}
   .wl-top .open{color:var(--hint); font-size:12px}
   .bar{height:7px; border-radius:4px; background:var(--sep); margin-top:8px; overflow:hidden}
   .bar > i{display:block; height:100%; border-radius:4px}
-  .bar-g{background:var(--st-done)} .bar-y{background:#ffcc00} .bar-r{background:var(--st-overdue)}
+  .bar-g{background:var(--st-done)} .bar-y{background:var(--st-review)} .bar-r{background:var(--st-overdue)}
   .wl-sub{font-size:11px; color:var(--hint); margin-top:5px}
 
   .pipe-bar{display:flex; height:26px; border-radius:8px; overflow:hidden; margin:4px 0 8px}
@@ -344,13 +403,13 @@
   .kebab[hidden]{display:none}
   .kebab > summary{list-style:none; cursor:pointer; width:32px; height:32px; border-radius:50%;
     display:flex; align-items:center; justify-content:center; margin-top:2px;
-    background:var(--card); color:var(--hint); font-size:18px; font-weight:700; letter-spacing:1px}
+    background:var(--hover); color:var(--hint); font-size:18px; font-weight:700; letter-spacing:1px}
   .kebab > summary::-webkit-details-marker{display:none}
   .kebab-pop{position:absolute; right:0; top:38px; z-index:6; min-width:200px; padding:6px;
-    background:var(--card); border:1px solid var(--sep); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.5)}
+    background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow-pop)}
   .kebab-pop button{display:block; width:100%; text-align:left; background:none; border:0; border-radius:8px;
-    padding:10px 12px; font:inherit; font-size:14px; color:var(--st-overdue); cursor:pointer}
-  .kebab-pop button:hover{background:rgba(255,255,255,.06)}
+    padding:10px 12px; font:inherit; font-size:14px; color:var(--st-overdue-ink); cursor:pointer}
+  .kebab-pop button:hover{background:var(--hover)}
   .kebab-row{display:flex; justify-content:flex-end; margin-top:8px}
   .kebab-row .kebab-pop{top:auto; bottom:38px}
 
@@ -360,7 +419,7 @@
     border:1px solid var(--sep); background:transparent; color:var(--text);
     border-radius:999px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer;
   }
-  .mp-opt.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+  .mp-opt.on{background:var(--accent-soft); color:var(--link); border-color:var(--accent)}
 
   /* references */
   .ref-row{display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap}
@@ -368,7 +427,7 @@
   .ref-mini{width:44px; height:44px; object-fit:cover; border-radius:8px; cursor:pointer; display:block; background:var(--sep)}
   .ref-x{
     position:absolute; top:-7px; right:-7px; width:19px; height:19px; padding:0;
-    border:2px solid var(--bg); border-radius:50%; background:#d23a2e; color:#fff;
+    border:2px solid var(--card); border-radius:50%; background:var(--st-overdue-ink); color:var(--on-danger);
     font-size:11px; line-height:15px; cursor:pointer; z-index:2;
   }
   .ref-open{
@@ -381,14 +440,14 @@
   .rf-item{display:flex; align-items:center; gap:8px; background:var(--card);
     border:1px solid var(--sep); border-radius:8px; padding:8px 10px; font-size:13px}
   .rf-item .rf-t{flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  .rf-item button{border:none; background:none; color:var(--st-overdue,#d23a2e); font-size:14px; cursor:pointer; flex:0 0 auto}
+  .rf-item button{border:none; background:none; color:var(--st-overdue-ink); font-size:14px; cursor:pointer; flex:0 0 auto}
   .rf-row{display:flex; gap:8px; align-items:stretch}
   .rf-row .rf-url{flex:1 1 auto; min-width:0}
   .rf-row .rf-add-file{flex:0 0 auto; width:auto; white-space:nowrap; margin:0; padding:10px 12px}
   .rf-actions{display:flex; gap:8px; margin-top:6px}
   #refSheet #refList{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
   #refSheet #refList:empty{display:none}
-  .ref-item{background:var(--card); border-radius:12px; padding:10px 12px}
+  .ref-item{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:10px 12px}
   .ri-row{display:flex; align-items:center; gap:10px}
   .ri-foot{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px}
   .rl-card{display:block; text-decoration:none; color:inherit; border-radius:10px; overflow:hidden; background:var(--bg)}
@@ -407,7 +466,7 @@
   .ref-item .ri-name{color:var(--text); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .ref-item .ri-sub{color:var(--hint); font-size:11px; margin-top:2px}
   .ref-item img.ri-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; flex:0 0 auto}
-  .ref-item .ri-del{flex:0 0 auto; background:none; border:none; color:var(--st-overdue); font:inherit; font-size:12px; cursor:pointer; padding:4px 0 4px 12px; opacity:.85}
+  .ref-item .ri-del{flex:0 0 auto; background:none; border:none; color:var(--st-overdue-ink); font:inherit; font-size:12px; cursor:pointer; padding:4px 0 4px 12px; opacity:.85}
   #refSheet input{
     width:100%; font:inherit; font-size:15px; color:var(--text);
     background:var(--card); border:1px solid var(--sep); border-radius:10px;
@@ -420,14 +479,14 @@
 
   #installBanner{
     display:flex; align-items:center; gap:10px;
-    background:#6c5ce7; color:#fff;
+    background:var(--accent); color:var(--on-accent);
     padding:10px 12px; font-size:13px; line-height:1.35;
   }
   #installBanner[hidden]{display:none}
   #installBanner #installText{flex:1}
   #installBanner #installBtn{
     flex:0 0 auto; border:none; border-radius:8px; cursor:pointer;
-    background:#fff; color:#6c5ce7; font-size:13px; font-weight:700; padding:8px 12px;
+    background:#fff; color:var(--accent); font-size:13px; font-weight:700; padding:8px 12px;
   }
   #installBanner #installBtn[hidden]{display:none}
   #installBanner #installClose{
@@ -437,7 +496,7 @@
 
   .toast{
     position:fixed; left:50%; bottom:calc(78px + var(--safe-bottom, 0px)); transform:translateX(-50%);
-    background:#000; color:#fff; padding:9px 16px; border-radius:10px;
+    background:var(--toast-bg); color:var(--toast-text); padding:9px 16px; border-radius:10px;
     font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20;
     max-width:88%;
   }
@@ -448,23 +507,24 @@
     position:fixed; right:16px; z-index:15;
     bottom:calc(64px + 14px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
     width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
-    background:var(--fab, #ff6b5e); color:#fff; font-size:28px; line-height:52px;
-    box-shadow:0 4px 14px rgba(0,0,0,.28); padding:0;
+    background:var(--fab); color:var(--on-accent); font-size:28px; line-height:52px;
+    box-shadow:0 6px 18px rgba(107,63,214,.35); padding:0;
     transition:transform .12s;
   }
+  .fab:hover{background:var(--accent-hover)}
   .fab:active{transform:scale(.9)}
 
   /* ── bottom-sheet modal ────────────────────────────────── */
   .sheet-backdrop{
-    position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.4);
+    position:fixed; inset:0; z-index:30; background:var(--overlay);
     opacity:0; pointer-events:none; transition:opacity .2s;
   }
   .sheet-backdrop.open{opacity:1; pointer-events:auto}
   .sheet{
-    /* same dark plum theme as the app, one step lighter so the sheet reads as a layer */
-    --bg:#241029;
-    --card:#321a3d;
-    box-shadow:0 -10px 30px rgba(0,0,0,.45);
+    /* sheet surface + slightly tinted fields, per theme */
+    --bg:var(--sheet-bg);
+    --card:var(--sheet-card);
+    box-shadow:0 -10px 30px rgba(30,21,48,.18);
     position:fixed; left:0; right:0; bottom:0; z-index:31;
     background:var(--bg); color:var(--text);
     border-radius:16px 16px 0 0; padding:0 16px calc(20px + env(safe-area-inset-bottom));
@@ -515,20 +575,22 @@
   .field.bad input, .field.bad textarea, .field.bad select{border-color:var(--st-overdue)}
   .sheet .form-err{
     background:color-mix(in srgb, var(--st-overdue) 14%, transparent);
-    color:var(--st-overdue); border-radius:10px; padding:9px 12px; font-size:13px; margin-bottom:10px;
+    color:var(--st-overdue-ink); border-radius:10px; padding:9px 12px; font-size:13px; margin-bottom:10px;
   }
   .sheet .submit{
     width:100%; border:none; border-radius:12px; margin-top:4px;
     background:var(--btn); color:var(--btn-text); font-size:15px; font-weight:600;
     padding:13px; cursor:pointer;
   }
+  .sheet .submit:hover{background:var(--accent-hover)}
   .sheet .submit[disabled]{opacity:.55; cursor:default}
   .more-item{
     display:flex; align-items:center; gap:12px; width:100%;
-    background:var(--card); border:1px solid var(--sep); border-radius:12px;
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
     color:var(--text); font:inherit; font-size:15px; font-weight:600;
     padding:14px 16px; margin-bottom:10px; cursor:pointer; text-align:left;
   }
+  .more-item:hover{background:var(--hover)}
   .more-item span{font-size:19px}
 </style>
 </head>
@@ -549,11 +611,11 @@
 <main id="view"><div class="loader">Загрузка…</div></main>
 
 <nav>
-  <button data-tab="home" class="active"><span class="ic">🏠</span><span data-i18n="nav.home">Главная</span></button>
-  <button data-tab="content"><span class="ic">📋</span><span data-i18n="nav.content">Контент</span></button>
-  <button data-tab="ideas"><span class="ic">💡</span><span data-i18n="nav.ideas">Идеи</span></button>
-  <button data-tab="shoots"><span class="ic">🎬</span><span data-i18n="nav.shoots">Съёмки</span></button>
-  <button id="navMore"><span class="ic">⋯</span><span data-i18n="nav.more">Ещё</span></button>
+  <button data-tab="home" class="active"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></span><span data-i18n="nav.home">Главная</span></button>
+  <button data-tab="content"><span class="ic"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M8.5 10h7M8.5 14h7M8.5 18h4"/></svg></span><span data-i18n="nav.content">Контент</span></button>
+  <button data-tab="ideas"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.3 1.1 2.2h5c0-.9.5-1.7 1.1-2.2A6 6 0 0 0 12 3z"/></svg></span><span data-i18n="nav.ideas">Идеи</span></button>
+  <button data-tab="shoots"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/></svg></span><span data-i18n="nav.shoots">Съёмки</span></button>
+  <button id="navMore"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span><span data-i18n="nav.more">Ещё</span></button>
 </nav>
 
 <button class="fab" id="fab" aria-label="Создать">+</button>
@@ -643,9 +705,8 @@ const IN_TELEGRAM = !!INIT_DATA;
   try { tg.expand(); } catch(e){}
   // stop the swipe-down gesture that collapses / drags the app (Bot API 7.7+)
   try { if (atLeast("7.7") && tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch(e){}
-  // paint Telegram's top bar in the brand colour so it blends in
-  try { if (tg.setHeaderColor) tg.setHeaderColor("#1a0820"); } catch(e){}
-  try { if (tg.setBackgroundColor) tg.setBackgroundColor("#1a0820"); } catch(e){}
+  // paint Telegram's top bar to match the current theme (see applyTheme in <head>)
+  try { window.applyTheme && window.applyTheme(); } catch(e){}
 
   // keep content clear of the notch + Telegram's floating controls
   const rootEl = document.documentElement;
@@ -1643,7 +1704,7 @@ function teamCard(u, canManage){
   <div class="card${canManage ? " tappable" : ""}"${canManage ? ` data-member="${u.id}"` : ""}>
     <div class="row">
       <p class="title">${esc(u.full_name || "—")}</p>
-      <span class="pill" style="background:${color}">${esc(label)}</span>
+      <span class="pill" style="--c:${color}; --ci:var(--text)">${esc(label)}</span>
     </div>
     <div class="meta">
       ${u.username ? `<span>@${esc(u.username)}</span>` : ""}
