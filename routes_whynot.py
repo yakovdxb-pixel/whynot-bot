@@ -2296,7 +2296,61 @@ async def list_team(user: dict = Depends(member), session=Depends(get_session)):
         select(User).where(User.is_active.is_(True))
         .order_by(User.role, User.full_name)
     )).scalars().all()
-    return [_user_out(u) for u in rows]
+    open_by_user = dict((await session.execute(
+        select(TaskAssignee.user_id, func.count())
+        .join(Task, Task.id == TaskAssignee.task_id)
+        .where(Task.status.in_(OPEN_TASK_STATUSES))
+        .group_by(TaskAssignee.user_id))).all())
+    reach = await _bot_reachable([u.telegram_id for u in rows])
+    out = []
+    for u in rows:
+        d = _user_out(u)
+        d["open_tasks"] = open_by_user.get(u.id, 0)
+        d["bot_ok"] = reach.get(u.telegram_id)   # False = never pressed Start -> DMs can't reach them
+        out.append(d)
+    return out
+
+
+# telegram_id -> (reachable, checked_at). True is cached longer than False so a fresh
+# «Start» shows up within a couple of minutes.
+_REACH_CACHE: dict = {}
+
+
+async def _bot_reachable(tg_ids) -> dict:
+    """{telegram_id: True/False/None} — can the bot DM this person? getChat on a user id
+    only succeeds if they have a private chat with the bot (pressed Start). Read-only,
+    sends nothing. None = unknown (network error / no token)."""
+    if not BOT_TOKEN:
+        return {}
+    now = _now().timestamp()
+    out, todo = {}, []
+    for tg in {t for t in tg_ids if t}:
+        hit = _REACH_CACHE.get(tg)
+        if hit and now - hit[1] < (600 if hit[0] else 120):
+            out[tg] = hit[0]
+        else:
+            todo.append(tg)
+    if todo:
+        sem = asyncio.Semaphore(8)
+
+        async def check(client, tg):
+            async with sem:
+                try:
+                    r = await client.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChat",
+                                         params={"chat_id": tg})
+                    if r.status_code == 200:
+                        return tg, True
+                    if r.status_code in (400, 403):
+                        return tg, False
+                except Exception:  # noqa: BLE001
+                    pass
+                return tg, None
+        async with httpx.AsyncClient(timeout=5) as client:
+            for tg, ok in await asyncio.gather(*(check(client, tg) for tg in todo)):
+                out[tg] = ok
+                if ok is not None:
+                    _REACH_CACHE[tg] = (ok, now)
+    return out
 
 
 @router.patch("/team/{user_id}/role")
