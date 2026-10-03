@@ -153,6 +153,10 @@
   .section-title{font-size:13px; font-weight:600; color:var(--hint);
     text-transform:uppercase; letter-spacing:.04em; margin:18px 2px 8px}
   .section-title:first-child{margin-top:4px}
+  details.stale-block > summary{cursor:pointer; list-style:none}
+  details.stale-block > summary::-webkit-details-marker{display:none}
+  details.stale-block > summary::before{content:"▸ "; color:var(--st-overdue)}
+  details.stale-block[open] > summary::before{content:"▾ "}
 
   .card{
     background:var(--card); border:1px solid rgba(255,255,255,.05); border-radius:14px;
@@ -722,7 +726,7 @@ const I18N = {
     "field.status":"Статус","field.pipeline_status":"Этап","field.shoot_at":"Дата и время","field.location":"Локация / адрес",
     "field.participant_ids":"Исполнители","field.notes":"Заметки","field.name":"Название клиента","field.project_name":"Название проекта (если пусто — как клиент)","field.contact":"Контакт",
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
-    "sec.tasks":"Задачи","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
+    "sec.tasks":"Задачи","sec.stale":"Зависшие — просрочка больше 7 дней","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
     "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — предложи первую в боте",
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
@@ -780,7 +784,7 @@ const I18N = {
     "field.status":"Holat","field.pipeline_status":"Bosqich","field.shoot_at":"Sana va vaqt","field.location":"Manzil",
     "field.participant_ids":"Ijrochilar","field.notes":"Eslatmalar","field.name":"Mijoz nomi","field.project_name":"Loyiha nomi (bo‘sh bo‘lsa — mijoz nomi)","field.contact":"Kontakt",
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
-    "sec.tasks":"Vazifalar","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
+    "sec.tasks":"Vazifalar","sec.stale":"Osilib qolganlar — 7 kundan ortiq kechikkan","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
     "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — botda birinchisini taklif qiling",
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
@@ -838,7 +842,7 @@ const I18N = {
     "field.status":"Status","field.pipeline_status":"Stage","field.shoot_at":"Date & time","field.location":"Location / address",
     "field.participant_ids":"Crew","field.notes":"Notes","field.name":"Client name","field.project_name":"Project name (blank = same as client)","field.contact":"Contact",
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
-    "sec.tasks":"Tasks","sec.myBlockers":"My blockers","sec.myContent":"My content",
+    "sec.tasks":"Tasks","sec.stale":"Stuck — overdue by more than 7 days","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
     "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — suggest the first one in the bot",
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
@@ -1109,6 +1113,20 @@ function blockerCard(b){
 
 /* ── screens ─────────────────────────────────────────────── */
 
+const STALE_DAYS = 7;
+const CLOSED_TASK_ST = ["done", "published", "cancelled"];
+
+function splitStaleTasks(tasks){
+  const cutoff = Date.now() - STALE_DAYS * 86400e3;
+  const active = [], stale = [], closed = [];
+  for (const tk of tasks){
+    if (CLOSED_TASK_ST.includes(tk.status)) closed.push(tk);
+    else if (tk.status !== "review" && tk.deadline && new Date(tk.deadline).getTime() < cutoff) stale.push(tk);
+    else active.push(tk);
+  }
+  return { active, stale, closed };
+}
+
 async function renderHome(){
   const wantReview = homeScope === "review";
   const [d, ownTasks, reviewTasks] = await Promise.all([
@@ -1131,9 +1149,20 @@ async function renderHome(){
     </div>`);
 
   parts.push(`<div class="section-title">${esc(t("sec.tasks"))}</div>`);
+  // Server order: open by nearest deadline, closed last. Open tasks overdue by
+  // more than STALE_DAYS go to a collapsed «Зависшие» block between the two.
+  const { active, stale, closed } = wantReview
+    ? { active: tasks, stale: [], closed: [] } : splitStaleTasks(tasks);
   parts.push(tasks.length
-    ? tasks.map(taskCard).join("")
+    ? active.map(taskCard).join("")
     : `<div class="empty">${wantReview ? esc(t("empty.tasksAll")) : homeScope === "mine" ? esc(t("empty.tasks")) : esc(t("empty.tasksAll"))}</div>`);
+  if (stale.length){
+    parts.push(`<details class="stale-block">
+      <summary class="section-title">${esc(t("sec.stale"))} · ${stale.length}</summary>
+      ${stale.map(taskCard).join("")}
+    </details>`);
+  }
+  parts.push(closed.map(taskCard).join(""));
 
   parts.push(`<div class="section-title">${esc(t("sec.myBlockers"))}</div>`);
   parts.push(d.my_blockers.length
