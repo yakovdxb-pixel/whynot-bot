@@ -19,7 +19,7 @@
 - **Backend**: Python 3.11 (Railway) / локально протестировано на 3.13 —
   FastAPI + python-telegram-bot 21.3 (`[job-queue]` extra) + SQLAlchemy 2.0
   async + asyncpg.
-- **DB**: PostgreSQL (Railway managed, `postgres.railway.internal`).
+- **DB**: PostgreSQL 18 (Railway, сервис `postgres-v2`, с volume).
   Схема — чистый SQLAlchemy `Base.metadata.create_all()` при старте
   + список идемпотентных `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` в
   `db/models.py::_MIGRATIONS` (никакого Alembic).
@@ -39,10 +39,9 @@
 ```
 main.py          — точка входа Railway (Procfile). Поднимает bot.py (polling,
                     главный поток) + uvicorn-сабпроцесс с api.py.
-api.py           — FastAPI app: /health, legacy sqlite "Agency" API
-                    (agency.db, только для совместимости со старыми данными,
-                    новый функционал туда не добавляется), отдаёт webapp/
-                    как статику, подключает routes_whynot.router.
+api.py           — FastAPI app: отдаёт webapp/ и sw.js, /health,
+                    /api/bot-status (только с X-Admin-Secret), подключает
+                    routes_whynot.router. Легаси sqlite-API удалён (2026-10).
 routes_whynot.py — вся актуальная REST API ("WHY NOT? OS"): клиенты,
                     проекты, контент-план, задачи, съёмки, идеи, блокеры,
                     команда, референсы, дашборд. Это самый большой и самый
@@ -96,12 +95,9 @@ scripts/         — разовые утилиты (очистка тестов�
 с защитой от случайного сноса связанных данных.
 
 ### TODO / известные незавершённые хвосты
-- **Postgres на Railway без volume (риск потери данных)** — см. раздел 10.
-  Не перезапускать и не редеплоить сервис `postgres`, пока не выяснено,
-  где лежат данные, и не сделан бэкап (`pg_dump`).
-- У сервиса `postgres` переменная `POSTGRES_PASSWORD` всё ещё старая
-  (реальный пароль сменён через `\password`, см. раздел 10). На работу не
-  влияет, но обновить её нужно — после того как разберёмся с volume.
+- Старый сервис `postgres` (без volume, больше не используется) удалить
+  через 1–2 недели после переезда 2026-10-03, если всё стабильно. До этого
+  его не трогать — это запасной вариант для отката (раздел 10).
 - Английский/узбекский переводы неполные: остались нигде не переведённые
   куски (лента активности, некоторые уведомления бота — всё на русском).
 - Нет автотестов вообще — весь контроль качества ручной + быстрые curl-
@@ -174,7 +170,7 @@ connection string из Railway (Settings → Postgres service → Connect,
 | **GitHub** | `yakovdxb-pixel/whynot-bot`, публичный репозиторий | push → автодеплой на Railway |
 | **Railway** | хостинг: 1 web-сервис (`worker`) + managed Postgres | проект `bountiful-charisma`, сервис `worker` (прод-URL выше) |
 | **Telegram / @BotFather** | бот `@whynotagencybot` | long polling, Mini App включён (`has_main_web_app`), меню-кнопка = сам Mini App |
-| **PostgreSQL (Railway, сервис `postgres`)** | вся боевая база | доступ только изнутри Railway-сети; обычный docker-контейнер, volume не виден — **не перезапускать**, см. раздел 10 |
+| **PostgreSQL (Railway, сервис `postgres-v2`)** | вся боевая база | Postgres 18 с volume, доступ только изнутри Railway-сети. Старый `postgres` без volume — запасной, см. раздел 10 |
 
 Больше никаких внешних API (без Claude API, без Make/Manychat и т.п.) —
 проект самодостаточный.
@@ -186,7 +182,7 @@ connection string из Railway (Settings → Postgres service → Connect,
 | Переменная | За что отвечает |
 |---|---|
 | `BOT_TOKEN` | токен Telegram-бота `@whynotagencybot` (от @BotFather) |
-| `DATABASE_URL` | строка подключения к Postgres — **единственный источник адреса и пароля базы**. В коде дефолта нет: без переменной приложение падает при старте с `DATABASE_URL is not set`. У worker это готовая строка (не ссылка на сервис postgres) — при смене пароля БД её обновлять вручную |
+| `DATABASE_URL` | строка подключения к Postgres — **единственный источник адреса и пароля базы**. В коде дефолта нет: без переменной приложение падает при старте с `DATABASE_URL is not set`. У worker это ссылка `${{postgres-v2.DATABASE_URL}}` — при смене пароля обновится сама |
 | `ADMIN_SECRET` | секрет для админ-эндпоинта `PATCH /api/users/{telegram_id}/role` (заголовок `X-Admin-Secret`) |
 | `WEBAPP_URL` | публичный URL Mini App, используется ботом для кнопок «Открыть приложение» |
 | `RUN_BOT` | `0`/`1` — чтобы бот не поднимался дважды; `main.py` всегда сам ставит `0` перед запуском, трогать не нужно |
@@ -251,22 +247,42 @@ connection string из Railway (Settings → Postgres service → Connect,
   `/health` → `{"db":"ok"}`.
 - Дефолт из кода убран (коммит `061f1d8`): `DATABASE_URL` берётся только
   из окружения, без него приложение не стартует.
-- **Не доделано:** у сервиса `postgres` переменная `POSTGRES_PASSWORD`
-  осталась старой. Сейчас она ни на что не влияет (база уже
-  инициализирована, пароль хранится внутри неё), но её нужно обновить —
-  только не вызывая перезапуск postgres (см. ниже).
+- Старый пароль/`POSTGRES_PASSWORD` старого сервиса больше не важны:
+  прод переехал на `postgres-v2` (см. ниже).
 
-### Postgres без volume — риск потери данных
+### Postgres без volume → переезд на postgres-v2
 Сервис `postgres` в Railway — обычный docker-контейнер, и на схеме
 проекта у него **не видно volume** (volume виден только у `worker`). Если
 данные Postgres (`PGDATA`) лежат внутри контейнера, а не на volume, то
 любой рестарт/редеплой сервиса `postgres` (в том числе из-за изменения
 его переменных) может стереть всю боевую базу.
 
-Правила, пока не выяснено:
-- **Не перезапускать, не редеплоить и не менять переменные сервиса
-  `postgres`.**
-- Сначала проверить, где лежит `PGDATA` и смонтирован ли туда volume,
-  и сделать резервную копию через `pg_dump`.
-- Если volume нет — переехать на базу с volume (новый Postgres-сервис
-  в Railway → восстановить из дампа → переключить `DATABASE_URL` у worker).
+**Проверено 2026-10-03:** `PGDATA=/var/lib/postgresql/data/pgdata` на
+файловой системе `overlay` — volume у старого `postgres` (образ `postgres:16`)
+действительно нет. Volume `worker-volume` (`/data`) принадлежит worker, к базе
+отношения не имеет.
+
+**Переезд выполнен 2026-10-03 19:50 (UTC+5):** прод работает на сервисе
+`postgres-v2` (шаблон Railway `postgres-ssl:18`, volume `postgres-volume` в
+`/var/lib/postgresql/data`, база `railway`, пользователь `postgres`, без TCP
+Proxy). У worker `DATABASE_URL` = `${{postgres-v2.DATABASE_URL}}` — ссылка,
+при смене пароля обновится сама. Перед переключением залит свежий дамп
+(22 таблицы совпали по числу строк, последовательности в порядке), копия
+лежит на Mac в `why not os/backup_whynot_20261003_1948_cutover.sql.gz`.
+Старый `postgres` (без volume) оставлен как запасной, с ним не работают —
+удалить через 1–2 недели. Откат: вернуть у worker прежнюю строку
+`postgresql://whynot:<пароль>@postgres.railway.internal:5432/whynot_os`
+(данные, внесённые после 19:50, в старой базе отсутствуют).
+
+**Как снимать/заливать дампы без psql на Mac** (через `railway ssh`, SSH-ключ
+`~/.ssh/id_ed25519` зарегистрирован в Railway):
+```bash
+# бэкап боевой базы на Mac
+railway ssh -s postgres-v2 -- sh -c 'pg_dump -U "$PGUSER" -d "$PGDATABASE"' | gzip > backup_$(date +%Y%m%d_%H%M).sql.gz
+# заливка дампа (в ПУСТУЮ базу; одной транзакцией)
+gzip -dc backup.sql.gz | railway ssh -s postgres-v2 -- sh -c 'psql -q -v ON_ERROR_STOP=1 --single-transaction -U "$PGUSER" -d "$PGDATABASE"'
+```
+
+Правило: старый `postgres` до удаления не перезапускать и не менять — его
+данные лежат в контейнере и пропадут при рестарте (это нужно только для
+отката, прод от него не зависит).

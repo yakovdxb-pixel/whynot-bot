@@ -23,7 +23,7 @@ Python (FastAPI + python-telegram-bot + SQLAlchemy async/asyncpg) на
   (внизу файла, там же где `/bind`, приём файлов, просрочки).
 - `db/models.py` — модели + `_MIGRATIONS` (список идемпотентных ALTER
   TABLE, выполняется при каждом старте).
-- `api.py` — FastAPI-обвязка, `/health`, легаси sqlite API (не развивать).
+- `api.py` — FastAPI-обвязка: Mini App, `sw.js`, `/health`, `/api/bot-status`.
 
 ## Как вносить изменения в схему БД
 
@@ -46,8 +46,13 @@ Railway передеплоивает сам (1-3 минуты) → провер�
 
 ```bash
 curl -s https://worker-production-7137.up.railway.app/health
-curl -s https://worker-production-7137.up.railway.app/api/bot-status
+curl -s -H "X-Admin-Secret: $(railway variable list -s worker --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["ADMIN_SECRET"])')" https://worker-production-7137.up.railway.app/api/bot-status
 ```
+
+`/api/bot-status` закрыт заголовком `X-Admin-Secret` (= `ADMIN_SECRET` у
+worker; команда выше берёт его через Railway CLI, не печатая).
+Telegram initData старше 24 часов отклоняется (`INIT_DATA_MAX_AGE` в
+`routes_whynot.py`) — пользователь видит «Сессия Telegram устарела».
 
 `/health` → `{"db":"ok", ...}` подтверждает, что новые колонки/таблицы из
 `_MIGRATIONS` реально появились (сравнивай счётчики до/после). Если меняешь
@@ -57,14 +62,13 @@ curl -s https://worker-production-7137.up.railway.app/api/bot-status
 
 ## Частые грабли
 
-- **Сервис `postgres` в Railway — без видимого volume. Не перезапускать,
-  не редеплоить и не менять его переменные**, пока не выяснено, где лежат
-  данные, и не сделан `pg_dump` — иначе можно потерять всю боевую базу
-  (HANDOFF.md, раздел 10).
+- **Боевая база — сервис `postgres-v2` (Postgres 18, с volume).** Старый
+  сервис `postgres` без volume — запасной для отката, не трогать до удаления
+  (HANDOFF.md, раздел 10). Дампы — через `railway ssh`, там же команды.
 - **`DATABASE_URL` — единственный источник адреса и пароля базы.** В коде
   дефолта нет и не должно быть (репозиторий публичный): без переменной
-  приложение падает при старте. Пароль БД сменён в октябре 2026, у worker
-  `DATABASE_URL` — готовая строка, при смене пароля обновлять вручную.
+  приложение падает при старте. У worker `DATABASE_URL` —
+  ссылка `${{postgres-v2.DATABASE_URL}}`.
   Никаких секретов в код и в эти .md-файлы.
 - **Не поднимать `api.py` отдельно с `RUN_BOT=1`, если `main.py` уже
   запущен** — два одновременных `getUpdates` на один токен бота дают
