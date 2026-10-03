@@ -106,6 +106,9 @@ async def reaction_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r = update.message_reaction
     if not r or not r.chat:
         return
+    logger.info("reaction msg=%s old=%s new=%s", r.message_id,
+                [getattr(e, "emoji", None) or e.type for e in (r.old_reaction or [])],
+                [getattr(e, "emoji", None) or e.type for e in (r.new_reaction or [])])
     old = {e.emoji for e in (r.old_reaction or []) if getattr(e, "emoji", None)}
     new = {e.emoji for e in (r.new_reaction or []) if getattr(e, "emoji", None)}
     added = (new & REF_EMOJI) - old
@@ -156,13 +159,14 @@ async def submit_file_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
     msg = update.effective_message
     if not msg or update.effective_chat.type not in ("group", "supergroup"):
         return
-    fid = ftype = None
+    fid = ftype = mime = fname = None
     if msg.photo:
         fid, ftype = msg.photo[-1].file_id, "photo"
     elif msg.video:
-        fid, ftype = msg.video.file_id, "video"
+        fid, ftype, mime, fname = msg.video.file_id, "video", msg.video.mime_type, msg.video.file_name
     elif msg.document:
-        fid, ftype = msg.document.file_id, "document"
+        d = msg.document
+        fid, ftype, mime, fname = d.file_id, "document", d.mime_type, d.file_name
     if not fid:
         return
 
@@ -195,19 +199,22 @@ async def submit_file_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logger.warning(f"submit_file_prompt: {e}")
         return
 
-    if not tasks:
-        await msg.reply_text(f"У клиента {client_name} нет активных задач",
-                             message_thread_id=thread_id or None)
-        return
-
     # stash the file — the callback can't carry it (64-byte callback_data limit)
     context.chat_data[f"subfile_{msg.message_id}"] = {
         "file_id": fid, "file_type": ftype, "from_user": update.effective_user.id,
+        "project_id": proj_id, "mime": mime, "file_name": fname,
+        "caption": (msg.caption or "").strip(), "chat_id": msg.chat_id,
     }
     kb = [[InlineKeyboardButton(f"📋 {title}"[:64], callback_data=f"subfile_{msg.message_id}_{tid}")]
           for tid, title in tasks]
-    await msg.reply_text("📎 К какой задаче относится файл?",
-                         message_thread_id=thread_id or None,
+    # Always offer a way to keep the file, even when no task fits.
+    kb.append([
+        InlineKeyboardButton("📌 В референсы", callback_data=f"subref_{msg.message_id}"),
+        InlineKeyboardButton("➕ Новая задача", callback_data=f"subnew_{msg.message_id}"),
+    ])
+    text = ("📎 К какой задаче относится файл?" if tasks else
+            f"📎 У клиента {client_name} нет активных задач. Что сделать с файлом?")
+    await msg.reply_text(text, message_thread_id=thread_id or None,
                          reply_markup=InlineKeyboardMarkup(kb))
 
 
@@ -280,6 +287,54 @@ async def subfile_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 tg, f"📎 {submitter_name} сдал задачу «{task.title}»{who}", reply_markup=kb)
         except Exception:
             pass
+
+
+async def subfile_keep_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """File with no fitting task: 📌 save it to the project's references, or
+    ➕ create a new task (caption = title) with the file attached, status «на проверке»."""
+    q = update.callback_query
+    await q.answer()
+    m = re.match(r"^sub(ref|new)_(\d+)$", q.data or "")
+    if not m:
+        return
+    action, orig_msg_id = m.group(1), int(m.group(2))
+    pending = context.chat_data.pop(f"subfile_{orig_msg_id}", None)
+    if not pending:
+        await q.edit_message_text("⌛ Файл потерян (бот перезапускался) — отправь его ещё раз.")
+        return
+    try:
+        from db.models import AsyncSessionLocal, ReferenceItem, Task, TaskAssignee, User
+        from sqlalchemy import select
+        from datetime import datetime as _dt, timezone as _tz
+        async with AsyncSessionLocal() as s:
+            uid = (await s.execute(select(User.id).where(
+                User.telegram_id == pending["from_user"]))).scalar_one_or_none()
+            default_name = {"photo": "фото", "video": "видео"}.get(pending["file_type"], "файл")
+            if action == "ref":
+                s.add(ReferenceItem(project_id=pending["project_id"], kind="file",
+                                    tg_file_id=pending["file_id"], mime=pending["mime"],
+                                    file_name=pending["file_name"] or default_name,
+                                    tg_chat_id=pending["chat_id"], tg_message_id=orig_msg_id,
+                                    added_by=uid))
+                await s.commit()
+                await q.edit_message_text("📌 Файл сохранён в референсы проекта.")
+                return
+            title = (pending["caption"].split("\n")[0][:120]
+                     or f"{default_name.capitalize()} из темы ({_dt.now().strftime('%d.%m')})")
+            task = Task(title=title, project_id=pending["project_id"], status="review",
+                        assignee_id=uid, created_by=uid, file_id=pending["file_id"],
+                        file_type=pending["file_type"], submitted_at=_dt.now(_tz.utc))
+            s.add(task)
+            await s.flush()
+            if uid:
+                s.add(TaskAssignee(task_id=task.id, user_id=uid))
+            await s.commit()
+        await q.edit_message_text(
+            f"✅ Создана задача «{title}» с этим файлом. Статус: На проверке 📎\n"
+            f"Название и срок можно поправить в приложении.")
+    except Exception as e:
+        logger.warning(f"subfile_keep_cb: {e}")
+        await q.edit_message_text("Что-то пошло не так, попробуй ещё раз.")
 
 
 async def pg_overdue_job(context: ContextTypes.DEFAULT_TYPE):
@@ -357,14 +412,24 @@ async def bind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = await _pg_user_id(update.effective_user.id)
         try:
             from db.models import AsyncSessionLocal, Client, Project, ProjectChat
-            from sqlalchemy import delete as sa_delete
+            from sqlalchemy import select, func, delete as sa_delete
             async with AsyncSessionLocal() as s:
-                client = Client(name=name, am_id=uid, telegram_id=chat.id, is_active=True)
-                s.add(client)
-                await s.flush()
-                project = Project(client_id=client.id, name=name, am_id=uid, is_active=True)
-                s.add(project)
-                await s.flush()
+                # Same name as an existing active client -> bind to it instead of a duplicate.
+                client = (await s.execute(select(Client).where(
+                    func.lower(func.trim(Client.name)) == name.lower(),
+                    Client.is_active.is_(True)).order_by(Client.id).limit(1))).scalar_one_or_none()
+                existed = client is not None
+                if not client:
+                    client = Client(name=name, am_id=uid, telegram_id=chat.id, is_active=True)
+                    s.add(client)
+                    await s.flush()
+                project = (await s.execute(select(Project).where(
+                    Project.client_id == client.id, Project.is_active.is_(True))
+                    .order_by(Project.id).limit(1))).scalar_one_or_none() if existed else None
+                if not project:
+                    project = Project(client_id=client.id, name=client.name, am_id=uid, is_active=True)
+                    s.add(project)
+                    await s.flush()
                 await s.execute(sa_delete(ProjectChat).where(
                     ProjectChat.chat_id == chat.id,
                     ProjectChat.thread_id == (thread_id or None)))
@@ -374,6 +439,11 @@ async def bind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.warning(f"bind create failed: {e}")
             await msg.reply_text("Не получилось создать клиента. Попробуй позже.")
+            return
+        if existed:
+            await msg.reply_text(
+                f"✅ Клиент «{client.name}» уже есть — эта тема привязана к его проекту "
+                f"«{project.name}».")
             return
         await msg.reply_text(
             f"✅ Клиент и проект «{name}» созданы, эта тема привязана.\n"
@@ -530,6 +600,7 @@ def main():
         (filters.PHOTO | filters.VIDEO | filters.Document.ALL) & filters.ChatType.GROUPS,
         submit_file_prompt), group=2)
     app.add_handler(CallbackQueryHandler(subfile_pick_cb, pattern=r"^subfile_\d+_\d+$"))
+    app.add_handler(CallbackQueryHandler(subfile_keep_cb, pattern=r"^sub(ref|new)_\d+$"))
 
     logger.info("✅ WHY NOT? OS бот запущен")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
