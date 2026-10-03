@@ -277,6 +277,7 @@
     padding:6px 12px; font-size:14px; font-weight:600; cursor:pointer;
   }
   .vote.on{background:var(--btn); color:var(--btn-text); border-color:transparent}
+  .card.shoot-past{opacity:.72}
   .vote.mini{display:inline-flex; padding:2px 9px; font-size:12px; gap:4px}
   .pill.idea-new{background:#4aa3ff} .pill.idea-under_review,.pill.idea-approved{background:var(--st-review); color:#241a08}
   .pill.idea-rejected{background:var(--st-cancelled)} .pill.idea-implemented{background:var(--st-published)}
@@ -787,7 +788,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
     "sec.tasks":"Задачи","sec.stale":"Зависшие — просрочка больше 7 дней","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
-    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
+    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
     "empty.shoots":"Съёмок пока нет — добавь через «+»",
     "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
@@ -845,7 +846,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
     "sec.tasks":"Vazifalar","sec.stale":"Osilib qolganlar — 7 kundan ortiq kechikkan","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
-    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
+    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
     "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
     "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
@@ -903,7 +904,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
     "sec.tasks":"Tasks","sec.stale":"Stuck — overdue by more than 7 days","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
-    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
+    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
     "empty.shoots":"No shoots yet — add one with “+”",
     "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
@@ -1469,12 +1470,15 @@ function shootCard(s){
   shootById[s.id] = s;
   const when = s.shoot_at ? fmtDateTime(s.shoot_at) : t("field.shoot_at");
   const team = (s.participants || []).map(p => p.name).filter(Boolean).join(", ");
-  const stCls = s.status === "done" ? "done" : s.status === "cancelled" ? "cancelled" : "in_progress";
+  // still «planned» but the date is gone -> show it as «прошла» (stored status untouched)
+  const past = (s.status || "planned") === "planned" && s.shoot_at && new Date(s.shoot_at).getTime() < Date.now();
+  const stCls = past ? "cancelled" : s.status === "done" ? "done" : s.status === "cancelled" ? "cancelled" : "in_progress";
+  const stLabel = past ? t("shoot.past") : (SHOOT_STATUS_LABEL[s.status] || s.status);
   return `
-  <div class="card tappable" data-shoot-edit="${s.id}">
+  <div class="card tappable${past ? " shoot-past" : ""}" data-shoot-edit="${s.id}">
     <div class="row">
       <p class="title">🎬 ${esc(s.title || t("nav.shoots"))}</p>
-      <span class="pill ${stCls}">${esc(SHOOT_STATUS_LABEL[s.status] || s.status)}</span>
+      <span class="pill ${stCls}">${esc(stLabel)}</span>
     </div>
     <div class="meta">
       <span>🗓 ${esc(when)}</span>
