@@ -66,6 +66,10 @@
     --outer:#E9E4F2;                      /* page behind the floating desktop window */
     --sheet-bg:#FFFFFF; --sheet-card:#F6F4FA;
     --toast-bg:#1E1530; --toast-text:#FFFFFF;
+    /* iOS-style frosted bars */
+    --glass-bg:rgba(255,255,255,.72); --glass-border:rgba(30,21,48,.08);
+    --glass-shadow:0 10px 30px rgba(30,21,48,.14), 0 1px 3px rgba(30,21,48,.08);
+    --tab-h:62px;                         /* floating tab bar height */
     --st-done:#1F9D6B;        --st-done-ink:#187751;
     --st-overdue:#E0445A;     --st-overdue-ink:#B53749;
     --st-review:#E08A00;      --st-review-ink:#965C00;
@@ -88,6 +92,8 @@
     --outer:#0B0710;
     --sheet-bg:#1E1628; --sheet-card:#2A2036;
     --toast-bg:#F1EDF7; --toast-text:#1E1530;
+    --glass-bg:rgba(36,27,48,.72); --glass-border:rgba(255,255,255,.10);
+    --glass-shadow:0 10px 30px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
     --st-done:#34C48A;        --st-done-ink:#34C48A;
     --st-overdue:#F2687B;     --st-overdue-ink:#F26D7F;
     --st-review:#F0A030;      --st-review-ink:#F0A030;
@@ -122,10 +128,10 @@
       height:min(880px, calc(100dvh - 40px));
       margin:20px auto;
     }
-    .fab, .sheet, .sheet-backdrop, #installBanner, .toast{ position:absolute !important; }
+    .fab, .sheet, .sheet-backdrop, #installBanner, .toast, nav{ position:absolute !important; }
     .fab{ right:16px !important; }
     .sheet, .sheet-backdrop{ left:0 !important; right:0 !important; width:auto !important; }
-    .sheet{ max-height:88% !important; border-radius:16px 16px 0 0 }
+    .sheet{ max-height:88% !important; border-radius:22px 22px 0 0 }
     #installBanner{ left:0 !important; right:0 !important; width:auto !important; }
     .toast{ left:50% !important }
   }
@@ -141,11 +147,12 @@
   html.tg-desktop .sheet,
   html.tg-desktop .sheet-backdrop,
   html.tg-desktop #installBanner,
-  html.tg-desktop .toast{ position:absolute !important; }
+  html.tg-desktop .toast,
+  html.tg-desktop nav{ position:absolute !important; }
   html.tg-desktop .fab{ right:16px !important; }
   html.tg-desktop .sheet,
   html.tg-desktop .sheet-backdrop{ left:0 !important; right:0 !important; width:auto !important; }
-  html.tg-desktop .sheet{ max-height:88% !important; border-radius:16px 16px 0 0 }
+  html.tg-desktop .sheet{ max-height:88% !important; border-radius:22px 22px 0 0 }
   html.tg-desktop #installBanner{ left:0 !important; right:0 !important; width:auto !important; }
   html.tg-desktop .toast{ left:50% !important }
   /* --- title bar: a normal thin row; in fullscreen it floats between
@@ -155,12 +162,12 @@
 
   #brandbar{
     flex:0 0 auto; background:var(--bg);
-    padding:6px calc(16px + var(--safe-right, 0px)) 7px calc(16px + var(--safe-left, 0px));
-    border-bottom:1px solid var(--sep);
-    font-size:13px; color:var(--hint);
+    padding:9px calc(16px + var(--safe-right, 0px)) 9px calc(16px + var(--safe-left, 0px));
+    border-bottom:.5px solid var(--border);
+    font-size:12px; color:var(--hint); text-align:center;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  #brandbar b{color:var(--text); font-weight:700; font-size:15px}
+  #brandbar b{color:var(--text); font-weight:600; font-size:17px; letter-spacing:-.01em}
   #whoami:not(:empty)::before{content:" · "; color:var(--hint)}
 
   html.fs #brandbar{
@@ -197,7 +204,7 @@
   main#view{
     flex:1 1 auto; min-height:0;
     overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
-    padding:14px 16px calc(96px + env(safe-area-inset-bottom));
+    padding:14px 16px calc(var(--tab-h) + 44px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
   }
   .section-title{font-size:13px; font-weight:700; color:var(--link);
     text-transform:uppercase; letter-spacing:.04em; margin:18px 2px 8px}
@@ -208,8 +215,8 @@
   details.stale-block[open] > summary::before{content:"▾ "}
 
   .card{
-    background:var(--card); border:1px solid var(--border); border-radius:14px;
-    padding:13px 14px; margin-bottom:10px; box-shadow:var(--shadow);
+    background:var(--card); border:1px solid var(--border); border-radius:18px;
+    padding:14px 15px; margin-bottom:10px; box-shadow:var(--shadow);
   }
   .card .row{display:flex; align-items:flex-start; justify-content:space-between; gap:10px}
   .card .title{font-weight:600; font-size:15px; margin:0}
@@ -255,9 +262,9 @@
   .pill.stage{background:var(--accent-soft); color:var(--link)}
 
   button.act{
-    margin-top:11px; width:100%; border:none; border-radius:10px;
+    margin-top:11px; width:100%; border:none; border-radius:14px;
     background:var(--btn); color:var(--btn-text);
-    font-size:14px; font-weight:600; padding:10px; cursor:pointer;
+    font-size:15px; font-weight:600; padding:11px; cursor:pointer;
   }
   button.act:hover{background:var(--accent-hover)}
   button.act:active{opacity:.7}
@@ -267,12 +274,13 @@
   button.act[disabled]{opacity:.45; cursor:default}
 
   .seg{
-    display:flex; background:var(--card); border-radius:10px; padding:3px;
+    display:flex; background:var(--card); border-radius:999px; padding:3px;
     margin:2px 0 12px;
   }
   .seg button{
     flex:1; border:none; background:none; color:var(--hint); cursor:pointer;
-    font-size:13px; font-weight:600; padding:7px 0; border-radius:8px;
+    font-size:13px; font-weight:600; padding:8px 0; border-radius:999px;
+    transition:background .2s, color .2s;
   }
   .seg{background:var(--seg-bg)}
   .seg button.on{background:var(--accent); color:var(--on-accent); box-shadow:0 1px 4px rgba(107,63,214,.3)}
@@ -349,22 +357,29 @@
     color:var(--st-overdue-ink); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:10px;
   }
 
+  /* iOS-style floating tab bar: rounded, frosted, content scrolls underneath */
   nav{
-    flex:0 0 auto; z-index:10;
-    display:flex; background:var(--bg); border-top:1px solid var(--sep);
-    padding-bottom:calc(var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
+    position:fixed; z-index:16; left:14px; right:14px;
+    bottom:calc(10px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
+    height:var(--tab-h); padding:5px;
+    display:flex; gap:2px;
+    background:var(--glass-bg);
+    -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%);
+    border:.5px solid var(--glass-border); border-radius:31px;
+    box-shadow:var(--glass-shadow);
   }
   nav button{
     flex:1 1 0; min-width:0; background:none; border:none; cursor:pointer;
-    padding:7px 1px 6px; color:var(--hint); font-size:9px;
-    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:5px 1px 4px; color:var(--hint); font-size:9px; border-radius:26px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    transition:background .2s, color .2s;
   }
   nav button span:last-child{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   nav button .ic{font-size:19px; line-height:1}
   nav button .ic svg{width:22px; height:22px; display:block; stroke:currentColor; fill:none;
     stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
   nav button{font-size:10px; font-weight:600}
-  nav button.active{color:var(--link)}
+  nav button.active{color:var(--link); background:color-mix(in srgb, var(--accent) 13%, transparent)}
   nav button.active .ic svg{stroke-width:2.2}
 
   .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px}
@@ -495,8 +510,9 @@
   }
 
   .toast{
-    position:fixed; left:50%; bottom:calc(78px + var(--safe-bottom, 0px)); transform:translateX(-50%);
-    background:var(--toast-bg); color:var(--toast-text); padding:9px 16px; border-radius:10px;
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(var(--tab-h) + 22px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
+    background:var(--toast-bg); color:var(--toast-text); padding:10px 18px; border-radius:999px;
     font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20;
     max-width:88%;
   }
@@ -505,7 +521,7 @@
   /* ── floating + button ─────────────────────────────────── */
   .fab{
     position:fixed; right:16px; z-index:15;
-    bottom:calc(64px + 14px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
+    bottom:calc(var(--tab-h) + 24px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
     width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
     background:var(--fab); color:var(--on-accent); font-size:28px; line-height:52px;
     box-shadow:0 6px 18px rgba(107,63,214,.35); padding:0;
@@ -527,7 +543,7 @@
     box-shadow:0 -10px 30px rgba(30,21,48,.18);
     position:fixed; left:0; right:0; bottom:0; z-index:31;
     background:var(--bg); color:var(--text);
-    border-radius:16px 16px 0 0; padding:0 16px calc(20px + env(safe-area-inset-bottom));
+    border-radius:22px 22px 0 0; padding:0 16px calc(20px + env(safe-area-inset-bottom));
     transform:translateY(100%); visibility:hidden;
     transition:transform .26s cubic-bezier(.32,.72,0,1), visibility 0s linear .26s;
     max-height:88vh; overflow-y:auto;
@@ -556,8 +572,8 @@
   .field label{display:block; font-size:12px; color:var(--hint); margin-bottom:5px}
   .field input, .field textarea, .field select{
     width:100%; font:inherit; font-size:15px; color:var(--text);
-    background:var(--card); border:1px solid var(--sep); border-radius:10px;
-    padding:10px 12px; outline:none; -webkit-appearance:none; appearance:none;
+    background:var(--card); border:1px solid var(--sep); border-radius:12px;
+    padding:11px 13px; outline:none; -webkit-appearance:none; appearance:none;
   }
   .field textarea{min-height:74px; max-height:280px; overflow-y:auto; resize:none}
   .timeline{display:flex; flex-direction:column; gap:0}
@@ -578,15 +594,15 @@
     color:var(--st-overdue-ink); border-radius:10px; padding:9px 12px; font-size:13px; margin-bottom:10px;
   }
   .sheet .submit{
-    width:100%; border:none; border-radius:12px; margin-top:4px;
-    background:var(--btn); color:var(--btn-text); font-size:15px; font-weight:600;
-    padding:13px; cursor:pointer;
+    width:100%; border:none; border-radius:14px; margin-top:4px;
+    background:var(--btn); color:var(--btn-text); font-size:16px; font-weight:600;
+    padding:14px; cursor:pointer;
   }
   .sheet .submit:hover{background:var(--accent-hover)}
   .sheet .submit[disabled]{opacity:.55; cursor:default}
   .more-item{
     display:flex; align-items:center; gap:12px; width:100%;
-    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    background:var(--card); border:1px solid var(--border); border-radius:16px;
     color:var(--text); font:inherit; font-size:15px; font-weight:600;
     padding:14px 16px; margin-bottom:10px; cursor:pointer; text-align:left;
   }
