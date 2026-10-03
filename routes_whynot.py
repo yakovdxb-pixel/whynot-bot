@@ -32,6 +32,7 @@ PIPELINE_ORDER = ["script", "approval", "revisions", "done", "published"]
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
+INIT_DATA_MAX_AGE = 24 * 3600  # seconds; Telegram initData older than this is rejected
 
 router = APIRouter(prefix="/api", tags=["whynot-os"])
 
@@ -80,6 +81,12 @@ def _validate_init_data(init_data: str) -> dict:
     expected = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, received_hash):
         raise HTTPException(403, "Invalid Telegram signature")
+    try:
+        auth_date = int(parsed.get("auth_date", "0"))
+    except ValueError:
+        auth_date = 0
+    if _now().timestamp() - auth_date > INIT_DATA_MAX_AGE:
+        raise HTTPException(403, "Сессия Telegram устарела — закройте и откройте приложение заново")
     try:
         return json.loads(parsed.get("user", "{}"))
     except json.JSONDecodeError:
