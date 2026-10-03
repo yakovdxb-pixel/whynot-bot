@@ -165,6 +165,9 @@
   .card .row{display:flex; align-items:flex-start; justify-content:space-between; gap:10px}
   .card .title{font-weight:600; font-size:15px; margin:0}
   .card .desc{color:var(--hint); font-size:13px; margin:5px 0 0; white-space:pre-wrap}
+  .card .desc.clamp{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; overflow:hidden}
+  .desc-more{background:none; border:0; padding:4px 0 0; color:var(--link); font:inherit; font-size:13px; cursor:pointer}
+  .desc-more[hidden]{display:none}
   .card .meta{color:var(--hint); font-size:12px; margin-top:7px; display:flex; gap:10px; flex-wrap:wrap}
 
   .pill{
@@ -750,7 +753,7 @@ const I18N = {
     "field.content_kind":"Вид контента","field.company":"Компания","scope.mineIdeas":"Мои","cscope.mine":"Мои проекты",
     "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Другое","pf.none":"—",
     "ss.planned":"Запланирована","ss.done":"Отснята","ss.cancelled":"Отменена",
-    "pr.normal":"Обычный","pr.high":"Высокий","pr.urgent":"Срочный","task.assignedBy":"Поставил",
+    "pr.normal":"Обычный","pr.high":"Высокий","pr.urgent":"Срочный","task.assignedBy":"Поставил","task.more":"Подробнее","task.less":"Свернуть",
     "fmt.post":"Пост","fmt.reels":"Reels","fmt.story":"Сторис","fmt.carousel":"Карусель","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Другое",
     "tn.toWork":"▶ В работу","tn.toDone":"✅ Готово","tn.doneMark":"✅ Выполнено",
     "misc.loading":"Загрузка…","misc.noDeadline":"без срока","misc.editArrow":"изменить ›",
@@ -808,7 +811,7 @@ const I18N = {
     "field.content_kind":"Kontent turi","field.company":"Kompaniya","scope.mineIdeas":"Meniki","cscope.mine":"Mening loyihalarim",
     "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Boshqa","pf.none":"—",
     "ss.planned":"Rejalashtirilgan","ss.done":"Suratga olingan","ss.cancelled":"Bekor qilingan",
-    "pr.normal":"Oddiy","pr.high":"Yuqori","pr.urgent":"Shoshilinch","task.assignedBy":"Tayinladi",
+    "pr.normal":"Oddiy","pr.high":"Yuqori","pr.urgent":"Shoshilinch","task.assignedBy":"Tayinladi","task.more":"Batafsil","task.less":"Yigʻish",
     "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Storis","fmt.carousel":"Karusel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Boshqa",
     "tn.toWork":"▶ Ishga","tn.toDone":"✅ Tayyor","tn.doneMark":"✅ Bajarildi",
     "misc.loading":"Yuklanmoqda…","misc.noDeadline":"muddatsiz","misc.editArrow":"tahrirlash ›",
@@ -866,7 +869,7 @@ const I18N = {
     "field.content_kind":"Content type","field.company":"Company","scope.mineIdeas":"Mine","cscope.mine":"My projects",
     "pf.instagram":"Instagram","pf.tiktok":"TikTok","pf.youtube":"YouTube","pf.telegram":"Telegram","pf.vk":"VK","pf.other":"Other","pf.none":"—",
     "ss.planned":"Planned","ss.done":"Shot","ss.cancelled":"Cancelled",
-    "pr.normal":"Normal","pr.high":"High","pr.urgent":"Urgent","task.assignedBy":"Assigned by",
+    "pr.normal":"Normal","pr.high":"High","pr.urgent":"Urgent","task.assignedBy":"Assigned by","task.more":"More","task.less":"Less",
     "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Story","fmt.carousel":"Carousel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Other",
     "tn.toWork":"▶ Start","tn.toDone":"✅ Done","tn.doneMark":"✅ Completed",
     "misc.loading":"Loading…","misc.noDeadline":"no deadline","misc.editArrow":"edit ›",
@@ -1075,7 +1078,8 @@ function taskCard(tk){
       <p class="title">${esc(tk.title || "—")}</p>
       <span class="pill ${esc(st)}">${esc(STATUS_LABELS[st] || st)}</span>
     </div>
-    ${tk.description ? `<p class="desc">${esc(tk.description)}</p>` : ""}
+    ${tk.description ? `<p class="desc clamp">${esc(tk.description)}</p>
+      <button class="desc-more" data-desc-more hidden>${esc(t("task.more"))}</button>` : ""}
     <div class="meta">
       <span>${deadlineMeta(tk.deadline)}</span>
       ${tk.created_by_name ? `<span>📌 ${esc(t("task.assignedBy"))}: ${esc(tk.created_by_name)}</span>` : ""}
@@ -1174,6 +1178,19 @@ async function renderHome(){
     parts.push(d.my_content.map(c => contentCard(c, {advance:false, jobs:false})).join(""));
   }
   view.innerHTML = parts.join("");
+  markClampedDescs(view);
+}
+
+// Show «Подробнее» only under descriptions that are actually cut at 3 lines.
+// Cards inside a closed <details> have no layout yet — re-check when it opens.
+function markClampedDescs(root){
+  root.querySelectorAll(".desc.clamp").forEach(p => {
+    const btn = p.nextElementSibling;
+    if (btn && btn.matches("[data-desc-more]") && p.offsetParent)
+      btn.hidden = p.scrollHeight <= p.clientHeight + 1;
+  });
+  root.querySelectorAll("details.stale-block").forEach(d =>
+    d.addEventListener("toggle", () => d.open && markClampedDescs(d), {once:true}));
 }
 
 
@@ -1794,6 +1811,13 @@ view.addEventListener("change", async e => {
 });
 
 view.addEventListener("click", async e => {
+  const descMore = e.target.closest("[data-desc-more]");
+  if (descMore){
+    const p = descMore.previousElementSibling;
+    const expanded = p.classList.toggle("clamp") === false;
+    descMore.textContent = t(expanded ? "task.less" : "task.more");
+    return;   // don't fall through to the card's edit handler
+  }
   const naCopy = e.target.closest("#naCopy");
   if (naCopy){
     const t = naCopy.textContent.trim();
