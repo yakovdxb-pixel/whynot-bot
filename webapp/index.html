@@ -67,7 +67,7 @@
     --sheet-bg:#FFFFFF; --sheet-card:#F6F4FA;
     --toast-bg:#1E1530; --toast-text:#FFFFFF;
     /* iOS-style frosted bars */
-    --glass-bg:rgba(255,255,255,.27); --glass-border:rgba(255,255,255,.55);
+    --glass-bg:rgba(255,255,255,.22); --glass-border:rgba(255,255,255,.55);
     --glass-shadow:0 10px 30px rgba(30,21,48,.14), 0 1px 3px rgba(30,21,48,.08);
     --tab-h:62px;                         /* floating tab bar height */
     --st-done:#1F9D6B;        --st-done-ink:#187751;
@@ -92,7 +92,7 @@
     --outer:#0B0710;
     --sheet-bg:#1E1628; --sheet-card:#2A2036;
     --toast-bg:#F1EDF7; --toast-text:#1E1530;
-    --glass-bg:rgba(30,22,40,.28); --glass-border:rgba(255,255,255,.12);
+    --glass-bg:rgba(30,22,40,.22); --glass-border:rgba(255,255,255,.12);
     --glass-shadow:0 10px 30px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
     --st-done:#34C48A;        --st-done-ink:#34C48A;
     --st-overdue:#F2687B;     --st-overdue-ink:#F26D7F;
@@ -302,6 +302,15 @@
   .cjob-chip.st-overdue{border-left-color:var(--st-overdue)}
   .cjob-chip.st-cancelled{opacity:.5; text-decoration:line-through}
   .cjob-btns{display:flex; gap:6px; margin-top:9px}
+  /* card buttons share one row instead of stacking */
+  .card-actions{display:flex; gap:8px; margin-top:11px}
+  .card-actions > button{flex:1 1 0; min-width:0; margin-top:0; padding:10px 8px; font-size:14px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .card-actions > .done-mark{flex:1; margin-top:0; align-self:center}
+  /* link covers in the refs strip: ▶ marks a video, plain cover = photo/page */
+  .ref-thumb .rt-play{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none}
+  .ref-thumb .rt-play::after{content:"▶"; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,.55);
+    color:#fff; font-size:9px; line-height:20px; text-align:center; padding-left:2px; box-sizing:border-box}
 
   .pills-row{
     display:flex; gap:6px; overflow-x:auto; margin:2px 0 12px; padding-bottom:4px;
@@ -625,6 +634,56 @@
     padding:14px 16px; margin-bottom:10px; cursor:pointer; text-align:left;
   }
   .more-item:hover{background:var(--hover)}
+
+  /* ── kanban board (Главная tasks / Контент stages) ─────────── */
+  .viewbar{display:flex; gap:8px; align-items:center; margin:2px 0 10px}
+  .viewbar .seg{flex:1; margin:0}
+  .vtoggle{display:flex; background:var(--seg-bg); border-radius:10px; padding:3px; flex:none}
+  .vtoggle button{border:none; background:none; color:var(--hint); cursor:pointer; font:inherit;
+    font-size:13px; font-weight:600; padding:7px 10px; border-radius:8px}
+  .vtoggle button.on{background:var(--card); color:var(--link); box-shadow:var(--shadow)}
+  .btabs{display:flex; gap:6px; overflow-x:auto; margin:0 0 10px; padding-bottom:2px; scrollbar-width:none}
+  .btabs::-webkit-scrollbar{display:none}
+  .btab{flex:0 0 auto; display:flex; align-items:center; gap:6px; border:1px solid var(--border);
+    background:var(--card); color:var(--hint); border-radius:999px; padding:6px 11px;
+    font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; min-height:34px}
+  .btab i{width:8px; height:8px; border-radius:50%; background:var(--c)}
+  .btab b{font-weight:700; color:var(--text)}
+  .btab.on{background:var(--accent-soft); color:var(--link); border-color:var(--accent)}
+  .btab.drop-over{outline:2px dashed var(--accent); outline-offset:1px; background:var(--accent-soft); color:var(--link)}
+  .board{display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory;
+    margin:0 -16px; padding:0 16px 10px; scroll-padding:0 16px; scrollbar-width:none;
+    -webkit-overflow-scrolling:touch}
+  .board::-webkit-scrollbar{display:none}
+  .board.dragging{scroll-snap-type:none}
+  .bcol{flex:0 0 100%; scroll-snap-align:start; background:var(--seg-bg); border-radius:14px;
+    padding:10px 8px 12px; display:flex; flex-direction:column; min-width:0}
+  .bcol-head{display:flex; align-items:center; gap:7px; font-weight:700; font-size:13px; color:var(--text); margin:2px 4px 10px}
+  .bcol-head i{width:9px; height:9px; border-radius:50%; background:var(--c); flex:none}
+  .bcol-head .cnt{margin-left:auto; color:var(--hint); font-weight:600}
+  .bcol-list{flex:1; min-height:140px; display:flex; flex-direction:column; gap:8px}
+  .bcol-empty{color:var(--hint); font-size:12px; text-align:center; padding:18px 6px; border:1px dashed var(--border); border-radius:10px}
+  .bcol-list:has(.bcard) + .bcol-empty{display:none}
+  .bcard{background:var(--card); border:1px solid var(--border); border-left:3px solid var(--c, var(--border));
+    border-radius:12px; padding:10px 11px; box-shadow:var(--shadow); cursor:pointer;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none}
+  .bcard .title{font-size:14px; font-weight:600; margin:0; line-height:1.35}
+  .bcard .meta{color:var(--hint); font-size:12px; margin-top:6px; display:flex; gap:8px; flex-wrap:wrap}
+  .bcard.nodrag{cursor:pointer}
+  .bcard.sortable-ghost{opacity:.35}
+  .bcard.sortable-chosen{box-shadow:var(--shadow-pop)}
+  .bcard.sortable-drag{transform:rotate(1.5deg)}
+  /* wide screens: board gets a wide window, columns side by side, no tabs */
+  @media (min-width:820px){
+    html.board-mode body{max-width:min(1480px, calc(100vw - 40px))}
+    html.board-mode .bcol{flex:0 0 272px}
+    html.board-mode .board{scroll-snap-type:none}
+    html.board-mode .btabs{display:none}
+    html.board-mode .viewbar .seg{flex:0 1 340px}
+    html.board-mode .viewbar{justify-content:space-between}
+    html.board-mode .sheet{max-width:520px; margin:0 auto}   /* forms stay form-sized on the wide board */
+    html.board-mode nav{max-width:432px; margin:0 auto}     /* tab bar keeps its phone size */
+  }
   .more-item span{font-size:19px}
 </style>
 </head>
@@ -871,7 +930,7 @@ const I18N = {
     "form.newIdea":"Новая идея","form.newBlocker":"Новый блокер",
     "form.newClient":"Новый клиент","form.addTeam":"Добавить в команду",
     "btn.create":"Создать","btn.save":"Сохранить","btn.saving":"Сохранение…","btn.cancel":"Отмена",
-    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.copyCaption":"📋 Скопировать подпись","ref.igNoPreview":"Instagram не отдал превью.","ref.addScreenshot":"＋ Приложить скриншот","toast.captionCopied":"Подпись скопирована","toast.copyFailed":"Не удалось скопировать — скопируйте вручную в карточке","btn.uploadingRefs":"Загрузка референсов…",
+    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.copyCaption":"📋 Скопировать подпись","btn.copyCaptionShort":"📋 Скопировать","ref.igNoPreview":"Instagram не отдал превью.","ref.addScreenshot":"＋ Приложить скриншот","toast.captionCopied":"Подпись скопирована","toast.copyFailed":"Не удалось скопировать — скопируйте вручную в карточке","btn.uploadingRefs":"Загрузка референсов…",
     "field.title":"Название","field.description":"Описание","field.priority":"Приоритет","field.deadline":"Дедлайн",
     "field.assignee_ids":"Исполнители","field.client_id":"Клиент","field.project_id":"Проект",
     "field.refs":"Референсы — ссылки и файлы","field.topic":"Тема / название","field.rubric":"Рубрика",
@@ -883,7 +942,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
     "sec.tasks":"Задачи","sec.stale":"Зависшие — просрочка больше 7 дней","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
-    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
+    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","view.board":"Доска","view.list":"Список","board.col.pending":"Ожидает","board.col.in_progress":"В работе","board.col.review":"На проверке","board.col.revision":"Доработка","board.col.done":"Готово","board.empty":"Перетащите сюда","board.onlyMgrDone":"Перевести в «Готово» или «Доработку» может только admin/am/director","board.maxReview":"Исполнитель может перевести задачу максимум до «На проверке»","board.notYours":"Двигать можно только свои задачи","board.allProjects":"Все","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
     "empty.shoots":"Съёмок пока нет — добавь через «+»",
     "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
@@ -929,7 +988,7 @@ const I18N = {
     "form.newIdea":"Yangi gʻoya","form.newBlocker":"Yangi toʻsiq",
     "form.newClient":"Yangi mijoz","form.addTeam":"Jamoaga qoʻshish",
     "btn.create":"Yaratish","btn.save":"Saqlash","btn.saving":"Saqlanmoqda…","btn.cancel":"Bekor qilish",
-    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.copyCaption":"📋 Matnni nusxalash","ref.igNoPreview":"Instagram koʻrinishni bermadi.","ref.addScreenshot":"＋ Skrinshot biriktirish","toast.captionCopied":"Matn nusxalandi","toast.copyFailed":"Nusxalab boʻlmadi — kartochkadan qoʻlda nusxalang","btn.uploadingRefs":"Namunalar yuklanmoqda…",
+    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.copyCaption":"📋 Matnni nusxalash","btn.copyCaptionShort":"📋 Nusxalash","ref.igNoPreview":"Instagram koʻrinishni bermadi.","ref.addScreenshot":"＋ Skrinshot biriktirish","toast.captionCopied":"Matn nusxalandi","toast.copyFailed":"Nusxalab boʻlmadi — kartochkadan qoʻlda nusxalang","btn.uploadingRefs":"Namunalar yuklanmoqda…",
     "field.title":"Nomi","field.description":"Tavsif","field.priority":"Muhimlik","field.deadline":"Muddat",
     "field.assignee_ids":"Ijrochilar","field.client_id":"Mijoz","field.project_id":"Loyiha",
     "field.refs":"Namunalar — havolalar va fayllar","field.topic":"Mavzu / nomi","field.rubric":"Rubrika",
@@ -941,7 +1000,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
     "sec.tasks":"Vazifalar","sec.stale":"Osilib qolganlar — 7 kundan ortiq kechikkan","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
-    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
+    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","view.board":"Doska","view.list":"Roʻyxat","board.col.pending":"Kutilmoqda","board.col.in_progress":"Ishda","board.col.review":"Tekshiruvda","board.col.revision":"Qayta ishlash","board.col.done":"Tayyor","board.empty":"Shu yerga torting","board.onlyMgrDone":"«Tayyor» yoki «Qayta ishlash»ga faqat admin/am/director oʻtkaza oladi","board.maxReview":"Ijrochi vazifani eng koʻpi bilan «Tekshiruvda»gacha oʻtkaza oladi","board.notYours":"Faqat oʻz vazifalaringizni surish mumkin","board.allProjects":"Barchasi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
     "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
     "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
@@ -987,7 +1046,7 @@ const I18N = {
     "form.newIdea":"New idea","form.newBlocker":"New blocker",
     "form.newClient":"New client","form.addTeam":"Add to team",
     "btn.create":"Create","btn.save":"Save","btn.saving":"Saving…","btn.cancel":"Cancel",
-    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.copyCaption":"📋 Copy caption","ref.igNoPreview":"Instagram gave no preview.","ref.addScreenshot":"＋ Attach a screenshot","toast.captionCopied":"Caption copied","toast.copyFailed":"Couldn't copy — copy it manually from the card","btn.uploadingRefs":"Uploading references…",
+    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.copyCaption":"📋 Copy caption","btn.copyCaptionShort":"📋 Copy","ref.igNoPreview":"Instagram gave no preview.","ref.addScreenshot":"＋ Attach a screenshot","toast.captionCopied":"Caption copied","toast.copyFailed":"Couldn't copy — copy it manually from the card","btn.uploadingRefs":"Uploading references…",
     "field.title":"Title","field.description":"Description","field.priority":"Priority","field.deadline":"Deadline",
     "field.assignee_ids":"Assignees","field.client_id":"Client","field.project_id":"Project",
     "field.refs":"References — links & files","field.topic":"Topic / title","field.rubric":"Rubric",
@@ -999,7 +1058,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
     "sec.tasks":"Tasks","sec.stale":"Stuck — overdue by more than 7 days","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
-    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
+    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","view.board":"Board","view.list":"List","board.col.pending":"To do","board.col.in_progress":"In progress","board.col.review":"In review","board.col.revision":"Rework","board.col.done":"Done","board.empty":"Drop here","board.onlyMgrDone":"Only admin/am/director can move a task to Done or Rework","board.maxReview":"An assignee can move a task at most to In review","board.notYours":"You can only move your own tasks","board.allProjects":"All","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
     "empty.shoots":"No shoots yet — add one with “+”",
     "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
@@ -1113,6 +1172,11 @@ const view = document.getElementById("view");
 const screenTitle = document.getElementById("screenTitle");
 let currentTab = "home";
 let homeScope = "mine";   // "mine" | "all" | "review" — Главная tasks filter
+let homeProjectId = "";   // "" = all — Главная project (≈ client) filter
+// "list" | "board" per screen, remembered on this device
+function savedView(k){ try { return localStorage.getItem("view_" + k) === "board" ? "board" : "list"; } catch(e){ return "list"; } }
+function saveView(k, v){ try { localStorage.setItem("view_" + k, v); } catch(e){} }
+let homeView = savedView("home"), contentView = savedView("content");
 let teamSub = "team";     // "team" | "clients" — Команда sub-section
 let contentClientId = ""; // "" = all — Контент client filter (legacy)
 let contentProjectId = ""; // "" = all — Контент project filter
@@ -1224,7 +1288,9 @@ function refStrip(kind, id, count, thumbs){
   if (!count) return "";
   const t = (thumbs || []).map(x =>
     `<span class="ref-thumb">
-       <img class="ref-mini" src="${esc(x.download)}?ia=${encodeURIComponent(INIT_DATA)}" alt="" data-refs="${kind}:${id}">
+       <img class="ref-mini" src="${esc(x.image || (x.download + "?ia=" + encodeURIComponent(INIT_DATA)))}" alt=""
+         data-refs="${kind}:${id}"${x.image ? ` referrerpolicy="no-referrer" loading="lazy" onerror="this.closest('.ref-thumb').remove()"` : ""}>
+       ${x.url && embedFor(x.url) ? `<span class="rt-play"></span>` : ""}
        <button class="ref-x" data-ref-del-card="${x.id}" aria-label="Удалить">✕</button>
      </span>`).join("");
   return `<div class="ref-row" data-refs="${kind}:${id}">
@@ -1322,10 +1388,8 @@ function taskCard(tk){
   const who = assigneesLabel(tk);
   const mgr = isManager();
   const reviewBtns = st === "review" && mgr ? `
-    <div class="cjob-btns">
       <button class="act" data-task-approve="${tk.id}">✅ ${esc(t("task.approve"))}</button>
-      <button class="act ghost" data-task-revision="${tk.id}">🔄 ${esc(t("task.revision"))}</button>
-    </div>` : "";
+      <button class="act ghost" data-task-revision="${tk.id}">🔄 ${esc(t("task.revision"))}</button>` : "";
   const publishBtn = st === "done" && mgr
     ? `<button class="act ghost" data-task-publish="${tk.id}">🚀 ${esc(t("task.publish"))}</button>` : "";
   return `
@@ -1347,12 +1411,12 @@ function taskCard(tk){
       : (st === "done" || st === "published") && tk.file_id ? taskFileLink(tk) : ""}
     ${st === "revision" && tk.review_comment ? `<div class="review-note">🔄 ${esc(tk.review_comment)}</div>` : ""}
     ${refStrip("task", tk.id, tk.refs_count || 0, tk.ref_thumbs)}
-    ${reviewBtns}${publishBtn}
-    ${next && st !== "review"
+    ${cardActions(reviewBtns + publishBtn + (next && st !== "review"
       ? `<button class="act" data-task-to="${nextTo(tk)}" data-task-id="${tk.id}">${nextTo(tk) === "review" ? t("tn.submit") : next.label}</button>`
-      : (st === "done" && !mgr) ? `<div class="done-mark">${esc(t("tn.doneMark"))}</div>` : ""}
+      : (st === "done" && !mgr) ? `<div class="done-mark">${esc(t("tn.doneMark"))}</div>` : ""))}
   </div>`;
 }
+function cardActions(html){ return html.trim() ? `<div class="card-actions">${html}</div>` : ""; }
 
 function blockerCard(b){
   const canDel = isManager() || (ME && (b.reported_by === ME.id || b.assigned_to === ME.id));
@@ -1373,6 +1437,224 @@ function blockerCard(b){
 
 /* ── screens ─────────────────────────────────────────────── */
 
+/* ── kanban board ──────────────────────────────────────────────
+   Shared by Главная (task statuses) and Контент (pipeline stages). Columns are
+   SortableJS lists (CDN, loaded on first use): mouse drag on desktop, long-press
+   drag on touch. On phones one column fills the screen (swipe / tabs with
+   counters); a card can also be dropped on a tab to move it to that column. */
+const TASK_COLS = [
+  { key:"pending",     c:"var(--st-pending)" },
+  { key:"in_progress", c:"var(--st-in_progress)" },
+  { key:"review",      c:"var(--st-review)" },
+  { key:"revision",    c:"var(--st-revision)" },
+  { key:"done",        c:"var(--st-done)" },
+];
+const CONTENT_COLS = () => _PIPE.map((k, i) => ({ key:k, label: PIPELINE_LABELS[k] || k,
+  c: ["var(--st-pending)", "var(--accent)", "var(--st-revision)", "var(--st-review)", "var(--st-done)"][i] || "var(--accent)" }));
+function colOfTask(tk){
+  const st = tk.status || "pending";
+  return st === "overdue" ? "pending" : st === "published" ? "done" : st;
+}
+function viewToggle(screen, cur){
+  return `<div class="vtoggle">
+    <button data-view="${screen}:list" class="${cur === "list" ? "on" : ""}">${esc(t("view.list"))}</button>
+    <button data-view="${screen}:board" class="${cur === "board" ? "on" : ""}">${esc(t("view.board"))}</button>
+  </div>`;
+}
+const boardState = { col: { task: 0, content: 0 } };   // visible column on phones, kept across re-renders
+
+function renderBoard(kind, cols, items, colOf, cardFn){
+  const by = Object.fromEntries(cols.map(c => [c.key, []]));
+  items.forEach(it => { const k = colOf(it); if (by[k]) by[k].push(it); });
+  const label = c => c.label || t("board.col." + c.key);
+  return `
+  <div class="btabs" data-btabs="${kind}">${cols.map((c, i) =>
+    `<div class="btab${i === boardState.col[kind] ? " on" : ""}" data-btab="${i}" data-col="${c.key}" style="--c:${c.c}"><i></i>${esc(label(c))} <b>${by[c.key].length}</b></div>`).join("")}</div>
+  <div class="board" data-board="${kind}">${cols.map(c => `
+    <section class="bcol" style="--c:${c.c}">
+      <div class="bcol-head"><i></i>${esc(label(c))}<span class="cnt">${by[c.key].length}</span></div>
+      <div class="bcol-list" data-col="${c.key}">${by[c.key].map(cardFn).join("")}</div>
+      <div class="bcol-empty">${esc(t("board.empty"))}</div>
+    </section>`).join("")}
+  </div>`;
+}
+
+function boardTaskCard(tk){
+  taskById[tk.id] = tk;
+  const st = tk.status || "pending";
+  const who = (tk.assignees || []).map(a => a.name).filter(Boolean).join(", ");
+  const late = tk.deadline && !["done", "published", "review"].includes(st) && new Date(tk.deadline) < new Date();
+  return `<div class="bcard${canDragTask(tk) ? "" : " nodrag"}" data-bid="${tk.id}" data-task-edit="${tk.id}"
+      style="--c:var(--st-${st === "overdue" || late ? "overdue" : st === "published" ? "done" : st})">
+    <p class="title">${esc(tk.title || "—")}</p>
+    <div class="meta">
+      ${tk.deadline ? `<span${late ? ` class="late"` : ""}>⏰ ${esc(fmtDate(tk.deadline))}</span>` : ""}
+      ${who ? `<span>👤 ${esc(who)}</span>` : ""}
+      ${tk.refs_count ? `<span>📎 ${tk.refs_count}</span>` : ""}
+      ${tk.priority && tk.priority !== "normal" ? `<span>❗</span>` : ""}
+    </div>
+  </div>`;
+}
+function boardContentCard(c){
+  contentById[c.id] = c;
+  const late = isContentLate(c);
+  const when = c.publish_at ? fmtDateTime(c.publish_at) : c.publish_date ? fmtDate(c.publish_date) : null;
+  const who = (c.assignees || []).map(a => a.name).filter(Boolean).join(", ");
+  return `<div class="bcard${c.can_edit === false ? " nodrag" : ""}" data-bid="${c.id}" data-content-edit="${c.id}"
+      style="--c:${late ? "var(--st-overdue)" : "var(--accent)"}">
+    <p class="title">${esc(c.topic || c.number || ("Контент #" + c.id))}</p>
+    <div class="meta">
+      ${c.format ? `<span>🎞 ${esc(t("fmt." + c.format) || c.format)}</span>` : ""}
+      ${when ? `<span${late ? ` class="late"` : ""}>📅 ${esc(when)}</span>` : ""}
+      ${c.project_name ? `<span>📁 ${esc(c.project_name)}</span>` : ""}
+      ${who ? `<span>👤 ${esc(who)}</span>` : ""}
+    </div>
+  </div>`;
+}
+
+// who may drag what (same rules as the buttons; the server has the final word)
+function canDragTask(tk){
+  if (isManager()) return true;
+  const mine = isTaskAssignee(tk) || (!!ME && tk.created_by === ME.id);
+  return mine && !["done", "published"].includes(tk.status);
+}
+function taskMoveDenied(tk, to){
+  if (isManager()) return null;
+  if (!(isTaskAssignee(tk) || (!!ME && tk.created_by === ME.id))) return t("board.notYours");
+  if (to === "done" || to === "revision") return t("board.onlyMgrDone");
+  if (!["pending", "in_progress", "review"].includes(to)) return t("board.maxReview");
+  return null;
+}
+
+let _sortableLoading = null;
+function loadSortable(){
+  if (window.Sortable) return Promise.resolve();
+  if (!_sortableLoading) _sortableLoading = new Promise((res, rej) => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js";
+    sc.onload = res; sc.onerror = () => { _sortableLoading = null; rej(new Error("SortableJS не загрузился")); };
+    document.head.appendChild(sc);
+  });
+  return _sortableLoading;
+}
+
+async function initBoard(kind){
+  const boardEl = view.querySelector(`[data-board="${kind}"]`);
+  const tabsEl = view.querySelector(`[data-btabs="${kind}"]`);
+  if (!boardEl) return;
+  document.documentElement.classList.add("board-mode");
+  const cols = [...boardEl.querySelectorAll(".bcol")];
+  const tabs = [...tabsEl.querySelectorAll(".btab")];
+  const showCol = (i, smooth) => {
+    boardState.col[kind] = i;
+    tabs.forEach((tb, k) => tb.classList.toggle("on", k === i));
+    if (!cols[i]) return;
+    const left = cols[i].offsetLeft - boardEl.offsetLeft - 16;
+    if (!smooth){ boardEl.scrollLeft = left; return; }
+    // smooth programmatic scroll is cancelled by mandatory scroll-snap in Chromium —
+    // switch snapping off for the animation, then back on
+    boardEl.classList.add("dragging");
+    boardEl.scrollTo({ left, behavior: "smooth" });
+    setTimeout(() => boardEl.classList.remove("dragging"), 450);
+  };
+  const phone = getComputedStyle(tabsEl).display !== "none";   // wide screens: all columns visible, no tabs
+  if (phone) showCol(boardState.col[kind] || 0, false); else boardEl.scrollLeft = 0;
+  tabs.forEach((tb, i) => tb.addEventListener("click", () => { haptic(); showCol(i, true); }));
+  let st;
+  boardEl.addEventListener("scroll", () => {
+    clearTimeout(st);
+    st = setTimeout(() => {
+      const x = boardEl.scrollLeft;
+      let best = 0;
+      cols.forEach((c, i) => { if (Math.abs(c.offsetLeft - boardEl.offsetLeft - 16 - x) < Math.abs(cols[best].offsetLeft - boardEl.offsetLeft - 16 - x)) best = i; });
+      if (best !== boardState.col[kind]){ boardState.col[kind] = best; tabs.forEach((tb, k) => tb.classList.toggle("on", k === best)); }
+    }, 80);
+  }, { passive:true });
+
+  try { await loadSortable(); } catch(e){ toast(e.message); return; }
+  const revert = evt => {
+    const ref = evt.from.children[evt.oldIndex] || null;
+    evt.from.insertBefore(evt.item, ref);
+  };
+  const onDrop = async (evt, to) => {
+    const id = +evt.item.dataset.bid;
+    const ok = kind === "task" ? await moveTask(id, to) : await moveContent(id, to);
+    if (!ok) revert(evt);
+  };
+  // phone: the target column is usually off-screen, so a card can be dropped on its tab.
+  // Track the pointer while dragging and highlight the tab under it.
+  let overTab = null;
+  const tabAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest(".btab"); };
+  const track = e => {
+    const p = e.touches ? e.touches[0] : e;
+    if (!p) return;
+    overTab = tabsEl.contains(tabAt(p.clientX, p.clientY)) ? tabAt(p.clientX, p.clientY) : null;
+    tabs.forEach(tb => tb.classList.toggle("drop-over", tb === overTab));
+  };
+  Sortable.create && boardEl.querySelectorAll(".bcol-list").forEach(list => Sortable.create(list, {
+    group: "board-" + kind,
+    animation: 150, delay: 280, delayOnTouchOnly: true, touchStartThreshold: 6,
+    forceFallback: true, fallbackTolerance: 4,            // same pointer-driven drag for mouse and touch
+    // touch events, not pointer events: once a long-press drag starts Sortable can cancel
+    // touchmove and keep iOS from turning the gesture into a scroll (pointer events would
+    // get a pointercancel and drop the card mid-drag)
+    supportPointer: false,
+    filter: ".nodrag", preventOnFilter: false, draggable: ".bcard",
+    scroll: boardEl, scrollSensitivity: 60, bubbleScroll: true,
+    onStart: () => {
+      boardEl.classList.add("dragging"); haptic(); overTab = null;
+      document.addEventListener("mousemove", track); document.addEventListener("touchmove", track, { passive:true });
+    },
+    onAdd: evt => { if (!overTab) onDrop(evt, list.dataset.col); },
+    onEnd: evt => {
+      boardEl.classList.remove("dragging");
+      document.removeEventListener("mousemove", track); document.removeEventListener("touchmove", track);
+      tabs.forEach(tb => tb.classList.remove("drop-over"));
+      if (overTab){
+        const to = overTab.dataset.col;
+        overTab = null;
+        if (evt.from !== evt.to) revert(evt);
+        onDrop({ ...evt, from: evt.from, to: evt.from, item: evt.item, oldIndex: evt.oldIndex }, to);
+      }
+    },
+  }));
+}
+
+async function moveTask(id, to){
+  const tk = taskById[id];
+  if (!tk) return false;
+  if (colOfTask(tk) === to) return false;
+  const denied = taskMoveDenied(tk, to);
+  if (denied){ haptic("heavy"); toast(denied); return false; }
+  if (to === "revision"){                       // same as «На доработку»: needs a comment
+    openTaskRevision(tk);
+    return false;                               // stays put until the form is sent (then reloads)
+  }
+  try {
+    if (to === "done" && tk.status === "review"){
+      await api(`/api/tasks/${id}/approve`, { method:"POST" });   // same as «Принять» (notifies)
+    } else {
+      await api(`/api/tasks/${id}`, { method:"PATCH", body:{ status: to } });  // «Сдать» etc.
+    }
+    haptic("medium");
+    toast(to === "review" ? t("toast.submitted") : t("toast.saved"));
+    await load(currentTab);
+    return true;
+  } catch(err){ toast(err.message); return false; }
+}
+
+async function moveContent(id, to){
+  const c = contentById[id];
+  if (!c || (c.pipeline_status || "script") === to) return false;
+  if (c.can_edit === false){ toast(t("board.notYours")); return false; }
+  try {
+    await api(`/api/content/${id}`, { method:"PATCH", body:{ pipeline_status: to } });
+    haptic("medium"); toast(t("toast.saved"));
+    await load(currentTab);
+    return true;
+  } catch(err){ toast(err.message); return false; }
+}
+
 const STALE_DAYS = 7;
 const CLOSED_TASK_ST = ["done", "published", "cancelled"];
 
@@ -1388,25 +1670,46 @@ function splitStaleTasks(tasks){
 }
 
 async function renderHome(){
+  const board = homeView === "board";
+  if (board && homeScope === "review") homeScope = "all";     // «На проверке» is a column on the board
   const wantReview = homeScope === "review";
-  const [d, ownTasks, reviewTasks] = await Promise.all([
+  const [d, ownTasks, reviewTasks, projects] = await Promise.all([
     api("/api/home"),
     wantReview ? Promise.resolve(null) : api("/api/tasks?my=" + (homeScope === "mine" ? "true" : "false")),
     api("/api/tasks?status=review"),
+    api("/api/projects").catch(() => []),
   ]);
   ME = d.user;
   setWhoami(d.user);
   taskById = {};
   const parts = [];
-  const tasks = wantReview ? reviewTasks : ownTasks;
+  let tasks = wantReview ? reviewTasks : ownTasks;
   const reviewCount = reviewTasks.length;
+  const pillProjects = projects.filter(p => tasks.some(tk => tk.project_id === p.id));
+  if (homeProjectId && !pillProjects.some(p => String(p.id) === String(homeProjectId))) homeProjectId = "";
+  if (homeProjectId) tasks = tasks.filter(tk => String(tk.project_id) === String(homeProjectId));
 
   parts.push(`
+    <div class="viewbar">
     <div class="seg" id="scopeSeg">
       <button data-scope="mine" class="${homeScope === "mine" ? "on" : ""}">${esc(t("scope.mine"))}</button>
       <button data-scope="all"  class="${homeScope === "all"  ? "on" : ""}">${esc(t("scope.all"))}</button>
-      <button data-scope="review" class="${homeScope === "review" ? "on" : ""}">${esc(t("scope.review"))}${reviewCount ? ` 🔴${reviewCount}` : ""}</button>
+      ${board ? "" : `<button data-scope="review" class="${homeScope === "review" ? "on" : ""}">${esc(t("scope.review"))}${reviewCount ? ` 🔴${reviewCount}` : ""}</button>`}
+    </div>
+    ${viewToggle("home", homeView)}
     </div>`);
+  if (pillProjects.length > 1){
+    parts.push(`<div class="pills-row">
+      <button class="pill-btn ${!homeProjectId ? "on" : ""}" data-hproj="">${esc(t("board.allProjects"))}</button>
+      ${pillProjects.map(p => `<button class="pill-btn ${String(homeProjectId) === String(p.id) ? "on" : ""}" data-hproj="${p.id}">${esc(p.name)}</button>`).join("")}
+    </div>`);
+  }
+  if (board){
+    parts.push(renderBoard("task", TASK_COLS, tasks, tk => colOfTask(tk), boardTaskCard));
+    view.innerHTML = parts.join("");
+    initBoard("task");
+    return;
+  }
 
   parts.push(`<div class="section-title">${esc(t("sec.tasks"))}</div>`);
   // Server order: open by nearest deadline, closed last. Open tasks overdue by
@@ -1507,9 +1810,8 @@ function contentCard(c, {advance=true, jobs=true}={}){
     </div>
     ${c.hook ? `<p class="desc">${esc(c.hook)}</p>` : ""}
     ${refStrip("content", c.id, c.refs_count || 0, c.ref_thumbs)}
-    ${c.caption ? `<button class="act ghost" data-copy-caption="${c.id}">${esc(t("btn.copyCaption"))}</button>` : ""}
     ${jobList}
-    ${jobBtns}
+    ${cardActions((c.caption ? `<button class="act ghost" data-copy-caption="${c.id}" title="${esc(t("btn.copyCaption"))}">${esc(t(jobBtns ? "btn.copyCaptionShort" : "btn.copyCaption"))}</button>` : "") + jobBtns)}
   </div>`;
 }
 
@@ -1527,10 +1829,10 @@ async function renderContent(){
     api("/api/content" + (qs.length ? "?" + qs.join("&") : "")),
   ]);
 
-  const seg = `<div class="seg" id="contentScopeSeg">
+  const seg = `<div class="viewbar"><div class="seg" id="contentScopeSeg">
       <button data-cscope="mine" class="${contentScope === "mine" ? "on" : ""}">${esc(L("Мои проекты","Mening loyihalarim","My projects"))}</button>
       <button data-cscope="all"  class="${contentScope === "all"  ? "on" : ""}">${esc(L("Все","Barchasi","All"))}</button>
-    </div>`;
+    </div>${viewToggle("content", contentView)}</div>`;
   const pillProjects = projects.filter(p => contentScope === "all" || p.is_mine);
   const pills = pillProjects.length ? `<div class="pills-row" style="margin-top:8px">
       <button class="pill-btn ${!contentProjectId ? "on" : ""}" data-cproj="">${esc(L("Все","Barchasi","All"))}</button>
@@ -1538,6 +1840,12 @@ async function renderContent(){
     </div>` : "";
 
   const parts = [seg, pills];
+  if (contentView === "board"){
+    parts.push(renderBoard("content", CONTENT_COLS(), items, c => c.pipeline_status || "script", boardContentCard));
+    view.innerHTML = parts.join("");
+    initBoard("content");
+    return;
+  }
   if (!items.length){
     parts.push(`<div class="empty">${esc(contentProjectId ? t("empty.contentProj") : t("empty.content"))}</div>`);
   } else {
@@ -2029,6 +2337,9 @@ function updateFab(){
 
 async function load(tab){
   currentTab = tab;
+  // wide window only while a board is on screen (initBoard turns it back on)
+  if (!((tab === "home" && homeView === "board") || (tab === "content" && contentView === "board")))
+    document.documentElement.classList.remove("board-mode");
   screenTitle.textContent = TITLES[tab];
   document.getElementById("screenLabel").textContent = TITLES[tab];
   document.querySelectorAll("nav button").forEach(b =>
@@ -2193,6 +2504,19 @@ view.addEventListener("click", async e => {
     const t = naCopy.textContent.trim();
     try { await navigator.clipboard.writeText(t); } catch(err){}
     haptic(); toast("ID скопирован");
+    return;
+  }
+
+  const viewBtn = e.target.closest("[data-view]");
+  if (viewBtn){
+    const [screen, v] = viewBtn.dataset.view.split(":");
+    if (screen === "home" && v !== homeView){ homeView = v; saveView("home", v); haptic(); load("home"); }
+    if (screen === "content" && v !== contentView){ contentView = v; saveView("content", v); haptic(); load("content"); }
+    return;
+  }
+  const hprojBtn = e.target.closest("[data-hproj]");
+  if (hprojBtn){
+    if (String(hprojBtn.dataset.hproj) !== String(homeProjectId)){ homeProjectId = hprojBtn.dataset.hproj; haptic(); load("home"); }
     return;
   }
 

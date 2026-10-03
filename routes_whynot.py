@@ -512,13 +512,46 @@ async def _ref_summaries(session, *, task_ids=None, content_ids=None, idea_ids=N
         select(ReferenceItem).where(col.in_(ids)).order_by(ReferenceItem.id.desc())
     )).scalars().all()
     out = {}
+    stale = _now() - timedelta(days=2)
+    missing = []
     for r in rows:
         key = getattr(r, key_attr)
         s = out.setdefault(key, {"count": 0, "thumbs": []})
         s["count"] += 1
         if r.kind == "file" and (r.mime or "").startswith("image/") and len(s["thumbs"]) < 4:
             s["thumbs"].append({"id": r.id, "download": f"/api/references/{r.id}/file"})
+        elif r.kind == "link":
+            # link cover (video / photo) as a small thumb; missing or expired covers are
+            # fetched in the background so the list itself never waits for them
+            if r.preview_image and len(s["thumbs"]) < 4:
+                s["thumbs"].append({"id": r.id, "image": r.preview_image, "url": r.url})
+            if r.preview_fetched_at is None or (r.preview_image and r.preview_fetched_at < stale):
+                missing.append(r.id)
+    _spawn_preview_fill(missing)
     return out
+
+
+_FILLING: set = set()
+
+
+def _spawn_preview_fill(ref_ids):
+    """Fill link previews in the background (own DB session), at most 6 per call."""
+    ids = [i for i in ref_ids if i not in _FILLING][:6]
+    if not ids:
+        return
+    _FILLING.update(ids)
+
+    async def run():
+        try:
+            async with AsyncSessionLocal() as s:
+                refs = (await s.execute(
+                    select(ReferenceItem).where(ReferenceItem.id.in_(ids)))).scalars().all()
+                await _fill_previews(s, refs)
+        except Exception as e:  # noqa: BLE001
+            print(f"preview fill failed: {e}")
+        finally:
+            _FILLING.difference_update(ids)
+    asyncio.get_running_loop().create_task(run())
 
 
 async def _attach_assignees(session, tasks):
