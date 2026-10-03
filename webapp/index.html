@@ -265,7 +265,7 @@
   }
   .proj-del:active{opacity:1}
   .proj-desc{
-    width:100%; margin-top:5px; font:13px inherit; color:var(--text); background:var(--bg);
+    width:100%; margin-top:5px; font:inherit; font-size:13px; color:var(--text); background:var(--bg);
     border:1px solid var(--sep); border-radius:8px; padding:6px 9px; outline:none;
     min-height:36px; resize:vertical;
   }
@@ -322,13 +322,26 @@
   .card.tappable{cursor:pointer}
   .card.tappable:active{opacity:.75}
   #memberSheet select, #memberSheet input{
-    width:100%; font:15px inherit; color:var(--text);
+    width:100%; font:inherit; font-size:15px; color:var(--text);
     background:var(--card); border:1px solid var(--sep); border-radius:10px;
     padding:10px 12px; outline:none; -webkit-appearance:none; appearance:none;
   }
   #memberSheet input:focus, #memberSheet select:focus{border-color:var(--link)}
-  #memberSheet #memberDelete{color:var(--st-overdue); border-color:color-mix(in srgb, var(--st-overdue) 45%, transparent)}
-  #memberSheet #memberDelete[hidden]{display:none}
+  .sheet-title-row{display:flex; align-items:flex-start; justify-content:space-between; gap:10px}
+  .sheet-title-row h2{flex:1; min-width:0}
+  .kebab{position:relative; flex:none}
+  .kebab[hidden]{display:none}
+  .kebab > summary{list-style:none; cursor:pointer; width:32px; height:32px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; margin-top:2px;
+    background:var(--card); color:var(--hint); font-size:18px; font-weight:700; letter-spacing:1px}
+  .kebab > summary::-webkit-details-marker{display:none}
+  .kebab-pop{position:absolute; right:0; top:38px; z-index:6; min-width:200px; padding:6px;
+    background:var(--card); border:1px solid var(--sep); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.5)}
+  .kebab-pop button{display:block; width:100%; text-align:left; background:none; border:0; border-radius:8px;
+    padding:10px 12px; font:inherit; font-size:14px; color:var(--st-overdue); cursor:pointer}
+  .kebab-pop button:hover{background:rgba(255,255,255,.06)}
+  .kebab-row{display:flex; justify-content:flex-end; margin-top:8px}
+  .kebab-row .kebab-pop{top:auto; bottom:38px}
 
   /* multi-assignee picker */
   .mpick{display:flex; flex-wrap:wrap; gap:7px}
@@ -375,7 +388,7 @@
   .ref-item img.ri-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; flex:0 0 auto}
   .ref-item .ri-del{flex:0 0 auto; background:none; border:none; color:var(--st-overdue); font-size:16px; cursor:pointer; padding:4px}
   #refSheet input{
-    width:100%; font:15px inherit; color:var(--text);
+    width:100%; font:inherit; font-size:15px; color:var(--text);
     background:var(--card); border:1px solid var(--sep); border-radius:10px;
     padding:10px 12px; outline:none;
   }
@@ -460,7 +473,7 @@
   .field{margin-bottom:12px}
   .field label{display:block; font-size:12px; color:var(--hint); margin-bottom:5px}
   .field input, .field textarea, .field select{
-    width:100%; font:15px inherit; color:var(--text);
+    width:100%; font:inherit; font-size:15px; color:var(--text);
     background:var(--card); border:1px solid var(--sep); border-radius:10px;
     padding:10px 12px; outline:none; -webkit-appearance:none; appearance:none;
   }
@@ -491,7 +504,7 @@
   .more-item{
     display:flex; align-items:center; gap:12px; width:100%;
     background:var(--card); border:1px solid var(--sep); border-radius:12px;
-    color:var(--text); font:15px inherit; font-weight:600;
+    color:var(--text); font:inherit; font-size:15px; font-weight:600;
     padding:14px 16px; margin-bottom:10px; cursor:pointer; text-align:left;
   }
   .more-item span{font-size:19px}
@@ -526,7 +539,7 @@
 <div class="sheet-backdrop" id="sheetBackdrop"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true">
   <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
-  <h2 id="sheetTitle"></h2>
+  <div class="sheet-title-row"><h2 id="sheetTitle"></h2><div id="sheetMenu"></div></div>
   <div class="form-err" id="formErr" style="display:none"></div>
   <div id="formFields"></div>
   <button class="submit" id="formSubmit">Создать</button>
@@ -535,11 +548,14 @@
 <div class="sheet-backdrop" id="memberBackdrop"></div>
 <div class="sheet" id="memberSheet" role="dialog" aria-modal="true">
   <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
-  <h2 id="memberName"></h2>
+  <div class="sheet-title-row"><h2 id="memberName"></h2>
+    <details class="kebab" id="memberMenu"><summary aria-label="Ещё">⋯</summary>
+      <div class="kebab-pop"><button type="button" id="memberDelete" data-i18n="member.delete">Удалить из команды</button></div>
+    </details>
+  </div>
   <div class="field"><label data-i18n="field.full_name">Имя</label><input id="memberFullName" type="text"></div>
   <div class="field"><label data-i18n="field.role">Роль</label><select id="memberRole"></select></div>
   <button class="submit" id="memberSave" data-i18n="btn.save">Сохранить</button>
-  <button class="act ghost" id="memberDelete" style="margin-top:10px" data-i18n="member.delete">Удалить из команды</button>
 </div>
 
 <div class="sheet-backdrop" id="moreBackdrop"></div>
@@ -981,6 +997,14 @@ let expandedClient = null;
 let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
+function kebabMenu(itemsHtml){
+  return `<details class="kebab"><summary aria-label="Ещё">⋯</summary><div class="kebab-pop">${itemsHtml}</div></details>`;
+}
+// a tap anywhere outside an open ⋯ menu closes it
+document.addEventListener("click", e => {
+  document.querySelectorAll("details.kebab[open]").forEach(d => { if (!d.contains(e.target)) d.open = false; });
+});
+
 // sheet element -> its close function (filled by attachSheetDismiss; Esc closes the top one)
 const _sheetClosers = new Map();
 document.addEventListener("keydown", e => {
@@ -1530,7 +1554,7 @@ function clientCard(c, members){
     </div>
     ${amBlock}
     ${open ? projectsBlock(c.id) : ""}
-    ${open && isManager() ? `<button type="button" class="act ghost danger" data-client-del="${c.id}" style="margin-top:10px">${esc(t("btn.delete"))}</button>` : ""}
+    ${open && isManager() ? `<div class="kebab-row">${kebabMenu(`<button type="button" data-client-del="${c.id}">${esc(t("btn.delete"))}</button>`)}</div>` : ""}
   </div>`;
 }
 
@@ -2237,7 +2261,8 @@ function openMemberSheet(id){
   if (!roles.includes(u.role)) roles.push(u.role);   // keep a legacy role visible until reassigned
   sel.innerHTML = roles.map(r =>
     `<option value="${r}"${r === u.role ? " selected" : ""}>${ROLE_LABELS[r] || r}</option>`).join("");
-  document.getElementById("memberDelete").hidden = self;
+  const memberMenu = document.getElementById("memberMenu");
+  memberMenu.hidden = self; memberMenu.open = false;
   document.getElementById("memberSave").disabled = false;
   memberBackdrop.classList.add("open");
   memberSheet.classList.add("open");
@@ -2831,11 +2856,14 @@ async function openSheet(){
       .then(rows => { const el = document.getElementById("tlBox"); if (el) el.innerHTML = timelineHtml(rows); })
       .catch(() => {});
   }
+  const sheetMenu = document.getElementById("sheetMenu");
+  sheetMenu.innerHTML = "";
   if (editState && editState.deleteFor){
     const df = editState.deleteFor;
-    formFields.insertAdjacentHTML("beforeend",
-      `<button type="button" class="act ghost danger" id="editDeleteBtn" style="margin-top:10px">${esc(t("btn.delete"))}</button>`);
+    // «Удалить» lives in the ⋯ menu next to the title, away from «Сохранить»
+    sheetMenu.innerHTML = kebabMenu(`<button type="button" id="editDeleteBtn">${esc(t("btn.delete"))}</button>`);
     document.getElementById("editDeleteBtn").addEventListener("click", async () => {
+      sheetMenu.querySelector("details").open = false;
       if (busy) return;
       if (!(await askConfirm(t(df.confirmKey || "confirm.delete")))) return;
       busy = true;
