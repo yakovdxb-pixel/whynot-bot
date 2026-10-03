@@ -7,8 +7,8 @@ db/models.py (Postgres). Auth mirrors the legacy behaviour in api.py:
   * no init-data header            -> dev user (first row in `users`, else id=0)
   * X-Init-Data / X-Telegram-Init-Data present -> validated against BOT_TOKEN
 """
-import os, json, hmac, hashlib
-from datetime import datetime, date, timezone
+import asyncio, os, json, hmac, hashlib
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from urllib.parse import unquote
 
@@ -17,6 +17,8 @@ from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
                      HTTPException, Request, UploadFile)
 from fastapi.responses import Response, RedirectResponse
 from pydantic import BaseModel
+
+from link_preview import fetch_preview
 from sqlalchemy import select, or_, func, delete as sa_delete, update as sa_update
 from sqlalchemy.exc import IntegrityError
 
@@ -2037,7 +2039,25 @@ def _ref_out(r, name=None):
         "task_id": r.task_id, "content_id": r.content_id, "idea_id": r.idea_id, "project_id": r.project_id,
         "download": f"/api/references/{r.id}/file" if r.kind == "file" else None,
         "created_at": r.created_at.isoformat() if r.created_at else None,
+        "preview": ({"title": r.preview_title, "image": r.preview_image, "site": r.preview_site}
+                    if r.kind == "link" and r.preview_fetched_at else None),
     }
+
+
+async def _fill_previews(session, refs):
+    """Fetch link previews never tried yet (old links, links added via forms), and refresh
+    image previews older than 2 days — Instagram/TikTok CDN image URLs are signed and expire.
+    Max 6 per call so opening the list stays fast."""
+    stale = _now() - timedelta(days=2)
+    todo = [r for r in refs if r.kind == "link" and r.url and (
+        r.preview_fetched_at is None or (r.preview_image and r.preview_fetched_at < stale))][:6]
+    if not todo:
+        return
+    results = await asyncio.gather(*(fetch_preview(r.url) for r in todo))
+    for r, pv in zip(todo, results):
+        r.preview_title, r.preview_image, r.preview_site = pv["title"], pv["image"], pv["site"]
+        r.preview_fetched_at = _now()
+    await session.commit()
 
 
 async def _ref_scope(body_task, body_content, body_idea=None, body_project=None):
@@ -2060,6 +2080,7 @@ async def list_references(task_id: int | None = None, content_id: int | None = N
     if project_id:
         q = q.where(ReferenceItem.project_id == project_id)
     rows = (await session.execute(q.order_by(ReferenceItem.id.desc()))).scalars().all()
+    await _fill_previews(session, rows)
     names = await _names_for(session, [r.added_by for r in rows])
     return [_ref_out(r, names.get(r.added_by)) for r in rows]
 
@@ -2073,10 +2094,14 @@ async def add_link_reference(body: LinkRef,
         raise HTTPException(422, "url обязателен")
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
-    obj = ReferenceItem(kind="link", url=url, title=_clean(body.title) or url,
+    pv = await fetch_preview(url)
+    pv_title = pv["title"] if pv["title"] != pv["site"] else None   # «Instagram» alone isn't a title
+    obj = ReferenceItem(kind="link", url=url, title=_clean(body.title) or pv_title or url,
                         task_id=body.task_id, content_id=body.content_id,
                         idea_id=body.idea_id, project_id=body.project_id,
-                        added_by=user["id"] or None)
+                        added_by=user["id"] or None,
+                        preview_title=pv["title"], preview_image=pv["image"],
+                        preview_site=pv["site"], preview_fetched_at=_now())
     session.add(obj)
     await session.commit()
     await session.refresh(obj)

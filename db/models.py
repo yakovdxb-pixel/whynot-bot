@@ -514,6 +514,11 @@ class ReferenceItem(Base):
     mime       = Column(Text)
     added_by   = Column(Integer, ForeignKey('users.id'))
     created_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
+    # link preview (see link_preview.py); fetched_at set even when nothing was found
+    preview_title      = Column(Text)
+    preview_image      = Column(Text)
+    preview_site       = Column(Text)
+    preview_fetched_at = Column(DateTime(timezone=True))
 
     __table_args__ = (
         Index('idx_ref_task', 'task_id'),
@@ -622,6 +627,11 @@ _MIGRATIONS = [
     "FROM content_items "
     "WHERE tasks.content_id = content_items.id AND tasks.job_kind IS NOT NULL "
     "AND tasks.description IS NULL AND content_items.script IS NOT NULL",
+    # 2026-10: link previews for reference links
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS preview_title TEXT",
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS preview_image TEXT",
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS preview_site TEXT",
+    "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS preview_fetched_at TIMESTAMPTZ",
 ]
 
 

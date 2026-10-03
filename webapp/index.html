@@ -379,16 +379,26 @@
   .rf-actions{display:flex; gap:8px; margin-top:6px}
   #refSheet #refList{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
   #refSheet #refList:empty{display:none}
-  .ref-item{
-    display:flex; align-items:center; gap:10px;
-    background:var(--card); border-radius:10px; padding:10px 12px;
-  }
+  .ref-item{background:var(--card); border-radius:12px; padding:10px 12px}
+  .ri-row{display:flex; align-items:center; gap:10px}
+  .ri-foot{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px}
+  .rl-card{display:block; text-decoration:none; color:inherit; border-radius:10px; overflow:hidden; background:var(--bg)}
+  .rl-card.rl-flat{display:flex; align-items:center; gap:10px}
+  .rl-img{display:block; width:100%; aspect-ratio:1.91/1; object-fit:cover; background:var(--sep)}
+  .rl-ig{flex:none; padding:8px 0 8px 10px; line-height:0}
+  .rl-body{padding:8px 10px; min-width:0; flex:1}
+  .rl-site{color:var(--link); font-size:12px; font-weight:600}
+  .rl-title{color:var(--text); font-size:14px; line-height:1.35; margin-top:1px;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden}
+  .rl-url{color:var(--hint); font-size:11px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .rl-hint{color:var(--hint); font-size:12px; margin-top:6px}
+  .rl-shot{background:none; border:0; padding:0 0 0 4px; color:var(--link); font:inherit; font-size:12px; font-weight:600; cursor:pointer}
   .ref-item .ri-main{flex:1 1 auto; min-width:0; overflow:hidden}
   .ref-item .ri-main a{color:var(--link); text-decoration:none; word-break:break-all}
   .ref-item .ri-name{color:var(--text); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .ref-item .ri-sub{color:var(--hint); font-size:11px; margin-top:2px}
   .ref-item img.ri-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; flex:0 0 auto}
-  .ref-item .ri-del{flex:0 0 auto; background:none; border:none; color:var(--st-overdue); font-size:16px; cursor:pointer; padding:4px}
+  .ref-item .ri-del{flex:0 0 auto; background:none; border:none; color:var(--st-overdue); font:inherit; font-size:12px; cursor:pointer; padding:4px 0 4px 12px; opacity:.85}
   #refSheet input{
     width:100%; font:inherit; font-size:15px; color:var(--text);
     background:var(--card); border:1px solid var(--sep); border-radius:10px;
@@ -750,7 +760,7 @@ const I18N = {
     "form.newIdea":"Новая идея","form.newBlocker":"Новый блокер",
     "form.newClient":"Новый клиент","form.addTeam":"Добавить в команду",
     "btn.create":"Создать","btn.save":"Сохранить","btn.saving":"Сохранение…","btn.cancel":"Отмена",
-    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.copyCaption":"📋 Скопировать подпись","toast.captionCopied":"Подпись скопирована","toast.copyFailed":"Не удалось скопировать — скопируйте вручную в карточке","btn.uploadingRefs":"Загрузка референсов…",
+    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.copyCaption":"📋 Скопировать подпись","ref.igNoPreview":"Instagram не отдал превью.","ref.addScreenshot":"＋ Приложить скриншот","toast.captionCopied":"Подпись скопирована","toast.copyFailed":"Не удалось скопировать — скопируйте вручную в карточке","btn.uploadingRefs":"Загрузка референсов…",
     "field.title":"Название","field.description":"Описание","field.priority":"Приоритет","field.deadline":"Дедлайн",
     "field.assignee_ids":"Исполнители","field.client_id":"Клиент","field.project_id":"Проект",
     "field.refs":"Референсы — ссылки и файлы","field.topic":"Тема / название","field.rubric":"Рубрика",
@@ -808,7 +818,7 @@ const I18N = {
     "form.newIdea":"Yangi gʻoya","form.newBlocker":"Yangi toʻsiq",
     "form.newClient":"Yangi mijoz","form.addTeam":"Jamoaga qoʻshish",
     "btn.create":"Yaratish","btn.save":"Saqlash","btn.saving":"Saqlanmoqda…","btn.cancel":"Bekor qilish",
-    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.copyCaption":"📋 Matnni nusxalash","toast.captionCopied":"Matn nusxalandi","toast.copyFailed":"Nusxalab boʻlmadi — kartochkadan qoʻlda nusxalang","btn.uploadingRefs":"Namunalar yuklanmoqda…",
+    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.copyCaption":"📋 Matnni nusxalash","ref.igNoPreview":"Instagram koʻrinishni bermadi.","ref.addScreenshot":"＋ Skrinshot biriktirish","toast.captionCopied":"Matn nusxalandi","toast.copyFailed":"Nusxalab boʻlmadi — kartochkadan qoʻlda nusxalang","btn.uploadingRefs":"Namunalar yuklanmoqda…",
     "field.title":"Nomi","field.description":"Tavsif","field.priority":"Muhimlik","field.deadline":"Muddat",
     "field.assignee_ids":"Ijrochilar","field.client_id":"Mijoz","field.project_id":"Loyiha",
     "field.refs":"Namunalar — havolalar va fayllar","field.topic":"Mavzu / nomi","field.rubric":"Rubrika",
@@ -866,7 +876,7 @@ const I18N = {
     "form.newIdea":"New idea","form.newBlocker":"New blocker",
     "form.newClient":"New client","form.addTeam":"Add to team",
     "btn.create":"Create","btn.save":"Save","btn.saving":"Saving…","btn.cancel":"Cancel",
-    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.copyCaption":"📋 Copy caption","toast.captionCopied":"Caption copied","toast.copyFailed":"Couldn't copy — copy it manually from the card","btn.uploadingRefs":"Uploading references…",
+    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.copyCaption":"📋 Copy caption","ref.igNoPreview":"Instagram gave no preview.","ref.addScreenshot":"＋ Attach a screenshot","toast.captionCopied":"Caption copied","toast.copyFailed":"Couldn't copy — copy it manually from the card","btn.uploadingRefs":"Uploading references…",
     "field.title":"Title","field.description":"Description","field.priority":"Priority","field.deadline":"Deadline",
     "field.assignee_ids":"Assignees","field.client_id":"Client","field.project_id":"Project",
     "field.refs":"References — links & files","field.topic":"Topic / title","field.rubric":"Rubric",
@@ -2357,18 +2367,50 @@ function refQuery(){ return refKey() + "=" + refScope.id; }
 function refFileUrl(r){
   return r.download ? r.download + "?ia=" + encodeURIComponent(INIT_DATA) : "";
 }
+const IG_ICON = `<svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><defs><linearGradient id="igg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#feda75"/><stop offset=".45" stop-color="#d62976"/><stop offset="1" stop-color="#4f5bd5"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="6" fill="url(#igg)"/><circle cx="12" cy="12" r="4.3" fill="none" stroke="#fff" stroke-width="1.8"/><circle cx="17.3" cy="6.7" r="1.2" fill="#fff"/></svg>`;
+
+function refLinkCard(r){
+  const pv = r.preview || {};
+  let host = r.url;
+  try { host = new URL(r.url).hostname.replace(/^www\./, ""); } catch(e){}
+  const site = pv.site || host;
+  const own = r.title && r.title !== r.url && r.title !== site ? r.title : null;
+  const title = own || (pv.title && pv.title !== site ? pv.title : null) || host;
+  const isInsta = /(^|\.)instagram\.com$/i.test(host);
+  const media = pv.image
+    ? `<img class="rl-img" src="${esc(pv.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : isInsta ? `<div class="rl-ig">${IG_ICON}</div>` : "";
+  return `<a class="rl-card${pv.image ? "" : " rl-flat"}" href="${esc(r.url)}" target="_blank" rel="noopener">
+      ${media}
+      <div class="rl-body">
+        <div class="rl-site">${esc(site)}</div>
+        <div class="rl-title">${esc(title)}</div>
+        <div class="rl-url">${esc(r.url)}</div>
+      </div>
+    </a>
+    ${isInsta && !pv.image ? `<div class="rl-hint">${esc(t("ref.igNoPreview"))}
+      <button type="button" class="rl-shot" data-ref-shot>${esc(t("ref.addScreenshot"))}</button></div>` : ""}`;
+}
+
 function refItemHtml(r){
   const isImg = r.mime && r.mime.indexOf("image/") === 0;
-  const url = r.kind === "file" ? refFileUrl(r) : r.url;
-  const label = r.kind === "file" ? (r.file_name || "файл") : (r.title || r.url);
-  const thumb = (r.kind === "file" && isImg) ? `<img class="ri-thumb" src="${esc(url)}" alt="">` : "";
+  let main;
+  if (r.kind === "link"){
+    main = refLinkCard(r);
+  } else {
+    const url = refFileUrl(r);
+    main = `<div class="ri-row">
+      ${isImg ? `<img class="ri-thumb" src="${esc(url)}" alt="">` : ""}
+      <div class="ri-main"><div class="ri-name"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(r.file_name || "файл")}</a></div></div>
+    </div>`;
+  }
+  // delete sits in its own footer row, away from the link itself
   return `<div class="ref-item" data-ref="${r.id}">
-    ${thumb}
-    <div class="ri-main">
-      <div class="ri-name"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a></div>
-      ${r.added_by_name ? `<div class="ri-sub">${esc(r.added_by_name)}</div>` : ""}
+    ${main}
+    <div class="ri-foot">
+      <span class="ri-sub">${esc(r.added_by_name || "")}</span>
+      <button class="ri-del" data-ref-del="${r.id}">${esc(t("btn.delete"))}</button>
     </div>
-    <button class="ri-del" data-ref-del="${r.id}" aria-label="Удалить">✕</button>
   </div>`;
 }
 async function renderRefList(){
@@ -2441,6 +2483,7 @@ document.getElementById("refFileInput").addEventListener("change", async (e) => 
   finally { busy = false; }
 });
 document.getElementById("refList").addEventListener("click", async e => {
+  if (e.target.closest("[data-ref-shot]")){ document.getElementById("refFileInput").click(); return; }
   const del = e.target.closest("[data-ref-del]");
   if (!del || busy) return;
   e.preventDefault();
