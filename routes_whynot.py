@@ -1259,6 +1259,7 @@ async def list_ideas(scope: str | None = None,
         select(Project.id, Project.name, Client.name)
         .join(Client, Client.id == Project.client_id, isouter=True)
         .where(Project.id.in_(pids)))).all()} if pids else {}
+    media = await _idea_media(session, [r.id for r in rows])
     out = []
     for r in rows:
         d = row_to_dict(r)
@@ -1266,10 +1267,30 @@ async def list_ideas(scope: str | None = None,
         d["proposed_by_name"] = proposers.get(r.proposed_by)
         pn, cn = proj.get(r.project_id, (None, None))
         d["project_name"], d["client_name"] = pn, cn
+        d["media"] = media.get(r.id)
         s = refs.get(r.id, {})
         d["refs_count"] = s.get("count", 0)
         d["ref_thumbs"] = s.get("thumbs", [])
         out.append(d)
+    return out
+
+
+async def _idea_media(session, idea_ids) -> dict:
+    """idea_id -> {"url", "image", "site", "title"}: the first link reference, shown as a
+    playable cover right on the idea card. Missing / expired previews are fetched a few
+    per request (see _fill_previews), so the list stays fast and fills in over time."""
+    if not idea_ids:
+        return {}
+    links = (await session.execute(
+        select(ReferenceItem).where(ReferenceItem.idea_id.in_(idea_ids), ReferenceItem.kind == "link")
+        .order_by(ReferenceItem.id))).scalars().all()
+    await _fill_previews(session, links)
+    out = {}
+    for r in links:
+        cur = out.get(r.idea_id)
+        if cur is None or (not cur["image"] and r.preview_image):   # prefer one with a cover
+            out[r.idea_id] = {"url": r.url, "image": r.preview_image,
+                              "site": r.preview_site, "title": r.preview_title}
     return out
 
 

@@ -67,7 +67,7 @@
     --sheet-bg:#FFFFFF; --sheet-card:#F6F4FA;
     --toast-bg:#1E1530; --toast-text:#FFFFFF;
     /* iOS-style frosted bars */
-    --glass-bg:rgba(255,255,255,.72); --glass-border:rgba(30,21,48,.08);
+    --glass-bg:rgba(255,255,255,.38); --glass-border:rgba(255,255,255,.55);
     --glass-shadow:0 10px 30px rgba(30,21,48,.14), 0 1px 3px rgba(30,21,48,.08);
     --tab-h:62px;                         /* floating tab bar height */
     --st-done:#1F9D6B;        --st-done-ink:#187751;
@@ -92,7 +92,7 @@
     --outer:#0B0710;
     --sheet-bg:#1E1628; --sheet-card:#2A2036;
     --toast-bg:#F1EDF7; --toast-text:#1E1530;
-    --glass-bg:rgba(36,27,48,.72); --glass-border:rgba(255,255,255,.10);
+    --glass-bg:rgba(30,22,40,.40); --glass-border:rgba(255,255,255,.12);
     --glass-shadow:0 10px 30px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
     --st-done:#34C48A;        --st-done-ink:#34C48A;
     --st-overdue:#F2687B;     --st-overdue-ink:#F26D7F;
@@ -349,6 +349,23 @@
     border-radius:10px; padding:9px 4px; font:inherit; font-size:13px; font-weight:600; cursor:pointer}
   .idea-seg button.on{background:var(--accent); color:var(--on-accent); border-color:transparent}
   #ideaViewSheet .iv-refs{display:flex; flex-direction:column; gap:8px; margin:10px 0}
+  /* inline video: cover with ▶ -> embedded player (Instagram / YouTube / TikTok) */
+  .vmedia{position:relative; margin-top:10px; border-radius:14px; overflow:hidden; cursor:pointer;
+    background:#0d0a12; aspect-ratio:4/5; max-height:420px}
+  .vmedia img{display:block; width:100%; height:100%; object-fit:cover}
+  .vmedia .vm-ph{display:flex; align-items:center; justify-content:center; height:100%; flex-direction:column; gap:8px; color:#fff; font-size:13px}
+  .vmedia .vm-play{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.42); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+    color:#fff; font-size:22px; padding-left:4px; box-shadow:0 4px 18px rgba(0,0,0,.3)}
+  .vmedia .vm-site{position:absolute; left:10px; bottom:10px; padding:4px 9px; border-radius:999px;
+    background:rgba(0,0,0,.45); color:#fff; font-size:11px; font-weight:700;
+    -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px)}
+  .vmedia.playing{cursor:default; aspect-ratio:auto; max-height:none; background:#000}
+  .vmedia iframe{display:block; width:100%; border:0}
+  .vmedia.playing.vm-ig iframe{min-height:420px}   /* exact height set in playIn() */
+  .vmedia.playing.vm-yt iframe{aspect-ratio:16/9}
+  .vmedia.playing.vm-yts iframe, .vmedia.playing.vm-tt iframe{aspect-ratio:9/16}
 
   .empty{color:var(--hint); text-align:center; padding:34px 10px; font-size:14px}
   .loader{color:var(--hint); text-align:center; padding:34px 10px}
@@ -364,7 +381,7 @@
     height:var(--tab-h); padding:5px;
     display:flex; gap:2px;
     background:var(--glass-bg);
-    -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%);
+    -webkit-backdrop-filter:blur(26px) saturate(200%); backdrop-filter:blur(26px) saturate(200%);
     border:.5px solid var(--glass-border); border-radius:31px;
     box-shadow:var(--glass-shadow);
   }
@@ -379,6 +396,7 @@
   nav button .ic svg{width:22px; height:22px; display:block; stroke:currentColor; fill:none;
     stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
   nav button{font-size:10px; font-weight:600}
+  nav button span:last-child{text-shadow:0 0 6px var(--bg), 0 0 2px var(--bg)}
   nav button.active{color:var(--link); background:color-mix(in srgb, var(--accent) 13%, transparent)}
   nav button.active .ic svg{stroke-width:2.2}
 
@@ -1607,6 +1625,7 @@ async function renderIdeas(){
         <span class="pill idea-${esc(st)}">${esc(t("idea.st." + st))}</span>
       </div>
       ${i.description ? `<p class="desc clamp">${esc(i.description)}</p>` : ""}
+      ${videoCover(i.media)}
       <div class="meta">
         ${i.client_name || i.project_name ? `<span>📁 ${esc(i.client_name || i.project_name)}</span>` : ""}
         ${i.format ? `<span>🎞 ${esc(t("fmt." + i.format) || i.format)}</span>` : ""}
@@ -2568,6 +2587,71 @@ function refFileUrl(r){
 }
 const IG_ICON = `<svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><defs><linearGradient id="igg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#feda75"/><stop offset=".45" stop-color="#d62976"/><stop offset="1" stop-color="#4f5bd5"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="6" fill="url(#igg)"/><circle cx="12" cy="12" r="4.3" fill="none" stroke="#fff" stroke-width="1.8"/><circle cx="17.3" cy="6.7" r="1.2" fill="#fff"/></svg>`;
 
+// Video links that can be played inside the app instead of opening Instagram / YouTube / TikTok.
+function embedFor(url){
+  let u;
+  try { u = new URL(url); } catch(e){ return null; }
+  const host = u.hostname.replace(/^(www\.|m\.)/, "");
+  let m;
+  if (/(^|\.)instagram\.com$/.test(host) && (m = u.pathname.match(/^\/(reels?|p|tv)\/([A-Za-z0-9_-]+)/)))
+    return { kind:"ig", src:`https://www.instagram.com/${m[1] === "p" ? "p" : "reel"}/${m[2]}/embed/` };
+  if (host === "youtu.be" && (m = u.pathname.match(/^\/([\w-]{6,})/)))
+    return { kind:"yt", src:`https://www.youtube.com/embed/${m[1]}?autoplay=1&playsinline=1` };
+  if (/(^|\.)youtube\.com$/.test(host)){
+    if ((m = u.pathname.match(/^\/shorts\/([\w-]{6,})/)))
+      return { kind:"yts", src:`https://www.youtube.com/embed/${m[1]}?autoplay=1&playsinline=1` };
+    const v = u.searchParams.get("v");
+    if (v) return { kind:"yt", src:`https://www.youtube.com/embed/${encodeURIComponent(v)}?autoplay=1&playsinline=1` };
+  }
+  if (/(^|\.)tiktok\.com$/.test(host) && (m = u.pathname.match(/\/video\/(\d+)/)))
+    return { kind:"tt", src:`https://www.tiktok.com/player/v1/${m[1]}?autoplay=1` };
+  return null;
+}
+function siteLabel(url, site){
+  if (site) return site;
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch(e){ return ""; }
+}
+// cover with ▶; a tap swaps it for the embedded player (see the capture click handler below)
+function videoCover(m){
+  if (!m || !m.url) return "";
+  const emb = embedFor(m.url);
+  const isIg = /instagram\.com/i.test(m.url);
+  return `<div class="vmedia" data-vplay="${esc(m.url)}">
+    ${m.image ? `<img src="${esc(m.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+      : `<div class="vm-ph">${isIg ? IG_ICON : ""}<span>${esc(siteLabel(m.url, m.site))}</span></div>`}
+    ${emb ? `<span class="vm-play">▶</span>` : ""}
+    <span class="vm-site">${esc(siteLabel(m.url, m.site))}</span>
+  </div>`;
+}
+function openExternal(url){
+  try { if (tg && tg.openLink){ tg.openLink(url); return; } } catch(e){}
+  window.open(url, "_blank", "noopener");
+}
+// capture phase: runs before the card / sheet handlers, so a tap on a cover plays the
+// video in place instead of opening the card (or leaving the app)
+document.addEventListener("click", e => {
+  const box = e.target.closest("[data-vplay]");
+  if (!box || box.classList.contains("playing")) return;
+  e.preventDefault(); e.stopPropagation();
+  const url = box.dataset.vplay;
+  const emb = embedFor(url);
+  if (!emb){ openExternal(url); return; }
+  haptic();
+  if (box.tagName === "A"){           // a link card in the references list -> turn it into a player
+    const div = document.createElement("div");
+    div.className = "vmedia"; div.dataset.vplay = url;
+    box.replaceWith(div); return playIn(div, emb);
+  }
+  playIn(box, emb);
+}, true);
+function playIn(box, emb){
+  box.classList.add("playing", "vm-" + emb.kind);
+  box.innerHTML = `<iframe src="${esc(emb.src)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+    allowfullscreen loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  // Instagram's embed = header + 4:5 media + likes row; size the frame to that, no blank tail
+  if (emb.kind === "ig") box.querySelector("iframe").style.height = Math.round(box.clientWidth * 1.25 + 118) + "px";
+}
+
 function refLinkCard(r){
   const pv = r.preview || {};
   let host = r.url;
@@ -2579,7 +2663,8 @@ function refLinkCard(r){
   const media = pv.image
     ? `<img class="rl-img" src="${esc(pv.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : isInsta ? `<div class="rl-ig">${IG_ICON}</div>` : "";
-  return `<a class="rl-card${pv.image ? "" : " rl-flat"}" href="${esc(r.url)}" target="_blank" rel="noopener">
+  const playable = !!embedFor(r.url);
+  return `<a class="rl-card${pv.image ? "" : " rl-flat"}" href="${esc(r.url)}" target="_blank" rel="noopener"${playable ? ` data-vplay="${esc(r.url)}"` : ""}>
       ${media}
       <div class="rl-body">
         <div class="rl-site">${esc(site)}</div>
