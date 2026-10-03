@@ -748,7 +748,7 @@ const I18N = {
     "form.newIdea":"Новая идея","form.newBlocker":"Новый блокер",
     "form.newClient":"Новый клиент","form.addTeam":"Добавить в команду",
     "btn.create":"Создать","btn.save":"Сохранить","btn.saving":"Сохранение…","btn.cancel":"Отмена",
-    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.uploadingRefs":"Загрузка референсов…",
+    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.copyCaption":"📋 Скопировать подпись","toast.captionCopied":"Подпись скопирована","toast.copyFailed":"Не удалось скопировать — скопируйте вручную в карточке","btn.uploadingRefs":"Загрузка референсов…",
     "field.title":"Название","field.description":"Описание","field.priority":"Приоритет","field.deadline":"Дедлайн",
     "field.assignee_ids":"Исполнители","field.client_id":"Клиент","field.project_id":"Проект",
     "field.refs":"Референсы — ссылки и файлы","field.topic":"Тема / название","field.rubric":"Рубрика",
@@ -806,7 +806,7 @@ const I18N = {
     "form.newIdea":"Yangi gʻoya","form.newBlocker":"Yangi toʻsiq",
     "form.newClient":"Yangi mijoz","form.addTeam":"Jamoaga qoʻshish",
     "btn.create":"Yaratish","btn.save":"Saqlash","btn.saving":"Saqlanmoqda…","btn.cancel":"Bekor qilish",
-    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.uploadingRefs":"Namunalar yuklanmoqda…",
+    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.copyCaption":"📋 Matnni nusxalash","toast.captionCopied":"Matn nusxalandi","toast.copyFailed":"Nusxalab boʻlmadi — kartochkadan qoʻlda nusxalang","btn.uploadingRefs":"Namunalar yuklanmoqda…",
     "field.title":"Nomi","field.description":"Tavsif","field.priority":"Muhimlik","field.deadline":"Muddat",
     "field.assignee_ids":"Ijrochilar","field.client_id":"Mijoz","field.project_id":"Loyiha",
     "field.refs":"Namunalar — havolalar va fayllar","field.topic":"Mavzu / nomi","field.rubric":"Rubrika",
@@ -864,7 +864,7 @@ const I18N = {
     "form.newIdea":"New idea","form.newBlocker":"New blocker",
     "form.newClient":"New client","form.addTeam":"Add to team",
     "btn.create":"Create","btn.save":"Save","btn.saving":"Saving…","btn.cancel":"Cancel",
-    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.uploadingRefs":"Uploading references…",
+    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.copyCaption":"📋 Copy caption","toast.captionCopied":"Caption copied","toast.copyFailed":"Couldn't copy — copy it manually from the card","btn.uploadingRefs":"Uploading references…",
     "field.title":"Title","field.description":"Description","field.priority":"Priority","field.deadline":"Deadline",
     "field.assignee_ids":"Assignees","field.client_id":"Client","field.project_id":"Project",
     "field.refs":"References — links & files","field.topic":"Topic / title","field.rubric":"Rubric",
@@ -997,6 +997,19 @@ let expandedClient = null;
 let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
+// Clipboard API first; Telegram WebViews without it fall back to execCommand.
+async function copyText(text){
+  try { await navigator.clipboard.writeText(text); return true; } catch(e){}
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch(e){}
+  ta.remove();
+  if (!ok) toast(t("toast.copyFailed"));
+  return ok;
+}
+
 function kebabMenu(itemsHtml){
   return `<details class="kebab"><summary aria-label="Ещё">⋯</summary><div class="kebab-pop">${itemsHtml}</div></details>`;
 }
@@ -1358,6 +1371,7 @@ function contentCard(c, {advance=true, jobs=true}={}){
     </div>
     ${c.hook ? `<p class="desc">${esc(c.hook)}</p>` : ""}
     ${refStrip("content", c.id, c.refs_count || 0, c.ref_thumbs)}
+    ${c.caption ? `<button class="act ghost" data-copy-caption="${c.id}">${esc(t("btn.copyCaption"))}</button>` : ""}
     ${jobList}
     ${jobBtns}
   </div>`;
@@ -2035,6 +2049,13 @@ view.addEventListener("click", async e => {
     const c = contentById[+cjobChipEl.dataset.cid];
     const j = c && (c.jobs || []).find(x => x.id === +cjobChipEl.dataset.cjobOpen);
     if (j){ haptic(); openContentJobEdit(j); }
+    return;
+  }
+
+  const copyCap = e.target.closest("[data-copy-caption]");
+  if (copyCap){
+    const c = contentById[+copyCap.dataset.copyCaption];
+    if (c && c.caption && await copyText(c.caption)){ haptic(); toast(t("toast.captionCopied")); }
     return;
   }
 
