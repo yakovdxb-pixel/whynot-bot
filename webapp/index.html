@@ -427,14 +427,10 @@
   }
   .sheet-backdrop.open{opacity:1; pointer-events:auto}
   .sheet{
-    /* milky-cream sheet theme — scoped var overrides cascade to every child */
-    --bg:#f4efe3;
-    --text:#241a22;
-    --hint:#8a7f86;
-    --card:#ffffff;
-    --sep:rgba(20,8,20,.14);
-    --link:#0b7a5c;
-    --st-overdue:#d23a2e;
+    /* same dark plum theme as the app, one step lighter so the sheet reads as a layer */
+    --bg:#241029;
+    --card:#321a3d;
+    box-shadow:0 -10px 30px rgba(0,0,0,.45);
     position:fixed; left:0; right:0; bottom:0; z-index:31;
     background:var(--bg); color:var(--text);
     border-radius:16px 16px 0 0; padding:0 16px calc(20px + env(safe-area-inset-bottom));
@@ -455,6 +451,11 @@
   .sheet .grabber{width:40px; height:5px; border-radius:3px; background:var(--sep);
     margin:0 auto; transition:width .15s, background .15s}
   .sheet-head:active .grabber{width:52px; background:var(--hint)}
+  .sheet-x{
+    position:absolute; right:0; top:8px; width:32px; height:32px; border:none; border-radius:50%;
+    background:var(--card); color:var(--hint); font-size:15px; line-height:32px; padding:0; cursor:pointer;
+  }
+  .sheet-x:hover{color:var(--text)}
   .sheet h2{font-size:17px; font-weight:700; margin:6px 0 14px; line-height:1.35; padding-top:2px}
   .field{margin-bottom:12px}
   .field label{display:block; font-size:12px; color:var(--hint); margin-bottom:5px}
@@ -980,6 +981,14 @@ let expandedClient = null;
 let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
+// sheet element -> its close function (filled by attachSheetDismiss; Esc closes the top one)
+const _sheetClosers = new Map();
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  const open = [...document.querySelectorAll(".sheet.open")];
+  const top = open[open.length - 1];          // later in the DOM = drawn on top
+  if (top && _sheetClosers.has(top)){ e.preventDefault(); _sheetClosers.get(top)(); }
+});
 
 function isManager(){ return !!(ME && (ME.role === "admin" || ME.role === "am" || ME.role === "director")); }
 
@@ -2176,9 +2185,16 @@ if (tg && tg.BackButton){ try { tg.BackButton.onClick(_onTgBack); } catch(e){} }
 function sheetBackOn(fn){ _sheetCloser = fn; try { tg && tg.BackButton && tg.BackButton.show(); } catch(e){} }
 function sheetBackOff(){ _sheetCloser = null; try { tg && tg.BackButton && tg.BackButton.hide(); } catch(e){} }
 
-/* Sheet dismiss: tap the top strip, or drag it down. No visible close button. */
+/* Sheet dismiss: ✕ in the top strip, tap the strip, drag it down, or Esc. */
 function attachSheetDismiss(sheetEl, closeFn){
+  _sheetClosers.set(sheetEl, closeFn);
   const head = sheetEl.querySelector(".sheet-head") || sheetEl;
+  if (head.classList.contains("sheet-head") && !head.querySelector(".sheet-x")){
+    const x = document.createElement("button");
+    x.className = "sheet-x"; x.type = "button"; x.textContent = "✕";
+    x.setAttribute("aria-label", "Закрыть");
+    head.appendChild(x);                      // a click on it bubbles to the head -> closeFn
+  }
   let y0 = null, dy = 0, dragging = false;
   const reset = () => { sheetEl.style.transition = ""; sheetEl.style.transform = ""; };
   head.addEventListener("touchstart", e => {
