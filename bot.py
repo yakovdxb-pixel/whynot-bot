@@ -66,8 +66,9 @@ async def _pg_role(telegram_id: int):
     return None
 
 
-# 🏆 is in Telegram's free reaction set; the others need Premium (kept for those who have it).
-REF_EMOJI = {"🏆", "✍", "✍️", "📌", "📎", "⭐", "✅"}
+# ✍ is the documented "→ references" reaction (free set); 🏆 and the old Premium-only
+# 📌 📎 ⭐ ✅ keep working too. ✍ comes in two encodings (with/without U+FE0F).
+REF_EMOJI = {"✍", "✍️", "🏆", "📌", "📎", "⭐", "✅"}
 
 
 async def group_media_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,7 +102,7 @@ async def group_media_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reaction_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """React to a group photo/file with 🏆 (or 📌/✍ with Premium) → it lands in the project's references. Un-react removes it."""
+    """React to a group photo/file with ✍ (also 🏆, 📌, 📎, ⭐, ✅) → it lands in the project's references. Un-react removes it."""
     r = update.message_reaction
     if not r or not r.chat:
         return
