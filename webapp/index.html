@@ -168,6 +168,12 @@
   .card .desc.clamp{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; overflow:hidden}
   .desc-more{background:none; border:0; padding:4px 0 0; color:var(--link); font:inherit; font-size:13px; cursor:pointer}
   .desc-more[hidden]{display:none}
+  .tv-head{display:flex; align-items:flex-start; gap:10px; justify-content:space-between}
+  .tv-head h2{margin:6px 0 10px}
+  .tv-head .pill{flex:none; margin-top:8px}
+  .tv-desc{white-space:pre-wrap; font-size:14px; line-height:1.45; margin:0 0 12px}
+  .tv-meta{display:flex; flex-wrap:wrap; gap:6px 12px; font-size:13px; color:var(--hint); margin-bottom:12px}
+  .tv-actions{display:flex; flex-direction:column; gap:8px; margin-top:14px}
   .card .meta{color:var(--hint); font-size:12px; margin-top:7px; display:flex; gap:10px; flex-wrap:wrap}
 
   .pill{
@@ -554,6 +560,12 @@
   <button class="more-item" data-lang="en"><span>🇬🇧</span> English</button>
 </div>
 
+<div class="sheet-backdrop" id="taskViewBackdrop"></div>
+<div class="sheet" id="taskViewSheet" role="dialog" aria-modal="true">
+  <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
+  <div id="taskViewBody"></div>
+</div>
+
 <div class="sheet-backdrop" id="refBackdrop"></div>
 <div class="sheet" id="refSheet" role="dialog" aria-modal="true">
   <div class="sheet-head" data-dismiss><div class="grabber"></div></div>
@@ -755,7 +767,7 @@ const I18N = {
     "ss.planned":"Запланирована","ss.done":"Отснята","ss.cancelled":"Отменена",
     "pr.normal":"Обычный","pr.high":"Высокий","pr.urgent":"Срочный","task.assignedBy":"Поставил","task.more":"Подробнее","task.less":"Свернуть",
     "fmt.post":"Пост","fmt.reels":"Reels","fmt.story":"Сторис","fmt.carousel":"Карусель","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Другое",
-    "tn.toWork":"▶ В работу","tn.toDone":"✅ Готово","tn.doneMark":"✅ Выполнено",
+    "tn.toWork":"▶ В работу","tn.toDone":"✅ Готово","tn.submit":"📨 Сдать","tv.edit":"✏️ Изменить","tv.noDesc":"Без описания","task.submittedNoFile":"Сдано на проверку","toast.submitted":"Сдано на проверку","tn.doneMark":"✅ Выполнено",
     "misc.loading":"Загрузка…","misc.noDeadline":"без срока","misc.editArrow":"изменить ›",
     "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
     "login.title":"Вход в WHY NOT? OS","login.sub":"Войди через Telegram — так приложение работает в браузере отдельно от чатов.","login.noBot":"Вход через браузер пока не настроен. Открой приложение из бота.",
@@ -813,7 +825,7 @@ const I18N = {
     "ss.planned":"Rejalashtirilgan","ss.done":"Suratga olingan","ss.cancelled":"Bekor qilingan",
     "pr.normal":"Oddiy","pr.high":"Yuqori","pr.urgent":"Shoshilinch","task.assignedBy":"Tayinladi","task.more":"Batafsil","task.less":"Yigʻish",
     "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Storis","fmt.carousel":"Karusel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Boshqa",
-    "tn.toWork":"▶ Ishga","tn.toDone":"✅ Tayyor","tn.doneMark":"✅ Bajarildi",
+    "tn.toWork":"▶ Ishga","tn.toDone":"✅ Tayyor","tn.submit":"📨 Topshirish","tv.edit":"✏️ Tahrirlash","tv.noDesc":"Tavsifsiz","task.submittedNoFile":"Tekshiruvga topshirildi","toast.submitted":"Tekshiruvga topshirildi","tn.doneMark":"✅ Bajarildi",
     "misc.loading":"Yuklanmoqda…","misc.noDeadline":"muddatsiz","misc.editArrow":"tahrirlash ›",
     "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
     "login.title":"WHY NOT? OS ga kirish","login.sub":"Telegram orqali kiring — ilova brauzerda chatlardan alohida ishlaydi.","login.noBot":"Brauzer orqali kirish hali sozlanmagan. Ilovani botdan oching.",
@@ -871,7 +883,7 @@ const I18N = {
     "ss.planned":"Planned","ss.done":"Shot","ss.cancelled":"Cancelled",
     "pr.normal":"Normal","pr.high":"High","pr.urgent":"Urgent","task.assignedBy":"Assigned by","task.more":"More","task.less":"Less",
     "fmt.post":"Post","fmt.reels":"Reels","fmt.story":"Story","fmt.carousel":"Carousel","fmt.tiktok":"TikTok","fmt.youtube_long":"YouTube","fmt.other":"Other",
-    "tn.toWork":"▶ Start","tn.toDone":"✅ Done","tn.doneMark":"✅ Completed",
+    "tn.toWork":"▶ Start","tn.toDone":"✅ Done","tn.submit":"📨 Submit","tv.edit":"✏️ Edit","tv.noDesc":"No description","task.submittedNoFile":"Submitted for review","toast.submitted":"Submitted for review","tn.doneMark":"✅ Completed",
     "misc.loading":"Loading…","misc.noDeadline":"no deadline","misc.editArrow":"edit ›",
     "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
     "login.title":"Sign in to WHY NOT? OS","login.sub":"Sign in with Telegram — the app then runs in the browser, separate from your chats.","login.noBot":"Browser sign-in isn\u2019t set up yet. Open the app from the bot.",
@@ -1059,6 +1071,81 @@ function taskFileLink(tk){
   return `<a class="task-file review-note" href="${url}" target="_blank" rel="noopener">${thumb}<span>${emoji} ${esc(t("task.fileSubmitted"))}</span></a>`;
 }
 
+function isTaskAssignee(tk){
+  return !!ME && (tk.assignee_id === ME.id || (tk.assignees || []).some(a => a.id === ME.id));
+}
+function canEditTask(tk){ return isManager() || (!!ME && tk.created_by === ME.id); }
+// Executors hand work in for review; managers may close straight to done.
+function nextTo(tk){
+  const next = TASK_NEXT[tk.status || "pending"];
+  if (!next) return null;
+  return next.to === "done" && !isManager() ? "review" : next.to;
+}
+
+const taskViewSheet = document.getElementById("taskViewSheet");
+const taskViewBackdrop = document.getElementById("taskViewBackdrop");
+
+function openTaskView(tk){
+  const st = tk.status || "pending";
+  const who = assigneesLabel(tk);
+  const canSubmit = isTaskAssignee(tk) && ["pending", "in_progress", "overdue", "revision"].includes(st);
+  document.getElementById("taskViewBody").innerHTML = `
+    <div class="tv-head">
+      <h2>${esc(tk.title || "—")}</h2>
+      <span class="pill ${esc(st)}">${esc(STATUS_LABELS[st] || st)}</span>
+    </div>
+    ${tk.description ? `<p class="tv-desc">${esc(tk.description)}</p>` : `<p class="hint">${esc(t("tv.noDesc"))}</p>`}
+    <div class="tv-meta">
+      <span>${deadlineMeta(tk.deadline)}</span>
+      ${tk.created_by_name ? `<span>📌 ${esc(t("task.assignedBy"))}: ${esc(tk.created_by_name)}</span>` : ""}
+      ${who ? `<span>${who}</span>` : ""}
+      ${tk.priority && tk.priority !== "normal" ? `<span>❗ ${esc(t("pr." + tk.priority) || tk.priority)}</span>` : ""}
+    </div>
+    ${st === "revision" && tk.review_comment ? `<div class="review-note">🔄 ${esc(tk.review_comment)}</div>` : ""}
+    ${tk.file_id ? taskFileLink(tk) : ""}
+    ${refStrip("task", tk.id, tk.refs_count || 0, tk.ref_thumbs)}
+    <div class="tv-actions">
+      ${canSubmit ? `<button class="submit" data-tv-submit="${tk.id}">${esc(t("tn.submit"))}</button>` : ""}
+      ${canEditTask(tk) ? `<button class="act ghost" data-tv-edit="${tk.id}">${esc(t("tv.edit"))}</button>` : ""}
+    </div>`;
+  taskViewSheet.classList.add("open");
+  taskViewBackdrop.classList.add("open");
+  sheetBackOn(closeTaskView);
+}
+function closeTaskView(){
+  taskViewSheet.classList.remove("open");
+  taskViewBackdrop.classList.remove("open");
+  sheetBackOff();
+}
+taskViewBackdrop.addEventListener("click", closeTaskView);
+attachSheetDismiss(taskViewSheet, closeTaskView);
+taskViewSheet.addEventListener("click", async e => {
+  const refBtn = e.target.closest("[data-refs]");
+  if (refBtn && !e.target.closest("[data-ref-del-card]")){
+    const [kind, id] = refBtn.dataset.refs.split(":");
+    openRefSheet(kind, +id);
+    return;
+  }
+  const edit = e.target.closest("[data-tv-edit]");
+  if (edit){
+    const tk = taskById[+edit.dataset.tvEdit];
+    closeTaskView();
+    if (tk) openTaskEdit(tk);
+    return;
+  }
+  const sub = e.target.closest("[data-tv-submit]");
+  if (sub && !busy){
+    busy = true; sub.disabled = true;
+    try {
+      await api("/api/tasks/" + sub.dataset.tvSubmit, {method:"PATCH", body:{status:"review"}});
+      haptic("medium"); toast(t("toast.submitted"));
+      closeTaskView();
+      await load(currentTab);
+    } catch(err){ toast(err.message); sub.disabled = false; }
+    finally { busy = false; }
+  }
+});
+
 function taskCard(tk){
   taskById[tk.id] = tk;
   const st = tk.status || "pending";
@@ -1087,13 +1174,13 @@ function taskCard(tk){
       ${tk.priority && tk.priority !== "normal" ? `<span>❗ ${esc(t("pr." + tk.priority) || tk.priority)}</span>` : ""}
     </div>
     ${st === "review"
-      ? (tk.file_id ? taskFileLink(tk) : `<div class="review-note">📎 ${esc(t("task.fileSubmitted"))}</div>`)
+      ? (tk.file_id ? taskFileLink(tk) : `<div class="review-note">📨 ${esc(t("task.submittedNoFile"))}</div>`)
       : (st === "done" || st === "published") && tk.file_id ? taskFileLink(tk) : ""}
     ${st === "revision" && tk.review_comment ? `<div class="review-note">🔄 ${esc(tk.review_comment)}</div>` : ""}
     ${refStrip("task", tk.id, tk.refs_count || 0, tk.ref_thumbs)}
     ${reviewBtns}${publishBtn}
     ${next && st !== "review"
-      ? `<button class="act" data-task-to="${next.to}" data-task-id="${tk.id}">${next.label}</button>`
+      ? `<button class="act" data-task-to="${nextTo(tk)}" data-task-id="${tk.id}">${nextTo(tk) === "review" ? t("tn.submit") : next.label}</button>`
       : (st === "done" && !mgr) ? `<div class="done-mark">${esc(t("tn.doneMark"))}</div>` : ""}
   </div>`;
 }
@@ -1895,7 +1982,7 @@ view.addEventListener("click", async e => {
   const taskEditCard = e.target.closest("[data-task-edit]");
   if (taskEditCard && !e.target.closest("button, a")){
     const t = taskById[+taskEditCard.dataset.taskEdit];
-    if (t){ haptic(); openTaskEdit(t); }
+    if (t){ haptic(); openTaskView(t); }
     return;
   }
 
@@ -2040,7 +2127,8 @@ view.addEventListener("click", async e => {
     try {
       await api(`/api/tasks/${stBtn.dataset.taskId}`, {method:"PATCH", body:{status: stBtn.dataset.taskTo}});
       haptic("medium");
-      toast(stBtn.dataset.taskTo === "done" ? "Задача закрыта" : "Взято в работу");
+      toast(stBtn.dataset.taskTo === "done" ? "Задача закрыта"
+          : stBtn.dataset.taskTo === "review" ? t("toast.submitted") : "Взято в работу");
       await load(currentTab);
     } catch(err){ toast(err.message); stBtn.disabled = false; stBtn.textContent = orig; }
     finally { busy = false; }
