@@ -184,6 +184,8 @@
   .pill.in_progress{background:var(--st-in_progress)}
   .pill.done{background:var(--st-done)}
   .pill.overdue{background:var(--st-overdue)}
+  .pill-group{display:inline-flex; gap:4px; flex:none; flex-wrap:wrap; justify-content:flex-end}
+  .meta .late{color:var(--st-overdue); font-weight:600}
   .pill.review{background:var(--st-review); color:#241a08}
   .pill.revision{background:var(--st-revision)}
   .pill.published{background:var(--st-published)}
@@ -1340,11 +1342,24 @@ function cjobChip(c, j){
   </button>`;
 }
 
+// Not published yet and the publish time has passed. A bare publish_date
+// (no time) counts as late only from the next day.
+function isContentLate(c){
+  if ((c.pipeline_status || "") === "published") return false;
+  if (c.publish_at) return new Date(c.publish_at).getTime() < Date.now();
+  if (c.publish_date){
+    const d = new Date(String(c.publish_date).slice(0, 10) + "T23:59:59");
+    return d.getTime() < Date.now();
+  }
+  return false;
+}
+
 function contentCard(c, {advance=true, jobs=true}={}){
   contentById[c.id] = c;
   const st = c.pipeline_status || "script";
   const isFinal = st === "published";
   const canEdit = c.can_edit !== false;
+  const late = isContentLate(c);
   const when = c.publish_at ? fmtDateTime(c.publish_at)
              : c.publish_date ? fmtDate(c.publish_date) : null;
   const who = (c.assignees || []).map(a => a.name).filter(Boolean).join(", ");
@@ -1360,12 +1375,12 @@ function contentCard(c, {advance=true, jobs=true}={}){
   <div class="card${canEdit ? " tappable" : ""}"${canEdit ? ` data-content-edit="${c.id}"` : ""}>
     <div class="row">
       <p class="title">${esc(c.topic || c.number || ("Контент #" + c.id))}</p>
-      <span class="pill stage">${esc(PIPELINE_LABELS[st] || st)}</span>
+      <span class="pill-group">${late ? `<span class="pill overdue">${esc(STATUS_LABELS.overdue)}</span>` : ""}<span class="pill stage">${esc(PIPELINE_LABELS[st] || st)}</span></span>
     </div>
     <div class="meta">
       ${c.content_kind ? `<span>🏷 ${esc(KIND_LABEL[c.content_kind] || c.content_kind)}</span>` : ""}
       ${c.format ? `<span>🎞 ${esc(t("fmt." + c.format) || c.format)}</span>` : ""}
-      ${when ? `<span>📅 ${esc(when)}</span>` : ""}
+      ${when ? `<span${late ? ` class="late"` : ""}>📅 ${esc(when)}</span>` : ""}
       ${c.project_name ? `<span>📁 ${esc(c.project_name)}</span>` : ""}
       ${who ? `<span>👤 ${esc(who)}</span>` : ""}
     </div>
