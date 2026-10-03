@@ -1705,10 +1705,18 @@ async def list_clients(user: dict = Depends(member), session=Depends(get_session
     names = await _names_for(
         session, [c.am_id for c in rows] + [r[3] for r in prows])
     prefs = await _ref_summaries(session, project_ids=[r[0] for r in prows])
+    # published this month — same rule as the dashboard's publication plan
+    month_start = _now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    pub = dict((await session.execute(
+        select(ContentItem.project_id, func.count())
+        .where(ContentItem.pipeline_status == "published",
+               ContentItem.updated_at >= month_start,
+               ContentItem.project_id.in_([r[0] for r in prows]))
+        .group_by(ContentItem.project_id))).all()) if prows else {}
     for pid, cid, pn, pam, mp, pdesc in prows:
         projs.setdefault(cid, []).append(
             {"id": pid, "name": pn, "am_id": pam, "am_name": names.get(pam),
-             "monthly_posts": mp, "description": pdesc,
+             "monthly_posts": mp, "description": pdesc, "published_month": pub.get(pid, 0),
              "refs_count": prefs.get(pid, {}).get("count", 0)})
     out = []
     for c in rows:
