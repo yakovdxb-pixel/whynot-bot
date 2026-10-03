@@ -2332,19 +2332,25 @@ async def dashboard(user: dict = Depends(member), session=Depends(get_session)):
     users = (await session.execute(
         select(User).where(User.is_active.is_(True)).order_by(User.full_name)
     )).scalars().all()
+    # One grouped query over task_assignees (co-assignees count for everyone on the task).
+    this_month = Task.created_at >= month_start
+    load = {uid: (open_n, total_n, done_n) for uid, open_n, total_n, done_n in (await session.execute(
+        select(TaskAssignee.user_id,
+               func.count().filter(Task.status.in_(OPEN_TASK_STATUSES)),
+               func.count().filter(this_month),
+               func.count().filter(this_month, Task.status.in_(("done", "published"))))
+        .join(Task, Task.id == TaskAssignee.task_id)
+        .group_by(TaskAssignee.user_id)
+    )).all()}
     workload = []
     for u in users:
+        open_n, total_n, done_n = load.get(u.id, (0, 0, 0))
         workload.append({
             "user_id": u.id,
             "name": u.full_name,
-            "open_tasks": await count(
-                Task, Task.assignee_id == u.id,
-                Task.status.in_(("pending", "in_progress", "overdue"))),
-            "total_this_month": await count(
-                Task, Task.assignee_id == u.id, Task.created_at >= month_start),
-            "done_this_month": await count(
-                Task, Task.assignee_id == u.id, Task.created_at >= month_start,
-                Task.status == "done"),
+            "open_tasks": open_n,
+            "total_this_month": total_n,
+            "done_this_month": done_n,
         })
 
     rows = (await session.execute(
