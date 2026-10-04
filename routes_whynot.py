@@ -2833,6 +2833,133 @@ async def team_load(user: dict = Depends(member), session=Depends(get_session)):
     return {"people": out, "projects": proj_out}
 
 
+@router.get("/stats")
+async def stats(month: str | None = None, user: dict = Depends(member), session=Depends(get_session)):
+    """Monthly statistics (Tashkent month, «YYYY-MM», default = current).
+    Counted from tasks finished in the month and their status history (status_events):
+    executor time = pending / in work / revisions, AM time = «на проверке», client time =
+    «у клиента». On time = handed in (first «review») no later than the deadline."""
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "только для admin / am / director")
+    now_tk = _now().astimezone(TASHKENT)
+    try:
+        y, m = map(int, (month or now_tk.strftime("%Y-%m")).split("-"))
+        start = datetime(y, m, 1, tzinfo=TASHKENT)
+    except ValueError:
+        raise HTTPException(422, "month must be YYYY-MM")
+    end = datetime(y + (m == 12), m % 12 + 1, 1, tzinfo=TASHKENT)
+    finished_at = func.coalesce(Task.actual_completion, Task.updated_at)
+    tasks = (await session.execute(select(Task).where(
+        Task.status.in_(("done", "published")), finished_at >= start, finished_at < end))).scalars().all()
+    ids = [t.id for t in tasks]
+    events = {}
+    if ids:
+        for ev in (await session.execute(select(StatusEvent).where(
+                StatusEvent.entity == "task", StatusEvent.entity_id.in_(ids))
+                .order_by(StatusEvent.created_at, StatusEvent.id))).scalars().all():
+            events.setdefault(ev.entity_id, []).append(ev)
+    assignees = {}
+    for tid, uid in (await session.execute(select(TaskAssignee.task_id, TaskAssignee.user_id)
+                                           .where(TaskAssignee.task_id.in_(ids or [0])))).all():
+        assignees.setdefault(tid, []).append(uid)
+    projects = {pid: (name, pam, cid) for pid, name, pam, cid in (await session.execute(
+        select(Project.id, Project.name, Project.am_id, Project.client_id))).all()}
+    client_am = dict((await session.execute(select(Client.id, Client.am_id))).all())
+
+    EXEC, AM, CLIENT = ("pending", "in_progress", "revision", "overdue"), ("review",), ("client",)
+    people, ams, clients = {}, {}, {}
+    tot = {"exec": 0.0, "am": 0.0, "client": 0.0}
+    task_on_time = []      # per task, not per assignee
+    hours = lambda a, b: max((b - a).total_seconds() / 3600, 0)
+    for t in tasks:
+        done_at = t.actual_completion or t.updated_at
+        evs = events.get(t.id, [])
+        # time per side: walk the status history (last state lasts until the task was done)
+        seg = {"exec": 0.0, "am": 0.0, "client": 0.0}
+        reviews, am_waits, client_waits = 0, [], []
+        for i, ev in enumerate(evs):
+            nxt = evs[i + 1].created_at if i + 1 < len(evs) else done_at
+            h = hours(ev.created_at, nxt) if nxt else 0
+            if ev.status in EXEC:
+                seg["exec"] += h
+            elif ev.status in AM:
+                seg["am"] += h; am_waits.append(h); reviews += 1
+            elif ev.status in CLIENT:
+                seg["client"] += h; client_waits.append(h)
+        for k in tot:
+            tot[k] += seg[k]
+        revs = sum(1 for ev in evs if ev.status == "revision")
+        handed = next((ev.created_at for ev in evs if ev.status == "review"), None) or t.submitted_at or done_at
+        dl = t.deadline
+        if dl is not None and dl.astimezone(TASHKENT).strftime("%H:%M") == "00:00":
+            dl = dl + timedelta(days=1)        # a date-only deadline means «by the end of that day»
+        on_time = None if dl is None else handed <= dl
+        if on_time is not None:
+            task_on_time.append(on_time)
+        lead = hours(t.created_at, done_at) / 24 if t.created_at and done_at else None
+        for uid in assignees.get(t.id) or ([t.assignee_id] if t.assignee_id else []):
+            p = people.setdefault(uid, {"done": 0, "with_deadline": 0, "on_time": 0, "revisions": 0, "lead": []})
+            p["done"] += 1; p["revisions"] += revs
+            if on_time is not None:
+                p["with_deadline"] += 1; p["on_time"] += on_time
+            if lead is not None:
+                p["lead"].append(lead)
+        pname, pam, cid = projects.get(t.project_id, (None, None, None))
+        am_id = pam or client_am.get(cid)
+        if am_id:
+            a = ams.setdefault(am_id, {"reviews": 0, "wait": [], "revisions": 0, "tasks": 0})
+            a["reviews"] += reviews; a["wait"] += am_waits; a["revisions"] += revs; a["tasks"] += 1
+        if t.project_id:
+            c = clients.setdefault(t.project_id, {"name": pname, "tasks": 0, "revisions": 0,
+                                                  "client_wait": [], "client_rounds": 0})
+            c["tasks"] += 1; c["revisions"] += revs
+            c["client_wait"] += client_waits; c["client_rounds"] += len(client_waits)
+
+    names = await _names_for(session, list(people) + list(ams))
+    avg = lambda xs: round(sum(xs) / len(xs), 1) if xs else None
+    # open / overdue right now, for context next to the month's numbers
+    open_now = dict((await session.execute(
+        select(TaskAssignee.user_id, func.count()).join(Task, Task.id == TaskAssignee.task_id)
+        .where(Task.status.in_(OPEN_TASK_STATUSES)).group_by(TaskAssignee.user_id))).all())
+    # publication plan vs fact for the month
+    pub = dict((await session.execute(select(ContentItem.project_id, func.count()).where(
+        ContentItem.pipeline_status == "published", ContentItem.updated_at >= start,
+        ContentItem.updated_at < end).group_by(ContentItem.project_id))).all())
+    plan = dict((await session.execute(select(Project.id, Project.monthly_posts).where(
+        Project.is_active.is_(True), Project.monthly_posts > 0))).all())
+
+    n = len(tasks)
+    return {
+        "month": f"{y:04d}-{m:02d}",
+        "summary": {
+            "done": n,
+            "on_time_pct": round(100 * sum(task_on_time) / len(task_on_time)) if task_on_time else None,
+            "revisions_per_task": round(sum(len([e for e in events.get(t.id, []) if e.status == "revision"])
+                                            for t in tasks) / n, 1) if n else None,
+            "lead_days": avg([hours(t.created_at, t.actual_completion or t.updated_at) / 24
+                              for t in tasks if t.created_at]),
+        },
+        # average hours per finished task on each side — where the time goes
+        "where_time_goes": {k: round(v / n, 1) if n else 0 for k, v in tot.items()},
+        "people": sorted(({
+            "id": uid, "name": names.get(uid), "done": p["done"],
+            "on_time_pct": round(100 * p["on_time"] / p["with_deadline"]) if p["with_deadline"] else None,
+            "revisions_per_task": round(p["revisions"] / p["done"], 1),
+            "lead_days": avg(p["lead"]), "open_now": open_now.get(uid, 0),
+        } for uid, p in people.items()), key=lambda r: -r["done"]),
+        "ams": sorted(({
+            "id": uid, "name": names.get(uid), "tasks": a["tasks"], "reviews": a["reviews"],
+            "review_wait_h": avg(a["wait"]), "revisions": a["revisions"],
+        } for uid, a in ams.items()), key=lambda r: -r["tasks"]),
+        "clients": sorted(({
+            "id": pid, "name": c["name"], "tasks": c["tasks"],
+            "revisions_per_task": round(c["revisions"] / c["tasks"], 1),
+            "client_wait_h": avg(c["client_wait"]), "client_rounds": c["client_rounds"],
+            "plan": plan.get(pid), "published": pub.get(pid, 0),
+        } for pid, c in clients.items()), key=lambda r: -r["tasks"]),
+    }
+
+
 # telegram_id -> (reachable, checked_at). True is cached longer than False so a fresh
 # «Start» shows up within a couple of minutes.
 _REACH_CACHE: dict = {}
