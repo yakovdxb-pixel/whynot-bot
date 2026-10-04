@@ -399,7 +399,7 @@ class ContentPatch(BaseModel):
 
 
 class IdeaCreate(BaseModel):
-    title: str
+    title: str | None = None   # optional: a pasted link's preview title fills it in
     description: str | None = None
     format: str | None = None
     project_id: int | None = None
@@ -1669,9 +1669,10 @@ async def create_content(body: ContentCreate,
 @router.post("/ideas", status_code=201)
 async def create_idea(body: IdeaCreate,
                       user: dict = Depends(member), session=Depends(get_session)):
-    title = _clean(body.title)
-    if not title:
-        raise HTTPException(422, "title is required")
+    # title is optional: the Mini App posts the link right after creating the idea,
+    # and an empty title is filled from that link's preview (add_link_reference)
+    title = _clean(body.title) or ""
+    ref_url = _clean(body.reference_url)
     fmt = _clean(body.format)
     if fmt:
         fmt = FORMAT_ALIASES.get(fmt.lower(), fmt.lower())
@@ -1688,12 +1689,15 @@ async def create_idea(body: IdeaCreate,
         votes_count=0,
     )
     await _commit_new(session, obj)
-    ref_url = _clean(body.reference_url)
     if ref_url:
         if not ref_url.startswith(("http://", "https://")):
             ref_url = "https://" + ref_url
-        session.add(ReferenceItem(idea_id=obj.id, kind="link", url=ref_url,
-                                  title=ref_url, added_by=uid))
+        pv = await fetch_preview(ref_url)
+        session.add(ReferenceItem(idea_id=obj.id, kind="link", url=ref_url, title=ref_url, added_by=uid,
+                                  preview_title=pv["title"], preview_image=pv["image"],
+                                  preview_site=pv["site"], preview_fetched_at=_now()))
+        if not obj.title:
+            obj.title = _idea_title_from(pv)
         await session.commit()
     await _log(session, "idea", "created", obj.id, uid, title)
     d = row_to_dict(obj)
@@ -2237,9 +2241,23 @@ async def add_link_reference(body: LinkRef,
                         preview_title=pv["title"], preview_image=pv["image"],
                         preview_site=pv["site"], preview_fetched_at=_now())
     session.add(obj)
+    if body.idea_id:   # idea created with just a link -> name it after the link
+        idea = (await session.execute(select(Idea).where(Idea.id == body.idea_id))).scalar_one_or_none()
+        if idea and not (idea.title or "").strip():
+            idea.title = _idea_title_from(pv)
     await session.commit()
     await session.refresh(obj)
     return _ref_out(obj, user.get("full_name"))
+
+
+def _idea_title_from(pv: dict) -> str:
+    """Short idea title from a link preview (Instagram: the caption part of «Name в Instagram : "…"»)."""
+    title = (pv.get("title") or "").split("\n")[0]
+    if " : " in title:
+        title = title.split(" : ", 1)[1].strip(' "«»')
+    if len(title) > 80:
+        title = title[:80].rstrip() + "…"
+    return title or (f"Идея из {pv['site']}" if pv.get("site") else "Новая идея")
 
 
 @router.post("/references/upload", status_code=201)
