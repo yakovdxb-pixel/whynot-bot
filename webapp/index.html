@@ -381,6 +381,33 @@
   .imeta{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--hint); min-width:0}
   .imeta .ic-client{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0}
   .imeta .vote.mini{flex:none; padding:3px 9px; font-size:12px}
+  /* team load: one row per person + 14-day strip */
+  .ld-days{display:grid; grid-template-columns:repeat(14,1fr); gap:3px; font-size:9px; color:var(--hint);
+    text-align:center; margin:0 0 6px; position:sticky; top:-14px; background:var(--bg); padding:6px 0; z-index:2}
+  .ld-days .we{color:var(--st-overdue-ink)}
+  .ld-card{padding:12px 13px}
+  .ld-head{display:flex; align-items:center; gap:8px}
+  .ld-head .nm{font-weight:700; font-size:15px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .ld-state{font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap}
+  .ld-free{background:color-mix(in srgb, var(--st-done) 15%, var(--card)); color:var(--st-done-ink)}
+  .ld-busy{background:color-mix(in srgb, var(--st-review) 16%, var(--card)); color:var(--st-review-ink)}
+  .ld-hot{background:color-mix(in srgb, var(--st-overdue) 15%, var(--card)); color:var(--st-overdue-ink)}
+  .ld-now{font-size:13px; margin-top:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .ld-now b{color:var(--link)}
+  .ld-sub{font-size:11px; color:var(--hint); margin-top:3px}
+  .ld-strip{display:grid; grid-template-columns:repeat(14,1fr); gap:3px; margin-top:9px}
+  .ld-strip i{height:16px; border-radius:4px; background:var(--seg-bg); display:flex; align-items:center; justify-content:center; font-size:9px; font-style:normal; color:#fff}
+  .ld-strip i.l1{background:color-mix(in srgb, var(--accent) 35%, var(--seg-bg))}
+  .ld-strip i.l2{background:color-mix(in srgb, var(--accent) 65%, var(--seg-bg))}
+  .ld-strip i.l3{background:var(--accent)}
+  .ld-strip i.late{background:var(--st-overdue)}
+  .ld-strip i.today{outline:1.5px solid var(--text); outline-offset:1px}
+  .ld-list{margin-top:9px; border-top:1px solid var(--border); padding-top:7px; display:none}
+  .ld-card.open .ld-list{display:block}
+  .ld-list div{font-size:13px; padding:4px 0; display:flex; gap:8px; justify-content:space-between}
+  .ld-list div span:last-child{color:var(--hint); white-space:nowrap; font-size:12px}
+  .mp-opt .mp-load{font-weight:500; color:var(--hint); font-size:11px; margin-left:3px}
+  .mp-opt .mp-load.hot{color:var(--st-overdue-ink)}
   /* Telegram-like swipe actions on cards */
   .swipe-wrap{position:relative; margin-bottom:10px; border-radius:18px}
   .igrid .swipe-wrap{margin-bottom:0; border-radius:16px}
@@ -722,6 +749,7 @@
   <h2 data-i18n="nav.more">Ещё</h2>
   <button class="more-item" data-goto="blockers"><span>🚫</span> <span data-i18n="nav.blockers">Блокеры</span></button>
   <button class="more-item mgr-only" data-goto="team"><span>👥</span> <span data-i18n="more.team">Команда и клиенты</span></button>
+  <button class="more-item mgr-only" data-goto="load"><span>🗺</span> <span data-i18n="nav.load">Загрузка команды</span></button>
   <button class="more-item mgr-only" data-goto="dash"><span>📊</span> <span data-i18n="nav.dash">Обзор</span></button>
   <button class="more-item" id="moreLang"><span>🌐</span> <span>Язык · Til · Language</span></button>
 </div>
@@ -923,7 +951,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
     "sec.tasks":"Задачи","sec.stale":"Зависшие — просрочка больше 7 дней","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
-    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","swipe.open":"👁 Открыть","idea.reject":"✖ Отклонить","idea.rejected":"Отклонено","board.allProjects":"Все","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
+    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","nav.load":"Загрузка команды","load.free":"свободен","load.busyTill":"занят до {d}","load.overdue":"просрочек: {n}","load.overloaded":"перегружен","load.now":"Сейчас","load.next":"дальше: {n}","load.queued":"в очереди: {n}","load.review":"на проверке: {n}","load.shoot":"съёмка","load.nothing":"задач нет","load.legend":"Точки — сроки задач по дням, 🎬 — съёмки. Нажмите на человека, чтобы увидеть его задачи.","swipe.open":"👁 Открыть","idea.reject":"✖ Отклонить","idea.rejected":"Отклонено","board.allProjects":"Все","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
     "empty.shoots":"Съёмок пока нет — добавь через «+»",
     "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
@@ -981,7 +1009,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
     "sec.tasks":"Vazifalar","sec.stale":"Osilib qolganlar — 7 kundan ortiq kechikkan","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
-    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","swipe.open":"👁 Ochish","idea.reject":"✖ Rad etish","idea.rejected":"Rad etildi","board.allProjects":"Barchasi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
+    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","nav.load":"Jamoa bandligi","load.free":"boʻsh","load.busyTill":"{d} gacha band","load.overdue":"kechikkan: {n}","load.overloaded":"ortiqcha band","load.now":"Hozir","load.next":"keyin: {n}","load.queued":"navbatda: {n}","load.review":"tekshiruvda: {n}","load.shoot":"suratga olish","load.nothing":"vazifa yoʻq","load.legend":"Nuqtalar — kunlar boʻyicha muddatlar, 🎬 — suratga olishlar. Vazifalarni koʻrish uchun odamni bosing.","swipe.open":"👁 Ochish","idea.reject":"✖ Rad etish","idea.rejected":"Rad etildi","board.allProjects":"Barchasi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
     "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
     "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
@@ -1039,7 +1067,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
     "sec.tasks":"Tasks","sec.stale":"Stuck — overdue by more than 7 days","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
-    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","swipe.open":"👁 Open","idea.reject":"✖ Reject","idea.rejected":"Rejected","board.allProjects":"All","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
+    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","nav.load":"Team load","load.free":"free","load.busyTill":"busy till {d}","load.overdue":"overdue: {n}","load.overloaded":"overloaded","load.now":"Now","load.next":"next: {n}","load.queued":"queued: {n}","load.review":"in review: {n}","load.shoot":"shoot","load.nothing":"no tasks","load.legend":"Dots — task deadlines per day, 🎬 — shoots. Tap a person to see their tasks.","swipe.open":"👁 Open","idea.reject":"✖ Reject","idea.rejected":"Rejected","board.allProjects":"All","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
     "empty.shoots":"No shoots yet — add one with “+”",
     "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
@@ -1103,7 +1131,7 @@ function _setArr(a, v){ a.length = 0; v.forEach(x => a.push(x)); }
 
 function buildLabels(){
   TITLES = { home:t("nav.home"), content:t("nav.content"), ideas:t("nav.ideas"),
-             blockers:t("nav.blockers"), shoots:t("nav.shoots"), team:t("nav.team"), dash:t("nav.dash") };
+             blockers:t("nav.blockers"), shoots:t("nav.shoots"), team:t("nav.team"), dash:t("nav.dash"), load:t("nav.load") };
   _setArr(PLATFORM_OPTS, [["","—"], ...opts("pf.", ["instagram","tiktok","youtube","telegram","vk","other"])]);
   _setArr(SHOOT_STATUS_OPTS, opts("ss.", ["planned","done","cancelled"]));
   _setArr(STATUS_OPTS, opts("st.", ["pending","in_progress","review","revision","done","published","overdue","cancelled"]));
@@ -1781,6 +1809,48 @@ async function renderContent(){
   view.innerHTML = parts.join("");
 }
 
+/* ── Загрузка команды: who works on what ─────────────────── */
+async function renderLoad(){
+  const people = await api("/api/team/load");
+  // problems first, then busy, then free; inside a group — the most loaded first
+  const weight = p => (p.overdue ? 2e4 : 0) + (p.open >= 6 ? 1e4 : 0) + (p.open + p.shoots.length ? 5e3 : 0) + p.open * 10 + p.queued;
+  people.sort((a, b) => weight(b) - weight(a));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = [...Array(14)].map((_, i) => new Date(today.getTime() + i * 86400e3));
+  const dayIdx = iso => Math.floor((new Date(iso).setHours(0, 0, 0, 0) - today.getTime()) / 86400e3);
+  const head = `<div class="ld-days">${days.map(d => `<span class="${[0, 6].includes(d.getDay()) ? "we" : ""}">${d.getDate()}</span>`).join("")}</div>`;
+  const cards = people.map(p => {
+    const cells = days.map(() => ({ n: 0, late: false, shoot: false }));
+    p.tasks.forEach(tk => {
+      if (!tk.deadline || tk.status === "queued") return;
+      const i = Math.max(0, dayIdx(tk.deadline));       // overdue lands on today
+      if (i < 14){ cells[i].n++; if (new Date(tk.deadline) < new Date()) cells[i].late = true; }
+    });
+    p.shoots.forEach(sh => { const i = dayIdx(sh.at); if (i >= 0 && i < 14) cells[i].shoot = true; });
+    const state = p.overdue ? ["ld-hot", t("load.overdue").replace("{n}", p.overdue)]
+      : p.open >= 6 ? ["ld-hot", t("load.overloaded")]
+      : p.open + p.shoots.length ? ["ld-busy", t("load.busyTill").replace("{d}", p.busy_until ? fmtDate(p.busy_until) : "—")]
+      : ["ld-free", t("load.free")];
+    const now = p.tasks.find(tk => tk.status !== "queued" && tk.status !== "review");
+    const sub = [p.open > 1 ? t("load.next").replace("{n}", p.open - 1) : "",
+                 p.review ? t("load.review").replace("{n}", p.review) : "",
+                 p.queued ? t("load.queued").replace("{n}", p.queued) : "",
+                 p.shoots[0] ? `🎬 ${fmtDate(p.shoots[0].at)}` : ""].filter(Boolean).join(" · ");
+    return `<div class="card ld-card tappable" data-ld="${p.id}">
+      <div class="ld-head"><span class="nm">${esc(p.name || "—")}</span>
+        <span class="pill" style="--c:${ROLE_COLORS[p.role] || "#8a8a8e"}; --ci:var(--text)">${esc(ROLE_LABELS[p.role] || p.role)}</span>
+        <span class="ld-state ${state[0]}">${esc(state[1])}</span></div>
+      <div class="ld-now">${now ? `<b>${esc(t("load.now"))}:</b> ${esc(now.title)}` : `<span class="hint">${esc(t("load.nothing"))}</span>`}</div>
+      ${sub ? `<div class="ld-sub">${esc(sub)}</div>` : ""}
+      <div class="ld-strip">${cells.map((c, i) => `<i class="${c.late ? "late" : c.n >= 3 ? "l3" : c.n === 2 ? "l2" : c.n === 1 ? "l1" : ""}${i === 0 ? " today" : ""}">${c.shoot ? "🎬" : c.n > 1 ? c.n : ""}</i>`).join("")}</div>
+      <div class="ld-list">${p.tasks.map(tk => `<div><span>${esc(tk.title)}</span><span>${esc(STATUS_LABELS[tk.status] || tk.status)}${tk.deadline ? " · " + esc(fmtDate(tk.deadline)) : ""}</span></div>`).join("")
+        || `<div><span class="hint">${esc(t("load.nothing"))}</span></div>`}</div>
+    </div>`;
+  }).join("");
+  view.innerHTML = `<p class="hint" style="margin:0 2px 10px">${esc(t("load.legend"))}</p>` + head + cards;
+  view.querySelectorAll("[data-ld]").forEach(c => c.addEventListener("click", () => { haptic(); c.classList.toggle("open"); }));
+}
+
 /* ── Съёмки ──────────────────────────────────────────────── */
 let shootById = {};
 let shootUpcomingOnly = false;
@@ -2186,7 +2256,7 @@ function statCard(n, label){
   return `<div class="stat"><div class="n">${n ?? 0}</div><div class="l">${esc(label)}</div></div>`;
 }
 
-const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, shoots:renderShoots, team:renderTeam, dash:renderDashboard };
+const RENDERERS = { home:renderHome, content:renderContent, ideas:renderIdeas, blockers:renderBlockers, shoots:renderShoots, team:renderTeam, dash:renderDashboard, load:renderLoad };
 
 function setWhoami(u){
   document.getElementById("whoami").textContent = (u && u.role) ? u.role : "";
@@ -2258,7 +2328,7 @@ async function load(tab){
   document.querySelectorAll("nav button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
   const nm = document.getElementById("navMore");
-  if (nm) nm.classList.toggle("active", tab === "team" || tab === "dash" || tab === "blockers");
+  if (nm) nm.classList.toggle("active", tab === "team" || tab === "dash" || tab === "blockers" || tab === "load");
   updateFab();
   view.innerHTML = `<div class="loader">${esc(t("misc.loading"))}</div>`;
   try {
@@ -3161,9 +3231,15 @@ async function fillMpick(f){
   if (!box) return;
   box.innerHTML = `<div class="hint">Загрузка…</div>`;
   try {
-    const list = await api("/api/members");
+    const [list, load] = await Promise.all([api("/api/members"),
+      isManager() ? api("/api/team/load").catch(() => []) : Promise.resolve([])]);
+    const ld = Object.fromEntries(load.map(p => [p.id, p]));
+    // who's free: open tasks next to each name (red if something is overdue)
+    const tag = id => { const p = ld[id]; if (!p) return "";
+      if (!p.open) return ` <span class="mp-load">🟢</span>`;            // free
+      return ` <span class="mp-load${p.overdue ? " hot" : ""}">· ${p.open}${p.busy_until ? " · " + esc(fmtDate(p.busy_until)) : ""}</span>`; };
     box.innerHTML = list.length
-      ? list.map(u => `<button type="button" class="mp-opt" data-id="${u.id}">${esc(u.full_name)}</button>`).join("")
+      ? list.map(u => `<button type="button" class="mp-opt" data-id="${u.id}">${esc(u.full_name)}${tag(u.id)}</button>`).join("")
       : `<div class="hint">Нет участников</div>`;
   } catch(e){
     box.innerHTML = `<div class="hint">${esc(e.message || "недоступно")}</div>`;

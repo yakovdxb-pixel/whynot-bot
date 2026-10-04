@@ -2609,6 +2609,53 @@ async def list_team(user: dict = Depends(member), session=Depends(get_session)):
     return out
 
 
+@router.get("/team/load")
+async def team_load(user: dict = Depends(member), session=Depends(get_session)):
+    """Who works on what: per active person — current task, open tasks with deadlines,
+    queued chain steps, upcoming shoots (14 days), and when they're free."""
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "только для admin / am / director")
+    now = _now()
+    horizon = now + timedelta(days=14)
+    people = (await session.execute(select(User).where(User.is_active.is_(True))
+                                    .order_by(User.role, User.full_name))).scalars().all()
+    rows = (await session.execute(
+        select(TaskAssignee.user_id, Task)
+        .join(Task, Task.id == TaskAssignee.task_id)
+        .where(Task.status.in_(OPEN_TASK_STATUSES + ("review", "queued"))))).all()
+    shoots = (await session.execute(
+        select(ShootParticipant.user_id, ShootSession)
+        .join(ShootSession, ShootSession.id == ShootParticipant.shoot_id)
+        .where(ShootSession.shoot_at >= now - timedelta(hours=12), ShootSession.shoot_at <= horizon,
+               ShootSession.status != "cancelled"))).all()
+    by = {u.id: {"tasks": [], "shoots": []} for u in people}
+    for uid, t in rows:
+        if uid in by:
+            by[uid]["tasks"].append(t)
+    for uid, sh in shoots:
+        if uid in by:
+            by[uid]["shoots"].append(sh)
+    rank = {"in_progress": 0, "revision": 1, "overdue": 2, "pending": 3, "review": 4, "queued": 5}
+    out = []
+    for u in people:
+        ts = sorted(by[u.id]["tasks"], key=lambda t: (rank.get(t.status, 9), t.deadline is None, t.deadline or now))
+        active = [t for t in ts if t.status != "queued"]
+        ends = [t.deadline for t in ts if t.deadline] + [sh.shoot_at for sh in by[u.id]["shoots"]]
+        out.append({
+            "id": u.id, "name": u.full_name, "role": u.role,
+            "open": len([t for t in active if t.status != "review"]),
+            "review": len([t for t in active if t.status == "review"]),
+            "queued": len(ts) - len(active),
+            "overdue": len([t for t in active if t.deadline and t.deadline < now and t.status != "review"]),
+            "busy_until": max(ends).isoformat() if ends else None,
+            "tasks": [{"id": t.id, "title": t.title, "status": t.status,
+                       "deadline": t.deadline.isoformat() if t.deadline else None} for t in ts[:12]],
+            "shoots": [{"id": sh.id, "title": sh.title, "at": sh.shoot_at.isoformat()}
+                       for sh in sorted(by[u.id]["shoots"], key=lambda x: x.shoot_at)],
+        })
+    return out
+
+
 # telegram_id -> (reachable, checked_at). True is cached longer than False so a fresh
 # «Start» shows up within a couple of minutes.
 _REACH_CACHE: dict = {}
