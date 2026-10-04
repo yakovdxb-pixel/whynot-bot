@@ -138,10 +138,15 @@ def _verify_login_widget(data: dict) -> bool:
     return hmac.compare_digest(good, received)
 
 
-async def _user_dict(session, tg_id: int, fallback_name: str = "Guest") -> dict:
+async def _user_dict(session, tg_id: int, fallback_name: str = "Guest", username=None) -> dict:
     row = (await session.execute(
         select(User).where(User.telegram_id == tg_id)
     )).scalar_one_or_none()
+    # remember the @username so the bot's «/task @someone» can find them
+    uname = (username or "").lstrip("@").lower() or None
+    if row and uname and row.username != uname:
+        row.username = uname
+        await session.commit()
     if row and row.is_active:
         return {"id": row.id, "telegram_id": tg_id,
                 "full_name": row.full_name, "role": row.role, "registered": True}
@@ -173,7 +178,7 @@ async def current_user(request: Request, session=Depends(get_session)) -> dict:
 
     if tg_user and tg_user.get("id"):
         name = " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")]))
-        return await _user_dict(session, int(tg_user["id"]), name)
+        return await _user_dict(session, int(tg_user["id"]), name, tg_user.get("username"))
 
     # ── standalone browser: signed session cookie ──
     if BOT_TOKEN:
@@ -431,6 +436,7 @@ class ShootCreate(BaseModel):
     project_id: int | None = None
     notes: str | None = None
     participant_ids: list[int] | None = None
+    checklist: list[dict] | None = None
 
 
 class ShootPatch(BaseModel):
@@ -442,6 +448,7 @@ class ShootPatch(BaseModel):
     notes: str | None = None
     status: str | None = None
     participant_ids: list[int] | None = None
+    checklist: list[dict] | None = None
 
 
 SHOOT_STATUSES = {"planned", "done", "cancelled"}
@@ -581,6 +588,7 @@ async def _attach_assignees(session, tasks):
     names = await _names_for(session, all_uids)
     refs = await _ref_summaries(session, task_ids=ids)
     revs = await _revision_counts(session, ids)
+    vers = await _revision_counts(session, ids, status="review")
     out = []
     for t in tasks:
         d = row_to_dict(t)
@@ -592,19 +600,21 @@ async def _attach_assignees(session, tasks):
         d["refs_count"] = s.get("count", 0)
         d["ref_thumbs"] = s.get("thumbs", [])
         d["revisions"] = revs.get(t.id, 0)
+        d["version"] = vers.get(t.id, 0)      # each file handed in for review = +1
         out.append(d)
     return out
 
 
-async def _revision_counts(session, task_ids) -> dict:
+async def _revision_counts(session, task_ids, status="revision") -> dict:
     """task_id -> how many times it was sent back for a revision (from status_events;
-    the AM's «🔄 Правка» in the group and in the app both land there)."""
+    the AM's «🔄 Правки» in the group and in the app both land there).
+    status="review" counts hand-ins instead = the version number of the work."""
     ids = [i for i in task_ids if i]
     if not ids:
         return {}
     rows = (await session.execute(
         select(StatusEvent.entity_id, func.count())
-        .where(StatusEvent.entity == "task", StatusEvent.status == "revision",
+        .where(StatusEvent.entity == "task", StatusEvent.status == status,
                StatusEvent.entity_id.in_(ids))
         .group_by(StatusEvent.entity_id))).all()
     return {tid: n for tid, n in rows}
@@ -694,7 +704,15 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
             raise HTTPException(422, f"priority must be one of {sorted(TASK_PRIORITIES)}")
         task.priority = p
     if patch.deadline is not None:
-        task.deadline = _parse_dt(patch.deadline)
+        new_dl = _parse_dt(patch.deadline)
+        if new_dl != task.deadline:
+            # a moved deadline gets a fresh «2 часа» reminder and overdue notice
+            task.overdue_notified_at = None
+            task.remind_notified_at = None
+            if task.status == "overdue" and patch.status is None and (not new_dl or new_dl > _now()):
+                task.status = "pending"
+                status_changed = True
+        task.deadline = new_dl
     if patch.location is not None:
         task.location = _clean(patch.location)
     if patch.client_id is not None:
@@ -2315,6 +2333,31 @@ async def list_members(user: dict = Depends(member), session=Depends(get_session
 
 # ── shoots (Съёмки) ────────────────────────────────────────────
 
+# gear checklist every new shoot starts with (editable per shoot)
+SHOOT_CHECKLIST = [
+    "Камера + запасные батареи (заряжены)", "Карты памяти (очищены)", "Объективы",
+    "Свет + стойки", "Микрофоны / петлички", "Штатив / стабилизатор", "Отражатель",
+    "Зарядки, удлинитель", "Сценарий и референсы", "Реквизит",
+]
+SHOOT_BUSY_HOURS = 3   # a shoot blocks its crew ±3 h around its start
+
+
+def _checklist_in(items):
+    out = []
+    for it in items or []:
+        t = _clean(str((it or {}).get("t") or ""))
+        if t:
+            out.append({"t": t[:120], "done": bool(it.get("done"))})
+    return json.dumps(out[:40], ensure_ascii=False)
+
+
+def _checklist_out(raw):
+    try:
+        v = json.loads(raw) if raw else []
+        return v if isinstance(v, list) else []
+    except (ValueError, TypeError):
+        return []
+
 async def _attach_shoot(session, shoots):
     if not shoots:
         return []
@@ -2332,6 +2375,8 @@ async def _attach_shoot(session, shoots):
     for s in shoots:
         d = row_to_dict(s)
         d["shoot_at"] = s.shoot_at.isoformat() if s.shoot_at else None
+        d["checklist"] = _checklist_out(s.checklist)
+        d.pop("reminded_at", None)
         d["participants"] = [{"id": i, "name": names.get(i)}
                              for i in by_shoot.get(s.id, [])]
         d["client_name"] = cnames.get(s.client_id)
@@ -2360,6 +2405,28 @@ async def _sync_shoot_participants(session, shoot_id, ids):
     return ids
 
 
+@router.get("/shoots/conflicts")
+async def shoot_conflicts(at: str, participant_ids: str = "", exclude: int | None = None,
+                          user: dict = Depends(member), session=Depends(get_session)):
+    """Crew members who already have another shoot within ±3 h of `at` — the form
+    warns before saving. participant_ids: comma-separated user ids."""
+    when = _parse_dt(at)
+    ids = [int(x) for x in participant_ids.split(",") if x.strip().isdigit()]
+    if not when or not ids:
+        return []
+    win = timedelta(hours=SHOOT_BUSY_HOURS)
+    q = (select(ShootParticipant.user_id, ShootSession)
+         .join(ShootSession, ShootSession.id == ShootParticipant.shoot_id)
+         .where(ShootParticipant.user_id.in_(ids), ShootSession.status != "cancelled",
+                ShootSession.shoot_at > when - win, ShootSession.shoot_at < when + win))
+    if exclude:
+        q = q.where(ShootSession.id != exclude)
+    rows = (await session.execute(q)).all()
+    names = await _names_for(session, [u for u, _ in rows])
+    return [{"user_id": u, "name": names.get(u), "shoot_id": sh.id, "title": sh.title,
+             "at": sh.shoot_at.isoformat()} for u, sh in rows]
+
+
 @router.post("/shoots", status_code=201)
 async def create_shoot(body: ShootCreate, bg: BackgroundTasks,
                        user: dict = Depends(member), session=Depends(get_session)):
@@ -2379,6 +2446,8 @@ async def create_shoot(body: ShootCreate, bg: BackgroundTasks,
         client_id=body.client_id or None,
         project_id=project_id,
         notes=_clean(body.notes),
+        checklist=_checklist_in(body.checklist if body.checklist is not None
+                                else [{"t": t} for t in SHOOT_CHECKLIST]),
         status="planned",
         created_by=user["id"] or None,
     )
@@ -2418,7 +2487,12 @@ async def update_shoot(shoot_id: int, patch: ShootPatch, bg: BackgroundTasks,
     if "title" in data and _clean(data["title"]):
         obj.title = _clean(data["title"])
     if "shoot_at" in data:
-        obj.shoot_at = _parse_dt(data["shoot_at"])
+        new_at = _parse_dt(data["shoot_at"])
+        if new_at != obj.shoot_at:
+            obj.reminded_at = None          # moved -> remind again the evening before
+        obj.shoot_at = new_at
+    if "checklist" in data:
+        obj.checklist = _checklist_in(data["checklist"])
     if "location" in data:
         obj.location = _clean(data["location"])
     if "notes" in data:

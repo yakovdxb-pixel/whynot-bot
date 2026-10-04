@@ -257,7 +257,7 @@
   .pill.revision{--c:var(--st-revision); --ci:var(--st-revision-ink)}
   .pill.published{--c:var(--st-published); --ci:var(--st-published-ink)}
   .review-note{
-    margin-top:8px; font-size:13px; color:var(--st-review-ink);
+    margin-top:8px; font-size:13px; color:var(--st-review-ink); white-space:pre-line;
     background:color-mix(in srgb, var(--st-review) 16%, transparent);
     border-radius:9px; padding:7px 10px;
   }
@@ -393,6 +393,35 @@
   .ld-days{display:grid; grid-template-columns:repeat(14,1fr); gap:3px; font-size:9px; color:var(--hint);
     text-align:center; margin:0 0 6px; position:sticky; top:-14px; background:var(--bg); padding:6px 0; z-index:2}
   .ld-days .we{color:var(--st-overdue-ink)}
+  /* shoot calendar */
+  .cal{padding:10px 10px 12px}
+  .cal-head{display:flex; align-items:center; justify-content:space-between; margin:0 2px 8px; text-transform:capitalize}
+  .cal-nav{border:none; background:var(--accent-soft); color:var(--link); width:34px; height:30px; border-radius:9px; font-size:18px; cursor:pointer}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+  .cal-wd{font-size:10px; color:var(--hint); text-align:center; font-weight:700}
+  .cal-wd.we{color:var(--autumn)}
+  .cal-cell{min-height:46px; border:none; border-radius:10px; background:var(--hover); color:var(--text); font:inherit;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:4px 0 3px; gap:1px; cursor:pointer}
+  .cal-cell.empty{background:transparent}
+  .cal-cell b{font-size:13px}
+  .cal-cell.past{opacity:.55}
+  .cal-cell.today b{color:var(--autumn)}
+  .cal-cell.sel{background:var(--accent); color:var(--on-accent)}
+  .cal-cell.sel .cal-t{background:rgba(255,255,255,.22); color:inherit}
+  .cal-t{font-size:9.5px; font-weight:700; background:var(--autumn-soft); color:var(--autumn); border-radius:5px; padding:0 3px}
+  .cal-more{font-size:9px; opacity:.8}
+  .gear-ok{color:var(--st-done-ink)}
+  /* checklist field */
+  .chk-list{display:flex; flex-direction:column; gap:2px; margin-bottom:6px}
+  .field .chk-item{display:flex; align-items:center; gap:9px; padding:8px 4px; margin:0; border-bottom:1px solid var(--sep);
+    font-size:14px; color:var(--text); cursor:pointer}
+  .field .chk-item input{width:19px; height:19px; min-height:0; padding:0; margin:0; border:none; background:none;
+    -webkit-appearance:checkbox; appearance:auto; accent-color:var(--accent); flex:0 0 auto}
+  .chk-item span{flex:1}
+  .chk-item input:checked + span{color:var(--hint); text-decoration:line-through}
+  .chk-field .rf-row input{flex:1; min-width:0}
+  .chk-field .chk-add{flex:0 0 52px; padding:0}
+  .chk-del{border:none; background:none; color:var(--hint); font-size:12px; cursor:pointer; padding:2px 6px}
   .ld-proj{padding:4px 13px}
   .ld-prow{padding:9px 0}
   .ld-prow + .ld-prow{border-top:1px solid var(--border)}
@@ -997,7 +1026,7 @@ const I18N = {
     "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
     "login.title":"Вход в WHY NOT? OS","login.sub":"Войди через Telegram — так приложение работает в браузере отдельно от чатов.","login.noBot":"Вход через браузер пока не настроен. Открой приложение из бота.",
     "content.advance":"Продвинуть →","content.final":"Финальный этап",
-    "cjob.ai":"ИИ-вставка","chain.plan":"⚙️ Шаги","chain.launch":"🚀 Запустить","chain.launched":"Запущено — исполнитель получил задачу","chain.approve":"✅ Утвердить","chain.publish":"📢 Опубликовано","chain.approval":"Утверждение","chain.addStep":"+ шаг","chain.removeActiveQ":"Убрать шаг, над которым уже работают? Работа перейдёт к следующему шагу.","chain.addWhich":"Какой шаг добавить?","chain.launchMonth":"🚀 Запустить месяц","chain.launchMonthQ":"Запустить в работу все запланированные публикации клиента? Исполнители первых шагов получат задачи.","chain.launchedN":"Запущено публикаций: {n}","content.archive":"🗄 В архив","content.archived":"В архиве","content.restore":"↩ Вернуть","content.restored":"Возвращено","content.archiveTab":"🗄 Архив","st.queued":"в очереди","cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи","cjob.add":"+ Задача","cjob.addWhich":"Какую задачу поставить?","cjob.nobody":"без исполнителя","load.revs":"правок: {n}","load.revs30":"правок за 30 дн: {n}","load.days":"{n} дн. в работе","load.projects":"Кто на каком проекте","load.peopleN":"{n} чел.","load.tasksN":"задач: {n}","load.byPerson":"По людям",
+    "cjob.ai":"ИИ-вставка","chain.plan":"⚙️ Шаги","chain.launch":"🚀 Запустить","chain.launched":"Запущено — исполнитель получил задачу","chain.approve":"✅ Утвердить","chain.publish":"📢 Опубликовано","chain.approval":"Утверждение","chain.addStep":"+ шаг","chain.removeActiveQ":"Убрать шаг, над которым уже работают? Работа перейдёт к следующему шагу.","chain.addWhich":"Какой шаг добавить?","chain.launchMonth":"🚀 Запустить месяц","chain.launchMonthQ":"Запустить в работу все запланированные публикации клиента? Исполнители первых шагов получат задачи.","chain.launchedN":"Запущено публикаций: {n}","content.archive":"🗄 В архив","content.archived":"В архиве","content.restore":"↩ Вернуть","content.restored":"Возвращено","content.archiveTab":"🗄 Архив","st.queued":"в очереди","cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи","cjob.add":"+ Задача","field.crew":"Оператор и команда","field.checklist":"Чек-лист техники","chk.addPh":"Добавить пункт…","shoot.clashQ":"У команды уже есть съёмка в это время:\n{list}\n\nВсё равно сохранить?","shoot.list":"📋 Список","shoot.cal":"📅 Календарь","shoot.dayEmpty":"В этот день съёмок нет","shoot.gear":"техника {d}/{n}","task.version":"версия {n}","cjob.addWhich":"Какую задачу поставить?","cjob.nobody":"без исполнителя","load.revs":"правок: {n}","load.revs30":"правок за 30 дн: {n}","load.days":"{n} дн. в работе","load.projects":"Кто на каком проекте","load.peopleN":"{n} чел.","load.tasksN":"задач: {n}","load.byPerson":"По людям",
     "cjob.new.shoot":"Съёмка по контенту","cjob.new.design":"Дизайн по контенту","cjob.new.edit":"Монтаж по контенту",
     "cjob.st.pending":"ожидает","cjob.st.in_progress":"в работе","cjob.st.done":"готово","cjob.st.overdue":"просрочено","cjob.st.cancelled":"отменено",
     "blocker.word":"Блокер","blocker.by":"сообщил","blocker.to":"на",
@@ -1055,7 +1084,7 @@ const I18N = {
     "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
     "login.title":"WHY NOT? OS ga kirish","login.sub":"Telegram orqali kiring — ilova brauzerda chatlardan alohida ishlaydi.","login.noBot":"Brauzer orqali kirish hali sozlanmagan. Ilovani botdan oching.",
     "content.advance":"Keyingi bosqich →","content.final":"Yakuniy bosqich",
-    "cjob.ai":"AI-qoʻshimcha","chain.plan":"⚙️ Bosqichlar","chain.launch":"🚀 Ishga tushirish","chain.launched":"Ishga tushirildi — ijrochi vazifani oldi","chain.approve":"✅ Tasdiqlash","chain.publish":"📢 Joylandi","chain.approval":"Tasdiqlash","chain.addStep":"+ bosqich","chain.removeActiveQ":"Ustida ishlanayotgan bosqichni olib tashlaysizmi? Ish keyingi bosqichga oʻtadi.","chain.addWhich":"Qaysi bosqichni qoʻshish kerak?","chain.launchMonth":"🚀 Oyni ishga tushirish","chain.launchMonthQ":"Mijozning barcha rejalashtirilgan postlarini ishga tushirasizmi? Birinchi bosqich ijrochilari vazifa oladi.","chain.launchedN":"Ishga tushirildi: {n}","content.archive":"🗄 Arxivga","content.archived":"Arxivda","content.restore":"↩ Qaytarish","content.restored":"Qaytarildi","content.archiveTab":"🗄 Arxiv","st.queued":"navbatda","cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga","cjob.add":"+ Vazifa","cjob.addWhich":"Qanday vazifa berish kerak?","cjob.nobody":"ijrochisiz","load.revs":"tuzatishlar: {n}","load.revs30":"30 kunda tuzatishlar: {n}","load.days":"{n} kundan beri ishda","load.projects":"Kim qaysi loyihada","load.peopleN":"{n} kishi","load.tasksN":"vazifalar: {n}","load.byPerson":"Odamlar boʻyicha",
+    "cjob.ai":"AI-qoʻshimcha","chain.plan":"⚙️ Bosqichlar","chain.launch":"🚀 Ishga tushirish","chain.launched":"Ishga tushirildi — ijrochi vazifani oldi","chain.approve":"✅ Tasdiqlash","chain.publish":"📢 Joylandi","chain.approval":"Tasdiqlash","chain.addStep":"+ bosqich","chain.removeActiveQ":"Ustida ishlanayotgan bosqichni olib tashlaysizmi? Ish keyingi bosqichga oʻtadi.","chain.addWhich":"Qaysi bosqichni qoʻshish kerak?","chain.launchMonth":"🚀 Oyni ishga tushirish","chain.launchMonthQ":"Mijozning barcha rejalashtirilgan postlarini ishga tushirasizmi? Birinchi bosqich ijrochilari vazifa oladi.","chain.launchedN":"Ishga tushirildi: {n}","content.archive":"🗄 Arxivga","content.archived":"Arxivda","content.restore":"↩ Qaytarish","content.restored":"Qaytarildi","content.archiveTab":"🗄 Arxiv","st.queued":"navbatda","cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga","cjob.add":"+ Vazifa","field.crew":"Operator va jamoa","field.checklist":"Texnika roʻyxati","chk.addPh":"Band qoʻshish…","shoot.clashQ":"Jamoada bu vaqtda boshqa suratga olish bor:\n{list}\n\nBaribir saqlansinmi?","shoot.list":"📋 Roʻyxat","shoot.cal":"📅 Kalendar","shoot.dayEmpty":"Bu kunda suratga olish yoʻq","shoot.gear":"texnika {d}/{n}","task.version":"{n}-versiya","cjob.addWhich":"Qanday vazifa berish kerak?","cjob.nobody":"ijrochisiz","load.revs":"tuzatishlar: {n}","load.revs30":"30 kunda tuzatishlar: {n}","load.days":"{n} kundan beri ishda","load.projects":"Kim qaysi loyihada","load.peopleN":"{n} kishi","load.tasksN":"vazifalar: {n}","load.byPerson":"Odamlar boʻyicha",
     "cjob.new.shoot":"Kontent uchun suratga olish","cjob.new.design":"Kontent uchun dizayn","cjob.new.edit":"Kontent uchun montaj",
     "cjob.st.pending":"kutilmoqda","cjob.st.in_progress":"jarayonda","cjob.st.done":"tayyor","cjob.st.overdue":"muddati o‘tgan","cjob.st.cancelled":"bekor qilingan",
     "blocker.word":"Toʻsiq","blocker.by":"xabar berdi","blocker.to":"kimga",
@@ -1113,7 +1142,7 @@ const I18N = {
     "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
     "login.title":"Sign in to WHY NOT? OS","login.sub":"Sign in with Telegram — the app then runs in the browser, separate from your chats.","login.noBot":"Browser sign-in isn\u2019t set up yet. Open the app from the bot.",
     "content.advance":"Advance →","content.final":"Final stage",
-    "cjob.ai":"AI insert","chain.plan":"⚙️ Steps","chain.launch":"🚀 Launch","chain.launched":"Launched — the assignee got the task","chain.approve":"✅ Approve","chain.publish":"📢 Published","chain.approval":"Approval","chain.addStep":"+ step","chain.removeActiveQ":"Remove the step someone is working on? Work moves to the next step.","chain.addWhich":"Which step to add?","chain.launchMonth":"🚀 Launch month","chain.launchMonthQ":"Launch all planned posts of this client? First-step assignees will get their tasks.","chain.launchedN":"Launched: {n}","content.archive":"🗄 Archive","content.archived":"Archived","content.restore":"↩ Restore","content.restored":"Restored","content.archiveTab":"🗄 Archive","st.queued":"queued","cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks","cjob.add":"+ Task","cjob.addWhich":"Which task to give?","cjob.nobody":"unassigned","load.revs":"revisions: {n}","load.revs30":"revisions in 30 days: {n}","load.days":"{n} d in work","load.projects":"Who is on which project","load.peopleN":"{n} people","load.tasksN":"tasks: {n}","load.byPerson":"By person",
+    "cjob.ai":"AI insert","chain.plan":"⚙️ Steps","chain.launch":"🚀 Launch","chain.launched":"Launched — the assignee got the task","chain.approve":"✅ Approve","chain.publish":"📢 Published","chain.approval":"Approval","chain.addStep":"+ step","chain.removeActiveQ":"Remove the step someone is working on? Work moves to the next step.","chain.addWhich":"Which step to add?","chain.launchMonth":"🚀 Launch month","chain.launchMonthQ":"Launch all planned posts of this client? First-step assignees will get their tasks.","chain.launchedN":"Launched: {n}","content.archive":"🗄 Archive","content.archived":"Archived","content.restore":"↩ Restore","content.restored":"Restored","content.archiveTab":"🗄 Archive","st.queued":"queued","cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks","cjob.add":"+ Task","field.crew":"Operator & crew","field.checklist":"Gear checklist","chk.addPh":"Add item…","shoot.clashQ":"The crew already has a shoot at that time:\n{list}\n\nSave anyway?","shoot.list":"📋 List","shoot.cal":"📅 Calendar","shoot.dayEmpty":"No shoots that day","shoot.gear":"gear {d}/{n}","task.version":"version {n}","cjob.addWhich":"Which task to give?","cjob.nobody":"unassigned","load.revs":"revisions: {n}","load.revs30":"revisions in 30 days: {n}","load.days":"{n} d in work","load.projects":"Who is on which project","load.peopleN":"{n} people","load.tasksN":"tasks: {n}","load.byPerson":"By person",
     "cjob.new.shoot":"Shoot for content","cjob.new.design":"Design for content","cjob.new.edit":"Edit for content",
     "cjob.st.pending":"pending","cjob.st.in_progress":"in progress","cjob.st.done":"done","cjob.st.overdue":"overdue","cjob.st.cancelled":"cancelled",
     "blocker.word":"Blocker","blocker.by":"reported by","blocker.to":"for",
@@ -1568,6 +1597,8 @@ function taskCard(tk){
     <div class="meta">
       <span>${deadlineMeta(tk.deadline)}</span>
       ${st === "review" && !tk.file_id ? `<span style="color:var(--st-review-ink); font-weight:600">📨 ${esc(t("task.submittedNoFile"))}</span>` : ""}
+      ${tk.version ? `<span>📎 ${esc(t("task.version").replace("{n}", tk.version))}</span>` : ""}
+      ${tk.revisions ? `<span style="color:var(--st-revision-ink); font-weight:600">🔄 ${esc(t("load.revs").replace("{n}", tk.revisions))}</span>` : ""}
       ${tk.created_by_name ? `<span>📌 ${esc(t("task.assignedBy"))}: ${esc(tk.created_by_name)}</span>` : ""}
       ${who ? `<span>${who}</span>` : ""}
       ${tk.priority && tk.priority !== "normal" ? `<span>❗ ${esc(t("pr." + tk.priority) || tk.priority)}</span>` : ""}
@@ -1877,6 +1908,7 @@ function shootCard(s){
   const past = (s.status || "planned") === "planned" && s.shoot_at && new Date(s.shoot_at).getTime() < Date.now();
   const stCls = past ? "cancelled" : s.status === "done" ? "done" : s.status === "cancelled" ? "cancelled" : "in_progress";
   const stLabel = past ? t("shoot.past") : (SHOOT_STATUS_LABEL[s.status] || s.status);
+  const gearN = (s.checklist || []).length, gearD = (s.checklist || []).filter(x => x.done).length;
   return `
   <div class="card tappable${past ? " shoot-past" : ""}" data-shoot-edit="${s.id}">
     <div class="row">
@@ -1888,22 +1920,65 @@ function shootCard(s){
       ${s.location ? `<span>📍 ${esc(s.location)}</span>` : ""}
       ${s.project_name ? `<span>📁 ${esc(s.project_name)}</span>` : (s.client_name ? `<span>🏢 ${esc(s.client_name)}</span>` : "")}
     </div>
-    ${team ? `<div class="meta"><span>👥 ${esc(team)}</span></div>` : ""}
+    ${team || gearN ? `<div class="meta">${team ? `<span>👥 ${esc(team)}</span>` : ""}${gearN ? `<span class="${gearD === gearN ? "gear-ok" : ""}">🧰 ${esc(t("shoot.gear").replace("{d}", gearD).replace("{n}", gearN))}</span>` : ""}</div>` : ""}
     ${s.notes ? `<p class="desc">${esc(s.notes)}</p>` : ""}
   </div>`;
 }
 
+// «📅 Календарь»: a month grid (Tashkent days) with the shoots of each day; tap a day
+let shootView = (() => { try { return localStorage.getItem("wn_shootView") || "list"; } catch(e){ return "list"; } })();
+let calMonth = null;      // "YYYY-MM"
+let calDay = null;        // "YYYY-MM-DD"
+const tkDay = v => new Intl.DateTimeFormat("en-CA", {timeZone:TZ, year:"numeric", month:"2-digit", day:"2-digit"}).format(new Date(v));
+const tkTime = v => new Date(v).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit", timeZone:TZ});
+
+function shootCalendar(list){
+  const today = tkDay(Date.now());
+  if (!calMonth) calMonth = today.slice(0, 7);
+  if (!calDay) calDay = today;
+  const byDay = {};
+  list.forEach(s => { if (s.shoot_at && s.status !== "cancelled") (byDay[tkDay(s.shoot_at)] ||= []).push(s); });
+  const [y, m] = calMonth.split("-").map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1));
+  const lead = (first.getUTCDay() + 6) % 7;                 // Monday first
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const p2 = n => String(n).padStart(2, "0");
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(`<i class="cal-cell empty"></i>`);
+  for (let d = 1; d <= days; d++){
+    const key = `${y}-${p2(m)}-${p2(d)}`, ss = byDay[key] || [];
+    const cls = ["cal-cell", key === today ? "today" : "", key === calDay ? "sel" : "", key < today ? "past" : ""].join(" ");
+    cells.push(`<button class="${cls}" data-cal-day="${key}"><b>${d}</b>${ss.length
+      ? `<span class="cal-t">${esc(tkTime(ss[0].shoot_at))}</span>${ss.length > 1 ? `<span class="cal-more">+${ss.length - 1}</span>` : ""}` : ""}</button>`);
+  }
+  const monthName = first.toLocaleDateString(LANG === "uz" ? "uz-UZ" : LANG === "en" ? "en-GB" : "ru-RU", {month:"long", year:"numeric", timeZone:"UTC"});
+  const wd = (LANG === "en" ? ["Mo","Tu","We","Th","Fr","Sa","Su"] : LANG === "uz" ? ["Du","Se","Ch","Pa","Ju","Sh","Ya"] : ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]);
+  const dayList = (byDay[calDay] || []).sort((a, b) => a.shoot_at.localeCompare(b.shoot_at));
+  return `<div class="card cal">
+      <div class="cal-head"><button class="cal-nav" data-cal-nav="-1">‹</button><b>${esc(monthName)}</b><button class="cal-nav" data-cal-nav="1">›</button></div>
+      <div class="cal-grid">${wd.map((w, i) => `<span class="cal-wd${i > 4 ? " we" : ""}">${w}</span>`).join("")}${cells.join("")}</div>
+    </div>
+    <div class="section-title">🗓 ${esc(fmtDate(calDay + "T12:00:00+05:00"))}</div>
+    ${dayList.length ? dayList.map(shootCard).join("") : `<div class="empty">${esc(t("shoot.dayEmpty"))}</div>`}`;
+}
+
 async function renderShoots(){
   shootById = {};
-  const list = await api("/api/shoots" + (shootUpcomingOnly ? "?upcoming=true" : ""));
+  const cal = shootView === "cal";
+  const list = await api("/api/shoots" + (shootUpcomingOnly && !cal ? "?upcoming=true" : ""));
   const L = (r,u,e) => LANG === "ru" ? r : LANG === "uz" ? u : e;
+  const seg = `<div class="seg" style="margin-bottom:10px">
+      <button data-shoot-view="list" class="${cal ? "" : "on"}">${esc(t("shoot.list"))}</button>
+      <button data-shoot-view="cal" class="${cal ? "on" : ""}">${esc(t("shoot.cal"))}</button>
+    </div>`;
+  if (cal){ view.innerHTML = seg + shootCalendar(list); return; }
   const filter = `<div class="field" style="margin:2px 0 12px">
     <select id="shootScopeFilter">
       <option value="all"${shootUpcomingOnly ? "" : " selected"}>${esc(L("Все съёмки","Barcha suratga olishlar","All shoots"))}</option>
       <option value="upcoming"${shootUpcomingOnly ? " selected" : ""}>${esc(L("Только предстоящие","Faqat kelgusi","Upcoming only"))}</option>
     </select>
   </div>`;
-  view.innerHTML = filter + (list.length
+  view.innerHTML = seg + filter + (list.length
     ? list.map(shootCard).join("")
     : `<div class="empty">${esc(t("empty.shoots"))}</div>`);
 }
@@ -2631,6 +2706,16 @@ view.addEventListener("click", async e => {
     return;
   }
 
+  const sv = e.target.closest("[data-shoot-view]");
+  if (sv){ shootView = sv.dataset.shootView; try { localStorage.setItem("wn_shootView", shootView); } catch(err){} haptic(); load("shoots"); return; }
+  const calNav = e.target.closest("[data-cal-nav]");
+  if (calNav){
+    const [y, m] = calMonth.split("-").map(Number), d = new Date(Date.UTC(y, m - 1 + +calNav.dataset.calNav, 1));
+    calMonth = d.toISOString().slice(0, 7); haptic(); load("shoots"); return;
+  }
+  const calCell = e.target.closest("[data-cal-day]");
+  if (calCell){ calDay = calCell.dataset.calDay; haptic(); load("shoots"); return; }
+
   const shootEditCard = e.target.closest("[data-shoot-edit]");
   if (shootEditCard && !e.target.closest("button, a")){
     const s = shootById[+shootEditCard.dataset.shootEdit];
@@ -3142,10 +3227,11 @@ const FORMS = {
     fields: [
       { name:"title",     type:"text", required:true, i18nKey:"field.format" },
       { name:"client_id", type:"select", value:"", coerce:"int", dynamic:"clients", options:[["","—"]], i18nKey:"field.company" },
-      { name:"participant_ids", type:"mpick", dynamic:"members" },
+      { name:"participant_ids", type:"mpick", dynamic:"members", i18nKey:"field.crew" },
       { name:"shoot_at",  type:"datetime" },
       { name:"location",  type:"text" },
       { name:"notes",     type:"textarea" },
+      { name:"checklist", type:"checklist", i18nKey:"field.checklist" },
     ],
   },
   ideas: {
@@ -3222,6 +3308,25 @@ function fieldLabel(f){
   const k = f.i18nKey || ("field." + f.name);
   const s = t(k);
   return s === k ? (f.label || f.name) : s;
+}
+
+/* ── shoot gear checklist (form field) ─────────────────────── */
+const SHOOT_CHECKLIST = ["Камера + запасные батареи (заряжены)", "Карты памяти (очищены)", "Объективы",
+  "Свет + стойки", "Микрофоны / петлички", "Штатив / стабилизатор", "Отражатель",
+  "Зарядки, удлинитель", "Сценарий и референсы", "Реквизит"];
+function chkItemHtml(it){
+  return `<label class="chk-item"><input type="checkbox"${it.done ? " checked" : ""}><span>${esc(it.t)}</span>
+    <button type="button" class="chk-del" aria-label="${esc(t("btn.delete"))}">✕</button></label>`;
+}
+function setChecklist(box, items){ box.querySelector(".chk-list").innerHTML = items.map(chkItemHtml).join(""); }
+function getChecklist(box){
+  return [...box.querySelectorAll(".chk-item")].map(l => ({ t: l.querySelector("span").textContent, done: l.querySelector("input").checked }));
+}
+function addChecklistItem(box){
+  const inp = box.querySelector(".chk-new"), v = inp.value.trim();
+  if (!v) return;
+  box.querySelector(".chk-list").insertAdjacentHTML("beforeend", chkItemHtml({ t: v, done: false }));
+  inp.value = ""; haptic();
 }
 
 async function fillMpick(f){
@@ -3427,6 +3532,7 @@ function openShootEdit(s){
       participant_ids: (s.participants || []).map(p => p.id),
       notes: s.notes || "",
       status: s.status || "planned",
+      checklist: s.checklist || [],
     },
   };
   openSheet();
@@ -3498,6 +3604,8 @@ function applyPrefill(pf){
     if (f.type === "mpick"){
       const want = new Set((pf[f.name] || []).map(String));
       el.querySelectorAll(".mp-opt").forEach(b => b.classList.toggle("on", want.has(b.dataset.id)));
+    } else if (f.type === "checklist"){
+      setChecklist(el, pf[f.name] || []);
     } else if (f.type === "select"){
       const v = String(pf[f.name] ?? "");
       if ([...el.options].some(o => o.value === v)) el.value = v;
@@ -3530,6 +3638,10 @@ async function openSheet(){
       control = `<select id="${id}">${_baseOptions(f)}</select>`;
     } else if (f.type === "mpick"){
       control = `<div class="mpick" id="${id}"></div>`;
+    } else if (f.type === "checklist"){
+      control = `<div class="chk-field" id="${id}"><div class="chk-list"></div>
+        <div class="rf-row"><input type="text" class="chk-new" placeholder="${esc(t("chk.addPh"))}">
+        <button type="button" class="act ghost chk-add">＋</button></div></div>`;
     } else if (f.type === "refs"){
       control = `<div class="refs-field" id="${id}">
         <div class="rf-list"></div>
@@ -3604,6 +3716,8 @@ async function openSheet(){
   }
   // create mode: preselect the project you're already filtered to
   if (!editState){
+    const chk = formFields.querySelector(".chk-field");
+    if (chk) setChecklist(chk, SHOOT_CHECKLIST.map(x => ({ t: x, done: false })));
     const fk = activeFormKey();
     const pre = (fk === "content" && contentProjectId) ? contentProjectId
               : (fk === "ideas" && contentProjectId) ? contentProjectId : "";
@@ -3648,7 +3762,7 @@ function saveDraft(){
   if (!_draftReady || !sheet.classList.contains("open") || !sheetFields.length) return;
   const d = {};
   for (const f of sheetFields){
-    if (f.type === "refs") continue;
+    if (f.type === "refs" || f.type === "checklist") continue;
     const el = document.getElementById("f_" + f.name);
     if (!el) continue;
     if (f.type === "mpick") d[f.name] = [...el.querySelectorAll(".mp-opt.on")].map(b => b.dataset.id);
@@ -3695,6 +3809,7 @@ async function submitForm(){
       if (!isEdit && !body[f.name].length) delete body[f.name];
       continue;
     }
+    if (f.type === "checklist"){ body[f.name] = getChecklist(el); continue; }
     const raw = (el.value || "").trim();
     if (f.required && !raw){
       el.closest(".field").classList.add("bad"); valid = false; continue;
@@ -3709,6 +3824,21 @@ async function submitForm(){
   }
   if (!valid){ setFormError(t("toast.fillRequired")); return; }
   if (!isEdit) commitPendingUrl(formFields.querySelector(".refs-field"));
+
+  // a crew member already has a shoot around that time -> ask before saving
+  if ((isEdit ? editState.formKey : activeFormKey()) === "shoots" && body.shoot_at && (body.participant_ids || []).length){
+    try {
+      const qs = new URLSearchParams({ at: body.shoot_at, participant_ids: body.participant_ids.join(",") });
+      const m = isEdit && endpoint.match(/\/shoots\/(\d+)/);
+      if (m) qs.set("exclude", m[1]);
+      const clash = await api("/api/shoots/conflicts?" + qs);
+      if (clash.length){
+        // Telegram's confirm popup takes ≤256 chars — show the first three clashes
+        const lines = clash.slice(0, 3).map(c => `• ${c.name}: «${c.title.slice(0, 40)}» ${fmtDateTime(c.at)}`).join("\n");
+        if (!(await askConfirm(t("shoot.clashQ").replace("{list}", lines)))) return;
+      }
+    } catch(e){ /* the check is advisory */ }
+  }
 
   busy = true;
   formSubmit.disabled = true; formSubmit.textContent = t("btn.saving");
@@ -3744,6 +3874,13 @@ formSubmit.addEventListener("click", submitForm);
 formFields.addEventListener("click", e => {
   const opt = e.target.closest(".mp-opt");
   if (opt){ opt.classList.toggle("on"); haptic(); scheduleDraftSave(); }
+  const del = e.target.closest(".chk-del");
+  if (del){ del.closest(".chk-item").remove(); haptic(); return; }
+  const add = e.target.closest(".chk-add");
+  if (add) addChecklistItem(add.closest(".chk-field"));
+});
+formFields.addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.classList.contains("chk-new")){ e.preventDefault(); addChecklistItem(e.target.closest(".chk-field")); }
 });
 function autoGrow(el){
   if (!el || el.tagName !== "TEXTAREA") return;

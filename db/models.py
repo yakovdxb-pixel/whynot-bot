@@ -266,6 +266,7 @@ class Task(Base):
     status           = Column(Text, default='pending')
     actual_completion = Column(DateTime(timezone=True))
     overdue_notified_at = Column(DateTime(timezone=True))
+    remind_notified_at  = Column(DateTime(timezone=True))   # «2 часа до дедлайна» sent
     overdue_reason   = Column(overdue_reason_enum)
     overdue_comment  = Column(Text)
     related_links    = Column(JSONB, default=list)
@@ -558,6 +559,8 @@ class ShootSession(Base):
     project_id = Column(Integer, ForeignKey('projects.id', ondelete='SET NULL'))
     status     = Column(Text, default='planned')       # planned | done | cancelled
     notes      = Column(Text)
+    checklist  = Column(Text)                          # JSON [{"t": "Камера", "done": false}, ...]
+    reminded_at = Column(DateTime(timezone=True))      # «завтра съёмка» sent (19:00 the day before)
     created_by = Column(Integer, ForeignKey('users.id'))
     created_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
     updated_at = Column(DateTime(timezone=True), server_default=text('NOW()'))
@@ -639,6 +642,10 @@ _MIGRATIONS = [
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS step_no INTEGER",
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS launched_at TIMESTAMPTZ",
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+    # 2026-10: deadline reminder, shoot checklist + evening-before reminder
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remind_notified_at TIMESTAMPTZ",
+    "ALTER TABLE shoot_sessions ADD COLUMN IF NOT EXISTS checklist TEXT",
+    "ALTER TABLE shoot_sessions ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ",
 ]
 
 
