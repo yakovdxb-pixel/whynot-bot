@@ -1278,7 +1278,7 @@ async def list_ideas(scope: str | None = None,
     # open ideas first (new / in work), then rejected / already in the content plan
     rows = (await session.execute(
         q.order_by(Idea.status.in_(("rejected", "implemented")),
-                   Idea.created_at.desc()).limit(200)
+                   Idea.votes_count.desc(), Idea.created_at.desc()).limit(200)
     )).scalars().all()
     voted = set()
     if user["id"]:

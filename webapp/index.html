@@ -288,13 +288,12 @@
   .done-mark{margin-top:10px; text-align:center; color:var(--st-done-ink); font-weight:600; font-size:14px}
 
   /* content production jobs (shoot / design / edit) */
-  .cjob-list{display:flex; flex-direction:column; gap:5px; margin-top:9px}
+  .cjob-list{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
   .cjob-chip{
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-    width:100%; text-align:left; cursor:pointer;
-    background:var(--card); color:var(--text);
-    border:1px solid var(--sep); border-left:3px solid var(--link);
-    border-radius:9px; padding:7px 10px; font-size:12.5px; line-height:1.3;
+    display:inline-flex; align-items:center; gap:4px; max-width:100%;
+    cursor:pointer; background:var(--accent-soft); color:var(--text);
+    border:none; border-radius:999px; padding:4px 10px; font:inherit; font-size:12px; line-height:1.3;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
   .cjob-chip:active{opacity:.7}
   .cjob-chip .cjob-st{flex:0 0 auto}
@@ -372,6 +371,7 @@
   .ititle{font-size:13px; font-weight:600; line-height:1.3; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden}
   .imeta{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--hint); min-width:0}
   .imeta .ic-client{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0}
+  .imeta .vote.mini{flex:none; padding:3px 9px; font-size:12px}
   /* Telegram-like swipe actions on cards */
   .swipe-wrap{position:relative; margin-bottom:10px; border-radius:18px}
   .igrid .swipe-wrap{margin-bottom:0; border-radius:16px}
@@ -1479,13 +1479,12 @@ function taskCard(tk){
       <button class="desc-more" data-desc-more hidden>${esc(t("task.more"))}</button>` : ""}
     <div class="meta">
       <span>${deadlineMeta(tk.deadline)}</span>
+      ${st === "review" && !tk.file_id ? `<span style="color:var(--st-review-ink); font-weight:600">📨 ${esc(t("task.submittedNoFile"))}</span>` : ""}
       ${tk.created_by_name ? `<span>📌 ${esc(t("task.assignedBy"))}: ${esc(tk.created_by_name)}</span>` : ""}
       ${who ? `<span>${who}</span>` : ""}
       ${tk.priority && tk.priority !== "normal" ? `<span>❗ ${esc(t("pr." + tk.priority) || tk.priority)}</span>` : ""}
     </div>
-    ${st === "review"
-      ? (tk.file_id ? taskFileLink(tk) : `<div class="review-note">📨 ${esc(t("task.submittedNoFile"))}</div>`)
-      : (st === "done" || st === "published") && tk.file_id ? taskFileLink(tk) : ""}
+    ${(st === "review" || st === "done" || st === "published") && tk.file_id ? taskFileLink(tk) : ""}
     ${st === "revision" && tk.review_comment ? `<div class="review-note">🔄 ${esc(tk.review_comment)}</div>` : ""}
     ${refStrip("task", tk.id, tk.refs_count || 0, tk.ref_thumbs)}
     ${cardActions(reviewBtns + publishBtn + (next && st !== "review"
@@ -1778,7 +1777,8 @@ async function renderIdeas(){
       </div>
       <div class="ibody">
         <div class="ititle">${esc(i.title || t("nav.ideas"))}</div>
-        <div class="imeta"><span class="ic-client">${esc(i.client_name || i.project_name || i.proposed_by_name || "")}</span>${i.votes_count ? `<span>👍 ${i.votes_count}</span>` : ""}</div>
+        <div class="imeta"><span class="ic-client">${esc(i.client_name || i.project_name || i.proposed_by_name || "")}</span>
+          <button class="vote mini ${i.voted ? "on" : ""}" data-vote="${i.id}" aria-label="Голос">👍 <span>${i.votes_count || 0}</span></button></div>
       </div>
     </div>`;
   }).join("") + `</div>`;
