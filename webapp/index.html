@@ -296,6 +296,15 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
   .cjob-chip:active{opacity:.7}
+  /* production chain: ✓ done → ● current → ○ next … → approval */
+  .chain{display:flex; flex-wrap:wrap; align-items:center; gap:4px 2px; margin-top:9px; font-size:12px}
+  .chain .cjob-chip{padding:4px 9px; font-size:12px}
+  .chain .cs-done{background:color-mix(in srgb, var(--st-done) 14%, var(--card)); color:var(--st-done-ink)}
+  .chain .cs-now{background:var(--accent); color:var(--on-accent); font-weight:600}
+  .chain .cs-now.cs-late{background:var(--st-overdue-ink)}
+  .chain .cs-next{background:transparent; color:var(--hint); border:1px dashed var(--border)}
+  .chain .cs-arrow{color:var(--hint); padding:0 1px}
+  .chain .cs-add{background:transparent; color:var(--link); border:1px dashed var(--accent); font-weight:600}
   .cjob-chip .cjob-st{flex:0 0 auto}
   .cjob-chip.st-done{opacity:.55; border-left-color:var(--st-done)}
   .cjob-chip.st-overdue{border-left-color:var(--st-overdue)}
@@ -943,7 +952,7 @@ const I18N = {
     "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
     "login.title":"Вход в WHY NOT? OS","login.sub":"Войди через Telegram — так приложение работает в браузере отдельно от чатов.","login.noBot":"Вход через браузер пока не настроен. Открой приложение из бота.",
     "content.advance":"Продвинуть →","content.final":"Финальный этап",
-    "cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи",
+    "cjob.ai":"ИИ-вставка","chain.plan":"⚙️ Шаги","chain.launch":"🚀 Запустить","chain.launched":"Запущено — исполнитель получил задачу","chain.approve":"✅ Утвердить","chain.publish":"📢 Опубликовано","chain.approval":"Утверждение","chain.addStep":"+ шаг","chain.addWhich":"Какой шаг добавить?","chain.launchMonth":"🚀 Запустить месяц","chain.launchMonthQ":"Запустить в работу все запланированные публикации клиента? Исполнители первых шагов получат задачи.","chain.launchedN":"Запущено публикаций: {n}","content.archive":"🗄 В архив","content.archived":"В архиве","content.restore":"↩ Вернуть","content.restored":"Возвращено","content.archiveTab":"🗄 Архив","st.queued":"в очереди","cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи",
     "cjob.new.shoot":"Съёмка по контенту","cjob.new.design":"Дизайн по контенту","cjob.new.edit":"Монтаж по контенту",
     "cjob.st.pending":"ожидает","cjob.st.in_progress":"в работе","cjob.st.done":"готово","cjob.st.overdue":"просрочено","cjob.st.cancelled":"отменено",
     "blocker.word":"Блокер","blocker.by":"сообщил","blocker.to":"на",
@@ -1001,7 +1010,7 @@ const I18N = {
     "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
     "login.title":"WHY NOT? OS ga kirish","login.sub":"Telegram orqali kiring — ilova brauzerda chatlardan alohida ishlaydi.","login.noBot":"Brauzer orqali kirish hali sozlanmagan. Ilovani botdan oching.",
     "content.advance":"Keyingi bosqich →","content.final":"Yakuniy bosqich",
-    "cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga",
+    "cjob.ai":"AI-qoʻshimcha","chain.plan":"⚙️ Bosqichlar","chain.launch":"🚀 Ishga tushirish","chain.launched":"Ishga tushirildi — ijrochi vazifani oldi","chain.approve":"✅ Tasdiqlash","chain.publish":"📢 Joylandi","chain.approval":"Tasdiqlash","chain.addStep":"+ bosqich","chain.addWhich":"Qaysi bosqichni qoʻshish kerak?","chain.launchMonth":"🚀 Oyni ishga tushirish","chain.launchMonthQ":"Mijozning barcha rejalashtirilgan postlarini ishga tushirasizmi? Birinchi bosqich ijrochilari vazifa oladi.","chain.launchedN":"Ishga tushirildi: {n}","content.archive":"🗄 Arxivga","content.archived":"Arxivda","content.restore":"↩ Qaytarish","content.restored":"Qaytarildi","content.archiveTab":"🗄 Arxiv","st.queued":"navbatda","cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga",
     "cjob.new.shoot":"Kontent uchun suratga olish","cjob.new.design":"Kontent uchun dizayn","cjob.new.edit":"Kontent uchun montaj",
     "cjob.st.pending":"kutilmoqda","cjob.st.in_progress":"jarayonda","cjob.st.done":"tayyor","cjob.st.overdue":"muddati o‘tgan","cjob.st.cancelled":"bekor qilingan",
     "blocker.word":"Toʻsiq","blocker.by":"xabar berdi","blocker.to":"kimga",
@@ -1059,7 +1068,7 @@ const I18N = {
     "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
     "login.title":"Sign in to WHY NOT? OS","login.sub":"Sign in with Telegram — the app then runs in the browser, separate from your chats.","login.noBot":"Browser sign-in isn\u2019t set up yet. Open the app from the bot.",
     "content.advance":"Advance →","content.final":"Final stage",
-    "cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks",
+    "cjob.ai":"AI insert","chain.plan":"⚙️ Steps","chain.launch":"🚀 Launch","chain.launched":"Launched — the assignee got the task","chain.approve":"✅ Approve","chain.publish":"📢 Published","chain.approval":"Approval","chain.addStep":"+ step","chain.addWhich":"Which step to add?","chain.launchMonth":"🚀 Launch month","chain.launchMonthQ":"Launch all planned posts of this client? First-step assignees will get their tasks.","chain.launchedN":"Launched: {n}","content.archive":"🗄 Archive","content.archived":"Archived","content.restore":"↩ Restore","content.restored":"Restored","content.archiveTab":"🗄 Archive","st.queued":"queued","cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks",
     "cjob.new.shoot":"Shoot for content","cjob.new.design":"Design for content","cjob.new.edit":"Edit for content",
     "cjob.st.pending":"pending","cjob.st.in_progress":"in progress","cjob.st.done":"done","cjob.st.overdue":"overdue","cjob.st.cancelled":"cancelled",
     "blocker.word":"Blocker","blocker.by":"reported by","blocker.to":"for",
@@ -1107,7 +1116,7 @@ function buildLabels(){
   KIND_LABEL = Object.fromEntries(KIND_OPTS);
   ROLE_LABELS = {}; [..._ROLES, ..._ROLES_LEGACY].forEach(r => ROLE_LABELS[r] = t("role."+r));
   PIPELINE_LABELS = {}; _PIPE.forEach(p => PIPELINE_LABELS[p] = t("pipe."+p));
-  STATUS_LABELS = {}; ["pending","in_progress","done","overdue","cancelled","review","revision","published"].forEach(s => STATUS_LABELS[s] = t("st."+s));
+  STATUS_LABELS = {}; ["pending","in_progress","done","overdue","cancelled","review","revision","published","queued"].forEach(s => STATUS_LABELS[s] = t("st."+s));
   PLATFORM_LABEL = Object.fromEntries(PLATFORM_OPTS);
   SHOOT_STATUS_LABEL = Object.fromEntries(SHOOT_STATUS_OPTS);
   TASK_NEXT = {
@@ -1153,6 +1162,24 @@ let expandedClient = null;
 let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
+// choose a step type for «+ шаг»: Telegram's native popup, plain prompt elsewhere
+function pickStepKind(){
+  const kinds = ["shoot", "edit", "design", "ai"];
+  return new Promise(res => {
+    try {
+      if (tg && tg.showPopup && tg.initData){
+        // Telegram popups take at most 3 buttons: the steps that usually get added
+        tg.showPopup({ message: t("chain.addWhich"),
+          buttons: ["ai", "edit", "design"].map(k => ({ id: k, type: "default", text: _CJOB_EMOJI[k] + " " + t("cjob." + k) })) },
+          id => res(id || null));
+        return;
+      }
+    } catch(e){}
+    const n = window.prompt(t("chain.addWhich") + "\n" + kinds.map((k, i) => `${i + 1} — ${t("cjob." + k)}`).join("\n"), "4");
+    res(kinds[+n - 1] || null);
+  });
+}
+
 // Clipboard API first; Telegram WebViews without it fall back to execCommand.
 async function copyText(text){
   try { await navigator.clipboard.writeText(text); return true; } catch(e){}
@@ -1299,14 +1326,25 @@ function swipeActionsFor(card){
         : tk ? { label: t("swipe.open"), bg: "var(--st-pending)", run: () => openTaskView(tk) } : null,
     };
   }
-  if (card.matches("[data-content-edit]") || btn("[data-cjob-dispatch], [data-copy-caption]")){
-    const go = btn("[data-cjob-dispatch]"), copy = btn("[data-copy-caption]");
+  if (card.matches("[data-content-edit]") || btn("[data-chain-launch], [data-advance], [data-copy-caption]")){
+    const go = btn("[data-chain-launch], [data-advance]");
+    const cid = +(card.dataset.contentEdit || 0);
+    const c = contentById[cid];
     return {
       right: go ? { label: go.textContent.trim(), bg: "var(--accent)", run: () => go.click() } : null,
-      left: copy ? { label: t("btn.copyCaptionShort"), bg: "var(--st-pending)", run: () => copy.click() } : null,
+      left: c && c.can_edit !== false ? (c.archived
+          ? { label: t("content.restore"), bg: "var(--st-done)", run: () => archiveContent(cid, true) }
+          : { label: t("content.archive"), bg: "var(--st-pending)", run: () => archiveContent(cid, false) }) : null,
     };
   }
   return null;
+}
+async function archiveContent(id, restore){
+  try {
+    await api(`/api/content/${id}/archive${restore ? "?restore=true" : ""}`, { method:"POST" });
+    haptic("medium"); toast(t(restore ? "content.restored" : "content.archived"));
+  } catch(err){ toast(err.message); }
+  await load(currentTab);
 }
 async function ideaAction(id, what){
   if (busy) return;
@@ -1600,8 +1638,38 @@ function markClampedDescs(root){
 }
 
 
-const _CJOB_EMOJI = { shoot:"🎥", design:"🎨", edit:"✂️" };
+const _CJOB_EMOJI = { shoot:"🎥", design:"🎨", edit:"✂️", ai:"🤖" };
 const _CJOB_ST_EMOJI = { pending:"⏳", in_progress:"🔧", done:"✅", overdue:"🔴", cancelled:"✖️" };
+
+// «✓ Съёмка → ● ✂️ Монтаж · Баходир · до 5 окт → ○ Утверждение»
+function chainLine(c, steps, canEdit){
+  const st = c.pipeline_status || "script";
+  const short = n => (n || "").split(" ")[0];
+  const cur = steps.find(j => !["done", "published", "cancelled", "queued"].includes(j.status));
+  const parts = steps.map(j => {
+    const em = _CJOB_EMOJI[j.kind] || "•";
+    const done = ["done", "published"].includes(j.status);
+    const now = j === cur;
+    const late = now && j.deadline && new Date(j.deadline) < new Date();
+    const extra = now ? [short(j.assignee_name), j.deadline ? fmtDate(j.deadline) : ""].filter(Boolean).join(" · ") : "";
+    const cls = done ? "cs-done" : now ? "cs-now" + (late ? " cs-late" : "") : "cs-next";
+    return `<button class="cjob-chip ${cls}" data-cjob-open="${j.id}" data-cid="${c.id}">${done ? "✓" : now ? "●" : "○"} ${em} ${esc(t("cjob." + j.kind))}${extra ? " · " + esc(extra) : ""}</button>`;
+  });
+  const apprCls = st === "approval" ? "cs-now" : (st === "done" || st === "published") ? "cs-done" : "cs-next";
+  parts.push(`<span class="cjob-chip ${apprCls}">${apprCls === "cs-done" ? "✓" : apprCls === "cs-now" ? "●" : "○"} ${esc(t("chain.approval"))}</span>`);
+  const canAdd = canEdit && (st === "script" || st === "revisions");
+  return `<div class="chain">${parts.join(`<span class="cs-arrow">→</span>`)}${canAdd ? ` <button class="cjob-chip cs-add" data-chain-add="${c.id}">${esc(t("chain.addStep"))}</button>` : ""}</div>`;
+}
+// the one main button for this content, depending on where it is
+function contentPrimary(c, steps, legacy, canEdit){
+  const st = c.pipeline_status || "script";
+  if (!canEdit) return "";
+  if (st === "approval" && isManager()) return `<button class="act" data-advance="${c.id}">${esc(t("chain.approve"))}</button>`;
+  if (st === "done" && isManager()) return `<button class="act" data-advance="${c.id}">${esc(t("chain.publish"))}</button>`;
+  if (st !== "script" || c.launched_at || legacy.length) return "";
+  return (steps.length ? "" : `<button class="act ghost" data-chain-plan="${c.id}">${esc(t("chain.plan"))}</button>`)
+    + `<button class="act" data-chain-launch="${c.id}">${esc(t("chain.launch"))}</button>`;
+}
 
 function cjobChip(c, j){
   const em = _CJOB_EMOJI[j.kind] || "•";
@@ -1634,14 +1702,13 @@ function contentCard(c, {advance=true, jobs=true}={}){
   const when = c.publish_at ? fmtDateTime(c.publish_at)
              : c.publish_date ? fmtDate(c.publish_date) : null;
   const who = (c.assignees || []).map(a => a.name).filter(Boolean).join(", ");
-  const hasAnyJobs = (c.jobs || []).length > 0;
-  // once a job is taken into work it "moves" to Главная — only still-pending
-  // (not started) jobs stay visible here, so the content plan doesn't duplicate it
-  const pendingJobs = (c.jobs || []).filter(j => j.status === "pending");
-  const jobList = jobs && pendingJobs.length
-    ? `<div class="cjob-list">${pendingJobs.map(j => cjobChip(c, j)).join("")}</div>` : "";
-  const jobBtns = jobs && canEdit && !hasAnyJobs
-    ? `<button class="act" data-cjob-dispatch="${c.id}">${esc(t("cjob.toTasks"))}</button>` : "";
+  const steps = (c.jobs || []).filter(j => j.step_no != null);
+  const legacyJobs = (c.jobs || []).filter(j => j.step_no == null);
+  // old parallel jobs (before chains): still shown as small tags while not started
+  const pendingJobs = legacyJobs.filter(j => j.status === "pending");
+  const jobList = steps.length ? chainLine(c, steps, canEdit)
+    : jobs && pendingJobs.length ? `<div class="cjob-list">${pendingJobs.map(j => cjobChip(c, j)).join("")}</div>` : "";
+  const jobBtns = jobs ? contentPrimary(c, steps, legacyJobs, canEdit) : "";
   return `
   <div class="card${canEdit ? " tappable" : ""}"${canEdit ? ` data-content-edit="${c.id}"` : ""}>
     <div class="row">
@@ -1663,6 +1730,7 @@ function contentCard(c, {advance=true, jobs=true}={}){
 }
 
 let contentScope = null;   // "mine" | "all" — set on first render by role
+let contentArchived = false; // «🗄 Архив» pill
 
 async function renderContent(){
   contentById = {};
@@ -1671,6 +1739,7 @@ async function renderContent(){
   const qs = [];
   if (contentProjectId) qs.push("project_id=" + encodeURIComponent(contentProjectId));
   if (contentScope === "mine") qs.push("scope=mine");
+  if (contentArchived) qs.push("archived=true");
   const [projects, items] = await Promise.all([
     api("/api/projects").catch(() => []),
     api("/api/content" + (qs.length ? "?" + qs.join("&") : "")),
@@ -1682,11 +1751,17 @@ async function renderContent(){
     </div>`;
   const pillProjects = projects.filter(p => contentScope === "all" || p.is_mine);
   const pills = pillProjects.length ? `<div class="pills-row" style="margin-top:8px">
-      <button class="pill-btn ${!contentProjectId ? "on" : ""}" data-cproj="">${esc(L("Все","Barchasi","All"))}</button>
-      ${pillProjects.map(p => `<button class="pill-btn ${String(contentProjectId) === String(p.id) ? "on" : ""}" data-cproj="${p.id}">${esc(p.name)}</button>`).join("")}
+      <button class="pill-btn ${!contentProjectId && !contentArchived ? "on" : ""}" data-cproj="">${esc(L("Все","Barchasi","All"))}</button>
+      ${pillProjects.map(p => `<button class="pill-btn ${String(contentProjectId) === String(p.id) && !contentArchived ? "on" : ""}" data-cproj="${p.id}">${esc(p.name)}</button>`).join("")}
+      <button class="pill-btn ${contentArchived ? "on" : ""}" data-carchive="1">${esc(t("content.archiveTab"))}</button>
     </div>` : "";
 
   const parts = [seg, pills];
+  // «🚀 Запустить месяц» for the selected client: everything planned but not started
+  const toLaunch = contentProjectId && !contentArchived
+    ? items.filter(c => c.can_edit !== false && !c.launched_at && (c.pipeline_status || "script") === "script"
+                       && !(c.jobs || []).some(j => j.step_no == null)) : [];
+  if (toLaunch.length) parts.push(`<button class="act" data-launch-month="${contentProjectId}" style="margin:0 0 12px">${esc(t("chain.launchMonth"))} · ${toLaunch.length}</button>`);
   if (!items.length){
     parts.push(`<div class="empty">${esc(contentProjectId ? t("empty.contentProj") : t("empty.content"))}</div>`);
   } else {
@@ -2376,7 +2451,31 @@ view.addEventListener("click", async e => {
   const cprojBtn = e.target.closest("[data-cproj]");
   if (cprojBtn){
     const v = cprojBtn.dataset.cproj;
-    if (String(v) !== String(contentProjectId)){ contentProjectId = v; haptic(); load("content"); }
+    if (String(v) !== String(contentProjectId) || contentArchived){ contentProjectId = v; contentArchived = false; haptic(); load("content"); }
+    return;
+  }
+  if (e.target.closest("[data-carchive]")){ contentArchived = !contentArchived; haptic(); load("content"); return; }
+
+  const chainBtn = e.target.closest("[data-chain-plan], [data-chain-launch], [data-launch-month], [data-chain-add]");
+  if (chainBtn && !busy){
+    const d = chainBtn.dataset;
+    if (d.launchMonth && !(await askConfirm(t("chain.launchMonthQ")))) return;
+    let kind = null;
+    if (d.chainAdd){
+      kind = await pickStepKind();
+      if (!kind) return;
+    }
+    busy = true; chainBtn.disabled = true;
+    try {
+      if (d.chainPlan) await api(`/api/content/${d.chainPlan}/chain`, { method:"POST" });
+      else if (d.chainLaunch){ await api(`/api/content/${d.chainLaunch}/launch`, { method:"POST" }); toast(t("chain.launched")); }
+      else if (d.chainAdd) await api(`/api/content/${d.chainAdd}/chain/step`, { method:"POST", body:{ kind } });
+      else { const r = await api(`/api/content/launch-month`, { method:"POST", body:{ project_id: +d.launchMonth } });
+             toast(t("chain.launchedN").replace("{n}", r.launched)); }
+      haptic("medium");
+    } catch(err){ toast(err.message); }
+    finally { busy = false; }
+    await load(currentTab);
     return;
   }
 

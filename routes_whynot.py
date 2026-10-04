@@ -251,7 +251,8 @@ async def member(user: dict = Depends(current_user)) -> dict:
 
 # ── models ──────────────────────────────────────────────────────
 
-TASK_STATUSES = {"pending", "in_progress", "review", "revision", "done", "published", "cancelled", "overdue"}
+TASK_STATUSES = {"pending", "in_progress", "review", "revision", "done", "published", "cancelled", "overdue",
+                 "queued"}   # queued = a production-chain step whose turn hasn't come yet
 OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue", "revision")
 CLOSED_TASK_STATUSES = ("done", "published", "cancelled")
 USER_ROLES = {"admin", "am", "director", "editor", "designer",
@@ -264,7 +265,8 @@ PRIORITY_ALIASES = {"critical": "urgent", "medium": "normal"}
 FORMAT_ALIASES = {"reel": "reels", "video": "youtube_long", "article": "other"}
 STATUS_RU = {"pending": "Ожидает", "in_progress": "В работе", "done": "Готово",
              "overdue": "Просрочено", "cancelled": "Отменено",
-             "review": "На проверке", "revision": "На доработке", "published": "Опубликовано"}
+             "review": "На проверке", "revision": "На доработке", "published": "Опубликовано",
+             "queued": "В очереди"}
 
 
 class TaskPatch(BaseModel):
@@ -629,6 +631,7 @@ async def list_tasks(my: bool = False, status: str | None = None,
         q = q.where(or_(Task.assignee_id == user["id"], Task.id.in_(mine)))
     if status:
         q = q.where(Task.status == status)
+    q = q.where(Task.status != "queued")      # chain steps whose turn hasn't come
     q = q.order_by(Task.status.in_(CLOSED_TASK_STATUSES),
                    Task.deadline.is_(None), Task.deadline, Task.id.desc()).limit(200)
     rows = (await session.execute(q)).scalars().all()
@@ -650,7 +653,10 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
             raise HTTPException(422, f"status must be one of {sorted(TASK_STATUSES)}")
         status_changed = patch.status != task.status
         task.status = patch.status
-        if patch.status == "done" and task.actual_completion is None:
+        # a chain step is handed over, not reviewed: «Сдать» closes it and starts the next one
+        if task.step_no is not None and patch.status == "review":
+            task.status = "done"
+        if task.status == "done" and task.actual_completion is None:
             task.actual_completion = _now()
 
     if patch.title is not None:
@@ -693,7 +699,9 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
                "completed" if patch.status == "done" else "updated",
                task.id, user["id"], task.title)
     if status_changed:
-        await _log_status(session, "task", task.id, patch.status, user["id"])
+        await _log_status(session, "task", task.id, task.status, user["id"])
+        if task.step_no is not None and task.status == "done":
+            await _advance_chain(session, bg, task)
 
     for a in new_notify:
         tg = await _telegram_id_for(session, a)
@@ -752,6 +760,8 @@ async def approve_task(task_id: int, bg: BackgroundTasks,
     task.updated_at = _now()
     await session.commit()
     await _log_status(session, "task", task.id, "done", user["id"])
+    if task.step_no is not None:
+        await _advance_chain(session, bg, task)
     for a in await _task_assignee_ids(session, task.id, task.assignee_id):
         tg = await _telegram_id_for(session, a)
         if tg:
@@ -872,9 +882,17 @@ CONTENT_STAGE_RU = {"script": "В процессе", "approval": "На одоб�
                     "revisions": "Правка", "done": "Готов", "published": "Опубликовано"}
 
 # production jobs dispatched from a content card (stored as linked tasks)
-CJOB_KINDS = ("shoot", "design", "edit")
-CJOB_RU = {"shoot": "Съёмка", "design": "Дизайн", "edit": "Монтаж"}
-CJOB_EMOJI = {"shoot": "🎥", "design": "🎨", "edit": "✂️"}
+TASHKENT = timezone(timedelta(hours=5))
+CJOB_KINDS = ("shoot", "design", "edit", "ai")
+CJOB_RU = {"shoot": "Съёмка", "design": "Дизайн", "edit": "Монтаж", "ai": "ИИ-вставка"}
+CJOB_EMOJI = {"shoot": "🎥", "design": "🎨", "edit": "✂️", "ai": "🤖"}
+# default production chain per content format (steps run one after another;
+# after the last one the content goes to the AM for approval)
+CHAIN_TEMPLATES = {
+    "reels": ("shoot", "edit"), "tiktok": ("shoot", "edit"), "youtube_short": ("shoot", "edit"),
+    "youtube_long": ("shoot", "edit"), "story": ("shoot", "edit"), "podcast": ("shoot", "edit"),
+    "post": ("design",), "carousel": ("design",), "banner": ("design",), "other": ("design",),
+}
 
 
 async def _content_jobs(session, cids):
@@ -883,7 +901,7 @@ async def _content_jobs(session, cids):
         return {}
     rows = (await session.execute(
         select(Task).where(Task.content_id.in_(cids), Task.job_kind.isnot(None))
-        .order_by(Task.id))).scalars().all()
+        .order_by(Task.step_no.is_(None), Task.step_no, Task.id))).scalars().all()
     names = await _names_for(session, [t.assignee_id for t in rows])
     out = {}
     for t in rows:
@@ -891,7 +909,7 @@ async def _content_jobs(session, cids):
             "id": t.id, "kind": t.job_kind, "status": t.status, "title": t.title,
             "assignee_id": t.assignee_id, "assignee_name": names.get(t.assignee_id),
             "deadline": t.deadline.isoformat() if t.deadline else None,
-            "location": t.location, "notes": t.description,
+            "location": t.location, "notes": t.description, "step_no": t.step_no,
         })
     return out
 
@@ -937,6 +955,8 @@ def _content_out(c, names, projects, refs, assignees=None, can_edit=True, jobs=N
     d["content_kind"] = getattr(c, "content_kind", None)
     d["assignees"] = [{"id": i, "name": names.get(i)} for i in (assignees or [])]
     d["jobs"] = jobs or []
+    d["launched_at"] = c.launched_at.isoformat() if getattr(c, "launched_at", None) else None
+    d["archived"] = bool(getattr(c, "archived_at", None))
     d["can_edit"] = bool(can_edit)
     s = refs.get(c.id, {})
     d["refs_count"] = s.get("count", 0)
@@ -967,9 +987,10 @@ async def _my_project_ids(session, uid):
 
 @router.get("/content")
 async def list_content(client_id: int | None = None, project_id: int | None = None,
-                       scope: str | None = None,
+                       scope: str | None = None, archived: bool = False,
                        user: dict = Depends(member), session=Depends(get_session)):
-    q = select(ContentItem)
+    q = select(ContentItem).where(
+        ContentItem.archived_at.isnot(None) if archived else ContentItem.archived_at.is_(None))
     if client_id:
         q = q.where(ContentItem.client_id == client_id)
     if project_id:
@@ -1161,6 +1182,203 @@ async def dispatch_content_jobs(content_id: int, bg: BackgroundTasks,
         f"🗂 Задачи по контенту «{topic}» созданы: съёмка, дизайн, монтаж — "
         f"назначь исполнителей в приложении.")
     return await _one_content(session, item, user)
+
+
+# ── content production chain ─────────────────────────────────────
+# A content item gets ordered steps (tasks with step_no). «Запустить» makes the first
+# step pending; when a step is handed in the next one starts (assignee notified);
+# after the last one the content moves to «На одобрении» and the AM is pinged.
+
+def _brief(item):
+    parts = []
+    if item.hook:
+        parts.append(f"Хук: {item.hook}")
+    if item.script:
+        parts.append(item.script)
+    if item.caption:
+        parts.append(f"Подпись: {item.caption}")
+    return "\n\n".join(parts) or None
+
+
+def _step_deadline(item, i, n):
+    """Default deadline: one day per step, counted back from the publish date (18:00 Tashkent)."""
+    pub = item.publish_at or (datetime.combine(item.publish_date, datetime.min.time(), timezone.utc)
+                              if item.publish_date else None)
+    if not pub:
+        return None
+    d = (pub - timedelta(days=n - i + 1)).replace(hour=13, minute=0, second=0, microsecond=0)
+    return d if d > _now() else None
+
+
+async def _chain_steps(session, content_id):
+    return (await session.execute(select(Task).where(
+        Task.content_id == content_id, Task.step_no.isnot(None)).order_by(Task.step_no))).scalars().all()
+
+
+async def _create_chain(session, item, uid, kinds=None):
+    """Planned (queued) steps from the format template; default assignee — the content's
+    first assignee (usually one person does every step)."""
+    kinds = list(kinds or CHAIN_TEMPLATES.get(item.format or "", ("design",)))
+    assg = (await _content_assignees(session, [item.id])).get(item.id, [])
+    who = assg[0] if assg else None
+    topic = item.topic or f"контент #{item.id}"
+    steps = []
+    for i, kind in enumerate(kinds, 1):
+        t = Task(title=f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]}: {topic}"[:120], description=_brief(item),
+                 job_kind=kind, type="content_pipeline", priority="normal", status="queued",
+                 step_no=i, created_by=uid, assignee_id=who, deadline=_step_deadline(item, i, len(kinds)),
+                 content_id=item.id, client_id=item.client_id, project_id=item.project_id)
+        session.add(t)
+        steps.append(t)
+    await session.flush()
+    if who:
+        for t in steps:
+            session.add(TaskAssignee(task_id=t.id, user_id=who))
+    return steps
+
+
+async def _start_step(session, bg, item, step):
+    step.status = "pending"
+    step.updated_at = _now()
+    topic = item.topic or f"контент #{item.id}"
+    dl = f" · до {step.deadline.astimezone(TASHKENT).strftime('%d.%m %H:%M')}" if step.deadline else ""
+    for a in await _task_assignee_ids(session, step.id, step.assignee_id):
+        tg = await _telegram_id_for(session, a)
+        if tg:
+            bg.add_task(_tg_send, tg, f"{CJOB_EMOJI.get(step.job_kind, '▶')} Твой шаг: "
+                                      f"{CJOB_RU.get(step.job_kind, '')} — «{topic}»{dl}")
+    await _notify_project(bg, session, item.project_id,
+                          f"▶ «{topic}»: {CJOB_RU.get(step.job_kind, 'шаг')} — в работе")
+
+
+async def _advance_chain(session, bg, done_step):
+    """Called when a chain step becomes done: start the next queued one, or send the
+    content to the AM for approval when nothing is left."""
+    item = (await session.execute(select(ContentItem).where(
+        ContentItem.id == done_step.content_id))).scalar_one_or_none()
+    if not item:
+        return
+    steps = await _chain_steps(session, item.id)
+    nxt = next((s for s in steps if s.step_no > done_step.step_no and s.status == "queued"), None)
+    topic = item.topic or f"контент #{item.id}"
+    if nxt:
+        await _start_step(session, bg, item, nxt)
+    elif all(s.status in ("done", "published", "cancelled") for s in steps):
+        item.pipeline_status = "approval"
+        item.updated_at = _now()
+        am = item.am_id or item.created_by
+        if am:
+            tg = await _telegram_id_for(session, am)
+            if tg:
+                bg.add_task(_tg_send, tg, f"✅ Все шаги по «{topic}» сданы — утверди публикацию")
+        await _notify_project(bg, session, item.project_id, f"✅ «{topic}» готов — на одобрении у AM")
+    await session.commit()
+
+
+async def _content_for_edit(session, content_id, user):
+    item = (await session.execute(
+        select(ContentItem).where(ContentItem.id == content_id))).scalar_one_or_none()
+    if not item:
+        raise HTTPException(404, "Content not found")
+    assg = (await _content_assignees(session, [item.id])).get(item.id, [])
+    my_pids = await _my_project_ids(session, user["id"])
+    if not _can_edit_content(user, item, my_pids, assg):
+        raise HTTPException(403, "можно только по своему контенту")
+    return item
+
+
+class ChainStepAdd(BaseModel):
+    kind: str
+
+
+@router.post("/content/{content_id}/chain", status_code=201)
+async def plan_chain(content_id: int, user: dict = Depends(member), session=Depends(get_session)):
+    """Create the planned steps (not started) so the AM can adjust people / deadlines first."""
+    item = await _content_for_edit(session, content_id, user)
+    if await _chain_steps(session, item.id):
+        raise HTTPException(400, "шаги уже есть")
+    await _create_chain(session, item, user["id"] or None)
+    await session.commit()
+    return await _one_content(session, item, user)
+
+
+@router.post("/content/{content_id}/chain/step", status_code=201)
+async def add_chain_step(content_id: int, body: ChainStepAdd,
+                         user: dict = Depends(member), session=Depends(get_session)):
+    """Append a step (e.g. «ИИ-вставка») to the end of the chain."""
+    if body.kind not in CJOB_KINDS:
+        raise HTTPException(422, f"kind must be one of {list(CJOB_KINDS)}")
+    item = await _content_for_edit(session, content_id, user)
+    steps = await _chain_steps(session, item.id) or await _create_chain(session, item, user["id"] or None, kinds=[])
+    last = steps[-1] if steps else None
+    if item.pipeline_status not in ("script", "revisions"):
+        raise HTTPException(400, "публикация уже на одобрении — шаги не добавить")
+    t = Task(title=f"{CJOB_EMOJI[body.kind]} {CJOB_RU[body.kind]}: {item.topic or f'контент #{item.id}'}"[:120],
+             description=_brief(item), job_kind=body.kind, type="content_pipeline", priority="normal",
+             status="queued", step_no=(last.step_no + 1) if last else 1, created_by=user["id"] or None,
+             assignee_id=last.assignee_id if last else None,
+             content_id=item.id, client_id=item.client_id, project_id=item.project_id)
+    session.add(t)
+    await session.flush()
+    if t.assignee_id:
+        session.add(TaskAssignee(task_id=t.id, user_id=t.assignee_id))
+    await session.commit()
+    return await _one_content(session, item, user)
+
+
+async def _launch(session, bg, item, uid):
+    steps = await _chain_steps(session, item.id) or await _create_chain(session, item, uid)
+    item.launched_at = _now()
+    first = next((s for s in steps if s.status == "queued"), None)
+    if first:
+        await _start_step(session, bg, item, first)
+    await session.commit()
+
+
+@router.post("/content/{content_id}/launch")
+async def launch_content(content_id: int, bg: BackgroundTasks,
+                         user: dict = Depends(member), session=Depends(get_session)):
+    """«🚀 Запустить в работу»: first step goes to its executor."""
+    item = await _content_for_edit(session, content_id, user)
+    if item.launched_at:
+        raise HTTPException(400, "уже запущено")
+    await _launch(session, bg, item, user["id"] or None)
+    return await _one_content(session, item, user)
+
+
+class LaunchMonth(BaseModel):
+    project_id: int
+
+
+@router.post("/content/launch-month")
+async def launch_month(body: LaunchMonth, bg: BackgroundTasks,
+                       user: dict = Depends(member), session=Depends(get_session)):
+    """«🚀 Запустить месяц»: launch every planned, not yet launched item of the project."""
+    my_pids = await _my_project_ids(session, user["id"])
+    if user["role"] not in MANAGER_ROLES and body.project_id not in my_pids:
+        raise HTTPException(403, "можно только по своим проектам")
+    items = (await session.execute(select(ContentItem).where(
+        ContentItem.project_id == body.project_id, ContentItem.launched_at.is_(None),
+        ContentItem.archived_at.is_(None), ContentItem.pipeline_status == "script"))).scalars().all()
+    legacy = {cid for (cid,) in (await session.execute(select(Task.content_id).where(
+        Task.content_id.in_([i.id for i in items]), Task.job_kind.isnot(None),
+        Task.step_no.is_(None)))).all()} if items else set()
+    n = 0
+    for item in items:
+        if item.id in legacy:          # old parallel jobs — leave as they are
+            continue
+        await _launch(session, bg, item, user["id"] or None)
+        n += 1
+    return {"launched": n}
+
+
+@router.post("/content/{content_id}/archive")
+async def archive_content(content_id: int, restore: bool = False,
+                          user: dict = Depends(member), session=Depends(get_session)):
+    item = await _content_for_edit(session, content_id, user)
+    item.archived_at = None if restore else _now()
+    await session.commit()
+    return {"id": item.id, "archived": item.archived_at is not None}
 
 
 PIPELINE_STEPS = set(PIPELINE_ORDER)

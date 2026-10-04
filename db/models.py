@@ -182,6 +182,8 @@ class Project(Base):
 
 class ContentItem(Base):
     __tablename__ = 'content_items'
+    launched_at = Column(DateTime(timezone=True))   # «Запустить в работу» pressed
+    archived_at = Column(DateTime(timezone=True))   # hidden from the plan, can be restored
 
     id               = Column(Integer, primary_key=True)
     project_id       = Column(Integer, ForeignKey('projects.id', ondelete='CASCADE'))
@@ -245,6 +247,7 @@ class ContentPipelineStep(Base):
 
 class Task(Base):
     __tablename__ = 'tasks'
+    step_no     = Column(Integer)   # position in a content production chain (None = ordinary task)
 
     id               = Column(Integer, primary_key=True)
     project_id       = Column(Integer, ForeignKey('projects.id', ondelete='SET NULL'))   # not CASCADE
@@ -632,6 +635,10 @@ _MIGRATIONS = [
     "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS preview_image TEXT",
     "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS preview_site TEXT",
     "ALTER TABLE reference_items ADD COLUMN IF NOT EXISTS preview_fetched_at TIMESTAMPTZ",
+    # 2026-10: content production chain + archive
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS step_no INTEGER",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS launched_at TIMESTAMPTZ",
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
 ]
 
 
