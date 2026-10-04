@@ -296,17 +296,10 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
   .cjob-chip:active{opacity:.7}
-  /* production chain: ✓ done → ● current → ○ next … → approval */
-  .chain{display:flex; flex-wrap:wrap; align-items:center; gap:4px 2px; margin-top:9px; font-size:12px}
-  .chain .cjob-chip{padding:4px 9px; font-size:12px}
-  .chain .cs-done{background:color-mix(in srgb, var(--st-done) 14%, var(--card)); color:var(--st-done-ink)}
-  .chain .cs-now{background:var(--accent); color:var(--on-accent); font-weight:600}
-  .chain .cs-now.cs-late{background:var(--st-overdue-ink)}
-  .chain .cs-next{background:transparent; color:var(--hint); border:1px dashed var(--border)}
-  .chain .cs-arrow{color:var(--hint); padding:0 1px}
-  .chain .cs-add{background:transparent; color:var(--link); border:1px dashed var(--accent); font-weight:600}
-  .chain .cs-step{display:inline-flex; align-items:center}
-  .chain .cs-x{border:none; background:none; color:var(--hint); font-size:11px; padding:2px 4px 2px 2px; cursor:pointer; line-height:1}
+  .cjob-list .cs-add{background:transparent; color:var(--link); border:1px dashed var(--accent); font-weight:600; justify-content:center}
+  .cjob-chip .cjob-rev{flex:0 0 auto; font-size:11px; font-weight:700; color:var(--st-overdue-ink)}
+  .cjob-chip.st-review{background:color-mix(in srgb, var(--st-review) 16%, var(--card))}
+  .cjob-chip.st-revision, .cjob-chip.st-overdue{background:color-mix(in srgb, var(--st-overdue) 13%, var(--card))}
   .cjob-chip .cjob-st{flex:0 0 auto}
   .cjob-chip.st-done{opacity:.55; border-left-color:var(--st-done)}
   .cjob-chip.st-overdue{border-left-color:var(--st-overdue)}
@@ -391,6 +384,15 @@
   .ld-days{display:grid; grid-template-columns:repeat(14,1fr); gap:3px; font-size:9px; color:var(--hint);
     text-align:center; margin:0 0 6px; position:sticky; top:-14px; background:var(--bg); padding:6px 0; z-index:2}
   .ld-days .we{color:var(--st-overdue-ink)}
+  .ld-proj{padding:4px 13px}
+  .ld-prow{padding:9px 0}
+  .ld-prow + .ld-prow{border-top:1px solid var(--border)}
+  .ld-prow .nm{font-size:14px}
+  .ld-pmeta{font-size:11px; color:var(--hint); white-space:nowrap}
+  .ld-who{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px}
+  .ld-who span{font-size:12px; background:var(--accent-soft); border-radius:999px; padding:3px 9px}
+  .ld-list small{display:block; color:var(--hint); font-size:11px; margin-top:1px}
+  .ld-rev{color:var(--st-overdue-ink); font-weight:700}
   .ld-card{padding:12px 13px}
   .ld-head{display:flex; align-items:center; gap:8px}
   .ld-head .nm{font-weight:700; font-size:15px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
@@ -986,7 +988,7 @@ const I18N = {
     "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
     "login.title":"Вход в WHY NOT? OS","login.sub":"Войди через Telegram — так приложение работает в браузере отдельно от чатов.","login.noBot":"Вход через браузер пока не настроен. Открой приложение из бота.",
     "content.advance":"Продвинуть →","content.final":"Финальный этап",
-    "cjob.ai":"ИИ-вставка","chain.plan":"⚙️ Шаги","chain.launch":"🚀 Запустить","chain.launched":"Запущено — исполнитель получил задачу","chain.approve":"✅ Утвердить","chain.publish":"📢 Опубликовано","chain.approval":"Утверждение","chain.addStep":"+ шаг","chain.removeActiveQ":"Убрать шаг, над которым уже работают? Работа перейдёт к следующему шагу.","chain.addWhich":"Какой шаг добавить?","chain.launchMonth":"🚀 Запустить месяц","chain.launchMonthQ":"Запустить в работу все запланированные публикации клиента? Исполнители первых шагов получат задачи.","chain.launchedN":"Запущено публикаций: {n}","content.archive":"🗄 В архив","content.archived":"В архиве","content.restore":"↩ Вернуть","content.restored":"Возвращено","content.archiveTab":"🗄 Архив","st.queued":"в очереди","cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи",
+    "cjob.ai":"ИИ-вставка","chain.plan":"⚙️ Шаги","chain.launch":"🚀 Запустить","chain.launched":"Запущено — исполнитель получил задачу","chain.approve":"✅ Утвердить","chain.publish":"📢 Опубликовано","chain.approval":"Утверждение","chain.addStep":"+ шаг","chain.removeActiveQ":"Убрать шаг, над которым уже работают? Работа перейдёт к следующему шагу.","chain.addWhich":"Какой шаг добавить?","chain.launchMonth":"🚀 Запустить месяц","chain.launchMonthQ":"Запустить в работу все запланированные публикации клиента? Исполнители первых шагов получат задачи.","chain.launchedN":"Запущено публикаций: {n}","content.archive":"🗄 В архив","content.archived":"В архиве","content.restore":"↩ Вернуть","content.restored":"Возвращено","content.archiveTab":"🗄 Архив","st.queued":"в очереди","cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи","cjob.add":"+ Задача","cjob.addWhich":"Какую задачу поставить?","cjob.nobody":"без исполнителя","load.revs":"правок: {n}","load.revs30":"правок за 30 дн: {n}","load.days":"{n} дн. в работе","load.projects":"Кто на каком проекте","load.peopleN":"{n} чел.","load.tasksN":"задач: {n}","load.byPerson":"По людям",
     "cjob.new.shoot":"Съёмка по контенту","cjob.new.design":"Дизайн по контенту","cjob.new.edit":"Монтаж по контенту",
     "cjob.st.pending":"ожидает","cjob.st.in_progress":"в работе","cjob.st.done":"готово","cjob.st.overdue":"просрочено","cjob.st.cancelled":"отменено",
     "blocker.word":"Блокер","blocker.by":"сообщил","blocker.to":"на",
@@ -1044,7 +1046,7 @@ const I18N = {
     "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
     "login.title":"WHY NOT? OS ga kirish","login.sub":"Telegram orqali kiring — ilova brauzerda chatlardan alohida ishlaydi.","login.noBot":"Brauzer orqali kirish hali sozlanmagan. Ilovani botdan oching.",
     "content.advance":"Keyingi bosqich →","content.final":"Yakuniy bosqich",
-    "cjob.ai":"AI-qoʻshimcha","chain.plan":"⚙️ Bosqichlar","chain.launch":"🚀 Ishga tushirish","chain.launched":"Ishga tushirildi — ijrochi vazifani oldi","chain.approve":"✅ Tasdiqlash","chain.publish":"📢 Joylandi","chain.approval":"Tasdiqlash","chain.addStep":"+ bosqich","chain.removeActiveQ":"Ustida ishlanayotgan bosqichni olib tashlaysizmi? Ish keyingi bosqichga oʻtadi.","chain.addWhich":"Qaysi bosqichni qoʻshish kerak?","chain.launchMonth":"🚀 Oyni ishga tushirish","chain.launchMonthQ":"Mijozning barcha rejalashtirilgan postlarini ishga tushirasizmi? Birinchi bosqich ijrochilari vazifa oladi.","chain.launchedN":"Ishga tushirildi: {n}","content.archive":"🗄 Arxivga","content.archived":"Arxivda","content.restore":"↩ Qaytarish","content.restored":"Qaytarildi","content.archiveTab":"🗄 Arxiv","st.queued":"navbatda","cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga",
+    "cjob.ai":"AI-qoʻshimcha","chain.plan":"⚙️ Bosqichlar","chain.launch":"🚀 Ishga tushirish","chain.launched":"Ishga tushirildi — ijrochi vazifani oldi","chain.approve":"✅ Tasdiqlash","chain.publish":"📢 Joylandi","chain.approval":"Tasdiqlash","chain.addStep":"+ bosqich","chain.removeActiveQ":"Ustida ishlanayotgan bosqichni olib tashlaysizmi? Ish keyingi bosqichga oʻtadi.","chain.addWhich":"Qaysi bosqichni qoʻshish kerak?","chain.launchMonth":"🚀 Oyni ishga tushirish","chain.launchMonthQ":"Mijozning barcha rejalashtirilgan postlarini ishga tushirasizmi? Birinchi bosqich ijrochilari vazifa oladi.","chain.launchedN":"Ishga tushirildi: {n}","content.archive":"🗄 Arxivga","content.archived":"Arxivda","content.restore":"↩ Qaytarish","content.restored":"Qaytarildi","content.archiveTab":"🗄 Arxiv","st.queued":"navbatda","cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga","cjob.add":"+ Vazifa","cjob.addWhich":"Qanday vazifa berish kerak?","cjob.nobody":"ijrochisiz","load.revs":"tuzatishlar: {n}","load.revs30":"30 kunda tuzatishlar: {n}","load.days":"{n} kundan beri ishda","load.projects":"Kim qaysi loyihada","load.peopleN":"{n} kishi","load.tasksN":"vazifalar: {n}","load.byPerson":"Odamlar boʻyicha",
     "cjob.new.shoot":"Kontent uchun suratga olish","cjob.new.design":"Kontent uchun dizayn","cjob.new.edit":"Kontent uchun montaj",
     "cjob.st.pending":"kutilmoqda","cjob.st.in_progress":"jarayonda","cjob.st.done":"tayyor","cjob.st.overdue":"muddati o‘tgan","cjob.st.cancelled":"bekor qilingan",
     "blocker.word":"Toʻsiq","blocker.by":"xabar berdi","blocker.to":"kimga",
@@ -1102,7 +1104,7 @@ const I18N = {
     "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
     "login.title":"Sign in to WHY NOT? OS","login.sub":"Sign in with Telegram — the app then runs in the browser, separate from your chats.","login.noBot":"Browser sign-in isn\u2019t set up yet. Open the app from the bot.",
     "content.advance":"Advance →","content.final":"Final stage",
-    "cjob.ai":"AI insert","chain.plan":"⚙️ Steps","chain.launch":"🚀 Launch","chain.launched":"Launched — the assignee got the task","chain.approve":"✅ Approve","chain.publish":"📢 Published","chain.approval":"Approval","chain.addStep":"+ step","chain.removeActiveQ":"Remove the step someone is working on? Work moves to the next step.","chain.addWhich":"Which step to add?","chain.launchMonth":"🚀 Launch month","chain.launchMonthQ":"Launch all planned posts of this client? First-step assignees will get their tasks.","chain.launchedN":"Launched: {n}","content.archive":"🗄 Archive","content.archived":"Archived","content.restore":"↩ Restore","content.restored":"Restored","content.archiveTab":"🗄 Archive","st.queued":"queued","cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks",
+    "cjob.ai":"AI insert","chain.plan":"⚙️ Steps","chain.launch":"🚀 Launch","chain.launched":"Launched — the assignee got the task","chain.approve":"✅ Approve","chain.publish":"📢 Published","chain.approval":"Approval","chain.addStep":"+ step","chain.removeActiveQ":"Remove the step someone is working on? Work moves to the next step.","chain.addWhich":"Which step to add?","chain.launchMonth":"🚀 Launch month","chain.launchMonthQ":"Launch all planned posts of this client? First-step assignees will get their tasks.","chain.launchedN":"Launched: {n}","content.archive":"🗄 Archive","content.archived":"Archived","content.restore":"↩ Restore","content.restored":"Restored","content.archiveTab":"🗄 Archive","st.queued":"queued","cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks","cjob.add":"+ Task","cjob.addWhich":"Which task to give?","cjob.nobody":"unassigned","load.revs":"revisions: {n}","load.revs30":"revisions in 30 days: {n}","load.days":"{n} d in work","load.projects":"Who is on which project","load.peopleN":"{n} people","load.tasksN":"tasks: {n}","load.byPerson":"By person",
     "cjob.new.shoot":"Shoot for content","cjob.new.design":"Design for content","cjob.new.edit":"Edit for content",
     "cjob.st.pending":"pending","cjob.st.in_progress":"in progress","cjob.st.done":"done","cjob.st.overdue":"overdue","cjob.st.cancelled":"cancelled",
     "blocker.word":"Blocker","blocker.by":"reported by","blocker.to":"for",
@@ -1202,13 +1204,13 @@ function pickStepKind(){
   return new Promise(res => {
     try {
       if (tg && tg.showPopup && tg.initData){
-        tg.showPopup({ message: t("chain.addWhich"),
+        tg.showPopup({ message: t("cjob.addWhich"),
           buttons: kinds.map(k => ({ id: k, type: "default", text: _CJOB_EMOJI[k] + " " + t("cjob." + k) })) },
           id => res(id || null));
         return;
       }
     } catch(e){}
-    const n = window.prompt(t("chain.addWhich") + "\n" + kinds.map((k, i) => `${i + 1} — ${t("cjob." + k)}`).join("\n"), "3");
+    const n = window.prompt(t("cjob.addWhich") + "\n" + kinds.map((k, i) => `${i + 1} — ${t("cjob." + k)}`).join("\n"), "3");
     res(kinds[+n - 1] || null);
   });
 }
@@ -1359,8 +1361,8 @@ function swipeActionsFor(card){
         : tk ? { label: t("swipe.open"), bg: "var(--st-pending)", run: () => openTaskView(tk) } : null,
     };
   }
-  if (card.matches("[data-content-edit]") || btn("[data-chain-launch], [data-advance], [data-copy-caption]")){
-    const go = btn("[data-chain-launch], [data-advance]");
+  if (card.matches("[data-content-edit]") || btn("[data-advance], [data-copy-caption]")){
+    const go = btn("[data-advance]");
     const cid = +(card.dataset.contentEdit || 0);
     const c = contentById[cid];
     return {
@@ -1674,45 +1676,35 @@ function markClampedDescs(root){
 const _CJOB_EMOJI = { shoot:"🎥", design:"🎨", edit:"✂️", ai:"🤖" };
 const _CJOB_ST_EMOJI = { pending:"⏳", in_progress:"🔧", done:"✅", overdue:"🔴", cancelled:"✖️" };
 
-// «✓ Съёмка → ● ✂️ Монтаж · Баходир · до 5 окт → ○ Утверждение»
-function chainLine(c, steps, canEdit){
-  const st = c.pipeline_status || "script";
-  const short = n => (n || "").split(" ")[0];
-  const cur = steps.find(j => !["done", "published", "cancelled", "queued"].includes(j.status));
-  const parts = steps.map(j => {
-    const em = _CJOB_EMOJI[j.kind] || "•";
-    const done = ["done", "published"].includes(j.status);
-    const now = j === cur;
-    const late = now && j.deadline && new Date(j.deadline) < new Date();
-    const extra = now ? [short(j.assignee_name), j.deadline ? fmtDate(j.deadline) : ""].filter(Boolean).join(" · ") : "";
-    const cls = done ? "cs-done" : now ? "cs-now" + (late ? " cs-late" : "") : "cs-next";
-    const removable = canEdit && !done && (st === "script" || st === "revisions");
-    return `<span class="cs-step"><button class="cjob-chip ${cls}" data-cjob-open="${j.id}" data-cid="${c.id}">${done ? "✓" : now ? "●" : "○"} ${em} ${esc(t("cjob." + j.kind))}${extra ? " · " + esc(extra) : ""}</button>${removable ? `<button class="cs-x" data-chain-del="${j.id}" data-cid="${c.id}" aria-label="Убрать шаг">✕</button>` : ""}</span>`;
-  });
-  const apprCls = st === "approval" ? "cs-now" : (st === "done" || st === "published") ? "cs-done" : "cs-next";
-  parts.push(`<span class="cjob-chip ${apprCls}">${apprCls === "cs-done" ? "✓" : apprCls === "cs-now" ? "●" : "○"} ${esc(t("chain.approval"))}</span>`);
-  const canAdd = canEdit && (st === "script" || st === "revisions");
-  return `<div class="chain">${parts.join(`<span class="cs-arrow">→</span>`)}${canAdd ? ` <button class="cjob-chip cs-add" data-chain-add="${c.id}">${esc(t("chain.addStep"))}</button>` : ""}</div>`;
-}
 // the one main button for this content, depending on where it is
-function contentPrimary(c, steps, legacy, canEdit){
+function contentPrimary(c, canEdit){
   const st = c.pipeline_status || "script";
-  if (!canEdit) return "";
+  if (!canEdit || !isManager()) return "";
   // .swipe-dup: on touch screens swipe right does this, so the button is hidden there
-  if (st === "approval" && isManager()) return `<button class="act swipe-dup" data-advance="${c.id}">${esc(t("chain.approve"))}</button>`;
-  if (st === "done" && isManager()) return `<button class="act swipe-dup" data-advance="${c.id}">${esc(t("chain.publish"))}</button>`;
-  if (st !== "script" || c.launched_at || legacy.length) return "";
-  return (steps.length ? "" : `<button class="act ghost" data-chain-plan="${c.id}">${esc(t("chain.plan"))}</button>`)
-    + `<button class="act swipe-dup" data-chain-launch="${c.id}">${esc(t("chain.launch"))}</button>`;
+  if (st === "approval") return `<button class="act swipe-dup" data-advance="${c.id}">${esc(t("chain.approve"))}</button>`;
+  if (st === "done") return `<button class="act swipe-dup" data-advance="${c.id}">${esc(t("chain.publish"))}</button>`;
+  return "";
+}
+
+// jobs run in parallel, each with its own person: «✂️ Монтаж · Баходир · 5 окт · 🔄2 ⏳»
+function jobsLine(c, canEdit){
+  const st = c.pipeline_status || "script";
+  const jobs = (c.jobs || []).filter(j => j.status !== "cancelled");
+  const canAdd = canEdit && isManager() && st !== "published";
+  if (!jobs.length && !canAdd) return "";
+  return `<div class="cjob-list">${jobs.map(j => cjobChip(c, j)).join("")}${canAdd ? `<button class="cjob-chip cs-add" data-cjob-add="${c.id}">${esc(t("cjob.add"))}</button>` : ""}</div>`;
 }
 
 function cjobChip(c, j){
   const em = _CJOB_EMOJI[j.kind] || "•";
-  const nm = j.assignee_name ? " · " + j.assignee_name : "";
-  const wh = j.deadline ? " · " + fmtDateTime(j.deadline) : "";
-  const stEm = _CJOB_ST_EMOJI[j.status] || "";
-  return `<button class="cjob-chip st-${esc(j.status)}" data-cjob-open="${j.id}" data-cid="${c.id}">
-    <span>${em} ${esc(t("cjob." + j.kind))}${esc(nm)}${esc(wh)}</span><span class="cjob-st">${stEm}</span>
+  const short = n => (n || "").split(" ")[0];
+  const names = (j.assignee_names && j.assignee_names.length ? j.assignee_names : [j.assignee_name]).filter(Boolean).map(short);
+  const done = ["done", "published"].includes(j.status);
+  const late = !done && j.deadline && new Date(j.deadline) < new Date();
+  const bits = [names.join(", ") || t("cjob.nobody"), !done && j.deadline ? fmtDate(j.deadline) : ""].filter(Boolean);
+  const stEm = done ? "✅" : j.status === "review" ? "👀" : j.status === "revision" ? "🔄" : late ? "🔴" : (_CJOB_ST_EMOJI[j.status] || "");
+  return `<button class="cjob-chip st-${esc(late ? "overdue" : j.status)}" data-cjob-open="${j.id}" data-cid="${c.id}">
+    <span>${em} ${esc(t("cjob." + j.kind))} · ${esc(bits.join(" · "))}</span>${j.revisions ? `<span class="cjob-rev" title="${esc(t("load.revs").replace("{n}", j.revisions))}">🔄${j.revisions}</span>` : ""}<span class="cjob-st">${stEm}</span>
   </button>`;
 }
 
@@ -1737,13 +1729,8 @@ function contentCard(c, {advance=true, jobs=true}={}){
   const when = c.publish_at ? fmtDateTime(c.publish_at)
              : c.publish_date ? fmtDate(c.publish_date) : null;
   const who = (c.assignees || []).map(a => a.name).filter(Boolean).join(", ");
-  const steps = (c.jobs || []).filter(j => j.step_no != null);
-  const legacyJobs = (c.jobs || []).filter(j => j.step_no == null);
-  // old parallel jobs (before chains): still shown as small tags while not started
-  const pendingJobs = legacyJobs.filter(j => j.status === "pending");
-  const jobList = steps.length ? chainLine(c, steps, canEdit)
-    : jobs && pendingJobs.length ? `<div class="cjob-list">${pendingJobs.map(j => cjobChip(c, j)).join("")}</div>` : "";
-  const jobBtns = jobs ? contentPrimary(c, steps, legacyJobs, canEdit) : "";
+  const jobList = jobs ? jobsLine(c, canEdit) : "";
+  const jobBtns = jobs ? contentPrimary(c, canEdit) : "";
   return `
   <div class="card${canEdit ? " tappable" : ""}"${canEdit ? ` data-content-edit="${c.id}"` : ""}>
     <div class="row">
@@ -1792,11 +1779,6 @@ async function renderContent(){
     </div>` : "";
 
   const parts = [seg, pills];
-  // «🚀 Запустить месяц» for the selected client: everything planned but not started
-  const toLaunch = contentProjectId && !contentArchived
-    ? items.filter(c => c.can_edit !== false && !c.launched_at && (c.pipeline_status || "script") === "script"
-                       && !(c.jobs || []).some(j => j.step_no == null)) : [];
-  if (toLaunch.length) parts.push(`<button class="act" data-launch-month="${contentProjectId}" style="margin:0 0 12px">${esc(t("chain.launchMonth"))} · ${toLaunch.length}</button>`);
   if (!items.length){
     parts.push(`<div class="empty">${esc(contentProjectId ? t("empty.contentProj") : t("empty.content"))}</div>`);
   } else {
@@ -1818,7 +1800,9 @@ async function renderContent(){
 
 /* ── Загрузка команды: who works on what ─────────────────── */
 async function renderLoad(){
-  const people = await api("/api/team/load");
+  const data = await api("/api/team/load");
+  const people = Array.isArray(data) ? data : data.people;
+  const projects = Array.isArray(data) ? [] : (data.projects || []);
   // problems first, then busy, then free; inside a group — the most loaded first
   const weight = p => (p.overdue ? 2e4 : 0) + (p.open >= 6 ? 1e4 : 0) + (p.open + p.shoots.length ? 5e3 : 0) + p.open * 10 + p.queued;
   people.sort((a, b) => weight(b) - weight(a));
@@ -1842,6 +1826,7 @@ async function renderLoad(){
     const sub = [p.open > 1 ? t("load.next").replace("{n}", p.open - 1) : "",
                  p.review ? t("load.review").replace("{n}", p.review) : "",
                  p.queued ? t("load.queued").replace("{n}", p.queued) : "",
+                 p.revisions_30d ? "🔄 " + t("load.revs30").replace("{n}", p.revisions_30d) : "",
                  p.shoots[0] ? `🎬 ${fmtDate(p.shoots[0].at)}` : ""].filter(Boolean).join(" · ");
     return `<div class="card ld-card tappable" data-ld="${p.id}">
       <div class="ld-head"><span class="nm">${esc(p.name || "—")}</span>
@@ -1850,11 +1835,18 @@ async function renderLoad(){
       <div class="ld-now">${now ? `<b>${esc(t("load.now"))}:</b> ${esc(now.title)}` : `<span class="hint">${esc(t("load.nothing"))}</span>`}</div>
       ${sub ? `<div class="ld-sub">${esc(sub)}</div>` : ""}
       <div class="ld-strip">${cells.map((c, i) => `<i class="${c.late ? "late" : c.n >= 3 ? "l3" : c.n === 2 ? "l2" : c.n === 1 ? "l1" : ""}${i === 0 ? " today" : ""}">${c.shoot ? "🎬" : c.n > 1 ? c.n : ""}</i>`).join("")}</div>
-      <div class="ld-list">${p.tasks.map(tk => `<div><span>${esc(tk.title)}</span><span>${esc(STATUS_LABELS[tk.status] || tk.status)}${tk.deadline ? " · " + esc(fmtDate(tk.deadline)) : ""}</span></div>`).join("")
+      <div class="ld-list">${p.tasks.map(tk => `<div><span>${esc(tk.title)}${tk.project ? `<small>📁 ${esc(tk.project)}${tk.days ? " · " + esc(t("load.days").replace("{n}", tk.days)) : ""}</small>` : ""}</span><span>${tk.revisions ? `<b class="ld-rev">🔄${tk.revisions}</b> ` : ""}${esc(STATUS_LABELS[tk.status] || tk.status)}${tk.deadline ? " · " + esc(fmtDate(tk.deadline)) : ""}</span></div>`).join("")
         || `<div><span class="hint">${esc(t("load.nothing"))}</span></div>`}</div>
     </div>`;
   }).join("");
-  view.innerHTML = `<p class="hint" style="margin:0 2px 10px">${esc(t("load.legend"))}</p>` + head + cards;
+  const short = n => (n || "—").split(" ")[0];
+  const projBlock = projects.length ? `<div class="section-title">📁 ${esc(t("load.projects"))}</div><div class="card ld-proj">` + projects.map(pr => `
+    <div class="ld-prow">
+      <div class="ld-head"><span class="nm">${esc(pr.name || "—")}</span>
+        <span class="ld-pmeta">${esc([t("load.peopleN").replace("{n}", pr.people.length), t("load.tasksN").replace("{n}", pr.tasks)].join(" · "))}${pr.revisions ? ` · <b class="ld-rev">🔄${pr.revisions}</b>` : ""}</span></div>
+      <div class="ld-who">${pr.people.map(w => `<span>${w.kinds.map(k => _CJOB_EMOJI[k] || "📋").join("")} ${esc(short(w.name))}</span>`).join("")}</div>
+    </div>`).join("") + `</div><div class="section-title">👥 ${esc(t("load.byPerson"))}</div>` : "";
+  view.innerHTML = projBlock + `<p class="hint" style="margin:0 2px 10px">${esc(t("load.legend"))}</p>` + head + cards;
   view.querySelectorAll("[data-ld]").forEach(c => c.addEventListener("click", () => { haptic(); c.classList.toggle("open"); }));
 }
 
@@ -2533,43 +2525,6 @@ view.addEventListener("click", async e => {
   }
   if (e.target.closest("[data-carchive]")){ contentArchived = !contentArchived; haptic(); load("content"); return; }
 
-  const stepDel = e.target.closest("[data-chain-del]");
-  if (stepDel && !busy){
-    const c = contentById[+stepDel.dataset.cid];
-    const j = c && (c.jobs || []).find(x => x.id === +stepDel.dataset.chainDel);
-    // removing the step someone is working on needs a confirm; a planned one goes right away
-    if (j && j.status !== "queued" && !(await askConfirm(t("chain.removeActiveQ")))) return;
-    busy = true;
-    try { await api(`/api/content/${stepDel.dataset.cid}/chain/step/${stepDel.dataset.chainDel}`, { method:"DELETE" }); haptic(); }
-    catch(err){ toast(err.message); }
-    finally { busy = false; }
-    await load(currentTab);
-    return;
-  }
-
-  const chainBtn = e.target.closest("[data-chain-plan], [data-chain-launch], [data-launch-month], [data-chain-add]");
-  if (chainBtn && !busy){
-    const d = chainBtn.dataset;
-    if (d.launchMonth && !(await askConfirm(t("chain.launchMonthQ")))) return;
-    let kind = null;
-    if (d.chainAdd){
-      kind = await pickStepKind();
-      if (!kind) return;
-    }
-    busy = true; chainBtn.disabled = true;
-    try {
-      if (d.chainPlan) await api(`/api/content/${d.chainPlan}/chain`, { method:"POST" });
-      else if (d.chainLaunch){ await api(`/api/content/${d.chainLaunch}/launch`, { method:"POST" }); toast(t("chain.launched")); }
-      else if (d.chainAdd) await api(`/api/content/${d.chainAdd}/chain/step`, { method:"POST", body:{ kind } });
-      else { const r = await api(`/api/content/launch-month`, { method:"POST", body:{ project_id: +d.launchMonth } });
-             toast(t("chain.launchedN").replace("{n}", r.launched)); }
-      haptic("medium");
-    } catch(err){ toast(err.message); }
-    finally { busy = false; }
-    await load(currentTab);
-    return;
-  }
-
   const subBtn = e.target.closest("[data-teamsub]");
   if (subBtn){
     if (subBtn.dataset.teamsub !== teamSub){
@@ -2623,6 +2578,13 @@ view.addEventListener("click", async e => {
       await load(currentTab);
     } catch(err){ toast(err.message); cjobDispatch.disabled = false; cjobDispatch.textContent = t("cjob.toTasks"); }
     finally { busy = false; }
+    return;
+  }
+  const cjobAdd = e.target.closest("[data-cjob-add]");
+  if (cjobAdd){
+    const c = contentById[+cjobAdd.dataset.cjobAdd];
+    const kind = c && await pickStepKind();
+    if (kind){ haptic(); openContentJobCreate(c, kind); }
     return;
   }
   const cjobChipEl = e.target.closest("[data-cjob-open]");
@@ -3254,7 +3216,9 @@ async function fillMpick(f){
   try {
     const [list, load] = await Promise.all([api("/api/members"),
       isManager() ? api("/api/team/load").catch(() => []) : Promise.resolve([])]);
-    const ld = Object.fromEntries(load.map(p => [p.id, p]));
+    const ld = Object.fromEntries((Array.isArray(load) ? load : load.people || []).map(p => [p.id, p]));
+    // the freest people first, so the AM picks whoever is free right now
+    if (Object.keys(ld).length) list.sort((a, b) => ((ld[a.id] || {}).open || 0) - ((ld[b.id] || {}).open || 0));
     // who's free: open tasks next to each name (red if something is overdue)
     const tag = id => { const p = ld[id]; if (!p) return "";
       if (!p.open) return ` <span class="mp-load">🟢</span>`;            // free
@@ -3403,6 +3367,19 @@ function openContentJobEdit(j){
       description: j.notes || "",
       status: j.status || "pending",
     },
+  };
+  openSheet();
+}
+
+// «+ Задача» on a content card: one job (shoot / edit / design) for whoever is free now
+function openContentJobCreate(c, kind){
+  editState = {
+    formKey: "cjob_" + kind,
+    titleKey: "cjob." + kind,
+    endpoint: `/api/content/${c.id}/jobs/${kind}`,
+    method: "POST",
+    isCreate: true,
+    prefill: { assignee_ids: [], deadline: "", description: "" },
   };
   openSheet();
 }

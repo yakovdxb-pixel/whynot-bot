@@ -571,6 +571,7 @@ async def _attach_assignees(session, tasks):
     all_uids |= {t.created_by for t in tasks}
     names = await _names_for(session, all_uids)
     refs = await _ref_summaries(session, task_ids=ids)
+    revs = await _revision_counts(session, ids)
     out = []
     for t in tasks:
         d = row_to_dict(t)
@@ -581,8 +582,23 @@ async def _attach_assignees(session, tasks):
         s = refs.get(t.id, {})
         d["refs_count"] = s.get("count", 0)
         d["ref_thumbs"] = s.get("thumbs", [])
+        d["revisions"] = revs.get(t.id, 0)
         out.append(d)
     return out
+
+
+async def _revision_counts(session, task_ids) -> dict:
+    """task_id -> how many times it was sent back for a revision (from status_events;
+    the AM's «🔄 Правка» in the group and in the app both land there)."""
+    ids = [i for i in task_ids if i]
+    if not ids:
+        return {}
+    rows = (await session.execute(
+        select(StatusEvent.entity_id, func.count())
+        .where(StatusEvent.entity == "task", StatusEvent.status == "revision",
+               StatusEvent.entity_id.in_(ids))
+        .group_by(StatusEvent.entity_id))).all()
+    return {tid: n for tid, n in rows}
 
 
 @router.get("/home")
@@ -700,7 +716,7 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
                task.id, user["id"], task.title)
     if status_changed:
         await _log_status(session, "task", task.id, task.status, user["id"])
-        if task.step_no is not None and task.status == "done":
+        if task.status == "done":
             await _advance_chain(session, bg, task)
 
     for a in new_notify:
@@ -760,8 +776,7 @@ async def approve_task(task_id: int, bg: BackgroundTasks,
     task.updated_at = _now()
     await session.commit()
     await _log_status(session, "task", task.id, "done", user["id"])
-    if task.step_no is not None:
-        await _advance_chain(session, bg, task)
+    await _advance_chain(session, bg, task)
     for a in await _task_assignee_ids(session, task.id, task.assignee_id):
         tg = await _telegram_id_for(session, a)
         if tg:
@@ -902,12 +917,22 @@ async def _content_jobs(session, cids):
     rows = (await session.execute(
         select(Task).where(Task.content_id.in_(cids), Task.job_kind.isnot(None))
         .order_by(Task.step_no.is_(None), Task.step_no, Task.id))).scalars().all()
-    names = await _names_for(session, [t.assignee_id for t in rows])
+    by_task = {}
+    for tid, uid in (await session.execute(
+            select(TaskAssignee.task_id, TaskAssignee.user_id)
+            .where(TaskAssignee.task_id.in_([t.id for t in rows])))).all():
+        by_task.setdefault(tid, []).append(uid)
+    names = await _names_for(session, [t.assignee_id for t in rows]
+                             + [u for lst in by_task.values() for u in lst])
+    revs = await _revision_counts(session, [t.id for t in rows])
     out = {}
     for t in rows:
+        aids = by_task.get(t.id) or ([t.assignee_id] if t.assignee_id else [])
         out.setdefault(t.content_id, []).append({
             "id": t.id, "kind": t.job_kind, "status": t.status, "title": t.title,
             "assignee_id": t.assignee_id, "assignee_name": names.get(t.assignee_id),
+            "assignee_ids": aids, "assignee_names": [names.get(a) for a in aids if names.get(a)],
+            "revisions": revs.get(t.id, 0),
             "deadline": t.deadline.isoformat() if t.deadline else None,
             "location": t.location, "notes": t.description, "step_no": t.step_no,
         })
@@ -1252,25 +1277,32 @@ async def _start_step(session, bg, item, step):
 
 
 async def _advance_chain(session, bg, done_step):
-    """Called when a chain step becomes done: start the next queued one, or send the
-    content to the AM for approval when nothing is left."""
+    """Called when a content job task becomes done. Old chain steps: start the next
+    queued one. Then, once every job of the content is finished (jobs run in parallel —
+    e.g. design and edit by two people), send the content to the AM for approval."""
+    if not done_step.content_id or not (done_step.job_kind or done_step.step_no is not None):
+        return
     item = (await session.execute(select(ContentItem).where(
         ContentItem.id == done_step.content_id))).scalar_one_or_none()
     if not item:
         return
     steps = await _chain_steps(session, item.id)
-    nxt = next((s for s in steps if s.step_no > done_step.step_no and s.status == "queued"), None)
+    nxt = next((s for s in steps if done_step.step_no is not None
+                and s.step_no > done_step.step_no and s.status == "queued"), None)
+    jobs = (await session.execute(select(Task).where(
+        Task.content_id == item.id, Task.job_kind.isnot(None)))).scalars().all()
     topic = item.topic or f"контент #{item.id}"
     if nxt:
         await _start_step(session, bg, item, nxt)
-    elif all(s.status in ("done", "published", "cancelled") for s in steps):
+    elif (item.pipeline_status or "script") in ("script", "revisions") and \
+            all(s.status in ("done", "published", "cancelled") for s in jobs):
         item.pipeline_status = "approval"
         item.updated_at = _now()
         am = item.am_id or item.created_by
         if am:
             tg = await _telegram_id_for(session, am)
             if tg:
-                bg.add_task(_tg_send, tg, f"✅ Все шаги по «{topic}» сданы — утверди публикацию")
+                bg.add_task(_tg_send, tg, f"✅ Все задачи по «{topic}» сданы — утверди публикацию")
         await _notify_project(bg, session, item.project_id, f"✅ «{topic}» готов — на одобрении у AM")
     await session.commit()
 
@@ -2639,8 +2671,9 @@ async def list_team(user: dict = Depends(member), session=Depends(get_session)):
 
 @router.get("/team/load")
 async def team_load(user: dict = Depends(member), session=Depends(get_session)):
-    """Who works on what: per active person — current task, open tasks with deadlines,
-    queued chain steps, upcoming shoots (14 days), and when they're free."""
+    """Who works on what. people: per active person — open tasks (with project, days in
+    work, revisions), upcoming shoots (14 days), when they're free, revisions over 30 days.
+    projects: per project — who is on it right now and how many revisions its open tasks had."""
     if user["role"] not in MANAGER_ROLES:
         raise HTTPException(403, "только для admin / am / director")
     now = _now()
@@ -2656,6 +2689,14 @@ async def team_load(user: dict = Depends(member), session=Depends(get_session)):
         .join(ShootSession, ShootSession.id == ShootParticipant.shoot_id)
         .where(ShootSession.shoot_at >= now - timedelta(hours=12), ShootSession.shoot_at <= horizon,
                ShootSession.status != "cancelled"))).all()
+    revs = await _revision_counts(session, list({t.id for _, t in rows}))
+    # revisions in the last 30 days, credited to whoever is on the task
+    rev30 = dict((await session.execute(
+        select(TaskAssignee.user_id, func.count())
+        .join(StatusEvent, (StatusEvent.entity == "task") & (StatusEvent.entity_id == TaskAssignee.task_id))
+        .where(StatusEvent.status == "revision", StatusEvent.created_at >= now - timedelta(days=30))
+        .group_by(TaskAssignee.user_id))).all())
+    pnames = dict((await session.execute(select(Project.id, Project.name))).all())
     by = {u.id: {"tasks": [], "shoots": []} for u in people}
     for uid, t in rows:
         if uid in by:
@@ -2664,24 +2705,48 @@ async def team_load(user: dict = Depends(member), session=Depends(get_session)):
         if uid in by:
             by[uid]["shoots"].append(sh)
     rank = {"in_progress": 0, "revision": 1, "overdue": 2, "pending": 3, "review": 4, "queued": 5}
-    out = []
+
+    def task_out(t):
+        return {"id": t.id, "title": t.title, "status": t.status, "kind": t.job_kind,
+                "project_id": t.project_id, "project": pnames.get(t.project_id),
+                "revisions": revs.get(t.id, 0),
+                "days": (now - t.created_at).days if t.created_at else None,
+                "deadline": t.deadline.isoformat() if t.deadline else None}
+
+    out, projects = [], {}
     for u in people:
         ts = sorted(by[u.id]["tasks"], key=lambda t: (rank.get(t.status, 9), t.deadline is None, t.deadline or now))
         active = [t for t in ts if t.status != "queued"]
         ends = [t.deadline for t in ts if t.deadline] + [sh.shoot_at for sh in by[u.id]["shoots"]]
+        for t in active:
+            if not t.project_id:
+                continue
+            pr = projects.setdefault(t.project_id, {"id": t.project_id, "name": pnames.get(t.project_id),
+                                                    "people": {}, "tasks": set(), "revisions": 0})
+            who = pr["people"].setdefault(u.id, {"id": u.id, "name": u.full_name, "role": u.role, "kinds": []})
+            k = t.job_kind or "task"
+            if k not in who["kinds"]:
+                who["kinds"].append(k)
+            if t.id not in pr["tasks"]:
+                pr["tasks"].add(t.id)
+                pr["revisions"] += revs.get(t.id, 0)
         out.append({
             "id": u.id, "name": u.full_name, "role": u.role,
             "open": len([t for t in active if t.status != "review"]),
             "review": len([t for t in active if t.status == "review"]),
             "queued": len(ts) - len(active),
             "overdue": len([t for t in active if t.deadline and t.deadline < now and t.status != "review"]),
+            "revisions": sum(revs.get(t.id, 0) for t in active),
+            "revisions_30d": rev30.get(u.id, 0),
             "busy_until": max(ends).isoformat() if ends else None,
-            "tasks": [{"id": t.id, "title": t.title, "status": t.status,
-                       "deadline": t.deadline.isoformat() if t.deadline else None} for t in ts[:12]],
+            "tasks": [task_out(t) for t in ts[:12]],
             "shoots": [{"id": sh.id, "title": sh.title, "at": sh.shoot_at.isoformat()}
                        for sh in sorted(by[u.id]["shoots"], key=lambda x: x.shoot_at)],
         })
-    return out
+    proj_out = sorted(({"id": p["id"], "name": p["name"], "people": list(p["people"].values()),
+                        "tasks": len(p["tasks"]), "revisions": p["revisions"]} for p in projects.values()),
+                      key=lambda p: (-len(p["people"]), -p["tasks"]))
+    return {"people": out, "projects": proj_out}
 
 
 # telegram_id -> (reachable, checked_at). True is cached longer than False so a fresh
