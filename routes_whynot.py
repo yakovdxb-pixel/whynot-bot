@@ -590,6 +590,7 @@ async def _attach_assignees(session, tasks):
     refs = await _ref_summaries(session, task_ids=ids)
     revs = await _revision_counts(session, ids)
     vers = await _revision_counts(session, ids, status="review")
+    pnames = await _projects_map(session, [t.project_id for t in tasks])
     out = []
     for t in tasks:
         d = row_to_dict(t)
@@ -602,6 +603,7 @@ async def _attach_assignees(session, tasks):
         d["ref_thumbs"] = s.get("thumbs", [])
         d["revisions"] = revs.get(t.id, 0)
         d["version"] = vers.get(t.id, 0)      # each file handed in for review = +1
+        d["project_name"] = pnames.get(t.project_id)
         out.append(d)
     return out
 

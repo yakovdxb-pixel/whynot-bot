@@ -396,6 +396,19 @@
   .ld-days .we{color:var(--st-overdue-ink)}
   .sx-month{display:flex; padding:8px 10px; margin-bottom:12px}
   .cal-nav:disabled{opacity:.35}
+  .card-proj{font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--autumn);
+    margin:-2px 0 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  /* small action sheet (pickOne) */
+  .pick-overlay{position:fixed; inset:0; z-index:300; background:var(--overlay); display:flex; align-items:flex-end;
+    justify-content:center; opacity:0; transition:opacity .15s}
+  .pick-overlay.open{opacity:1}
+  .pick-sheet{width:100%; max-width:460px; background:var(--sheet-bg); border-radius:18px 18px 0 0;
+    padding:14px 14px calc(14px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:8px}
+  .pick-title{margin:2px 4px 4px; font-size:13px; color:var(--hint); text-align:center}
+  .pick-opt{border:none; border-radius:13px; padding:14px; font:inherit; font-size:16px; font-weight:600;
+    background:var(--sheet-card); color:var(--text); cursor:pointer}
+  .pick-opt:active{opacity:.7}
+  .pick-cancel{background:transparent; color:var(--link)}
   /* shoot calendar */
   .cal{padding:10px 10px 12px}
   .cal-head{display:flex; align-items:center; justify-content:space-between; margin:0 2px 8px}
@@ -458,10 +471,9 @@
   .mp-opt .mp-load{font-weight:500; color:var(--hint); font-size:11px; margin-left:3px}
   .mp-opt .mp-load.hot{color:var(--st-overdue-ink)}
   /* Telegram-like swipe actions on cards */
-  .swipe-wrap{position:relative; margin-bottom:10px; border-radius:18px}
-  .igrid .swipe-wrap{margin-bottom:0; border-radius:16px}
-  .swipe-wrap > .card, .swipe-wrap > .icard{position:relative; z-index:1; margin-bottom:0; will-change:transform}
-  .swipe-bg{position:absolute; inset:0; border-radius:inherit; display:flex; align-items:center;
+  /* swipe: horizontal drags are ours (vertical still scrolls); the bg sits behind the card */
+  #view .card, #view .icard{touch-action:pan-y}
+  .swipe-bg{position:absolute; z-index:0; display:flex; align-items:center;
     justify-content:space-between; padding:0 16px; color:#fff; font-size:14px; font-weight:600; overflow:hidden}
   .swipe-bg span{opacity:.75; transition:opacity .12s, transform .12s; white-space:nowrap}
   .swipe-bg span.armed{opacity:1; font-weight:800; transform:scale(1.06)}
@@ -989,12 +1001,12 @@ const I18N = {
     "form.newIdea":"Новая идея","form.newBlocker":"Новый блокер",
     "form.newClient":"Новый клиент","form.addTeam":"Добавить в команду",
     "btn.create":"Создать","btn.save":"Сохранить","btn.saving":"Сохранение…","btn.cancel":"Отмена",
-    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.copyCaption":"📋 Скопировать подпись","btn.copyCaptionShort":"📋 Скопировать","ref.igNoPreview":"Instagram не отдал превью.","ref.addScreenshot":"＋ Приложить скриншот","toast.captionCopied":"Подпись скопирована","toast.copyFailed":"Не удалось скопировать — скопируйте вручную в карточке","btn.uploadingRefs":"Загрузка референсов…",
+    "btn.attachFile":"📎 Прикрепить файл","btn.refs":"📎 Референсы","btn.copyCaption":"📋 Скопировать текст поста","btn.copyCaptionShort":"📋 Текст поста","ref.igNoPreview":"Instagram не отдал превью.","ref.addScreenshot":"＋ Приложить скриншот","toast.captionCopied":"Текст поста скопирован — вставь его при публикации","toast.copyFailed":"Не удалось скопировать — скопируйте вручную в карточке","btn.uploadingRefs":"Загрузка референсов…",
     "field.title":"Название","field.description":"Описание","field.priority":"Приоритет","field.deadline":"Дедлайн",
     "field.assignee_ids":"Исполнители","field.client_id":"Клиент","field.project_id":"Проект",
     "field.refs":"Референсы — ссылки и файлы","field.topic":"Тема / название","field.rubric":"Рубрика",
     "field.format":"Формат","field.platform":"Площадка","field.publish_at":"Дата и время публикации",
-    "field.hook":"Заголовок / хук","field.script":"Описание","field.caption":"Подпись к посту","field.hashtags":"Хэштеги",
+    "field.hook":"Заголовок / хук","field.script":"Описание","field.caption":"Текст поста (для публикации)","field.hashtags":"Хэштеги",
     "field.smm_id":"SMM","field.copywriter_id":"Сценарист / копирайтер","field.editor_id":"Монтажёр","field.designer_id":"Дизайнер",
     "field.status":"Статус","field.pipeline_status":"Этап","field.shoot_at":"Дата и время","field.location":"Локация / адрес",
     "field.participant_ids":"Исполнители","field.notes":"Заметки","field.name":"Название клиента","field.project_name":"Название проекта (если пусто — как клиент)","field.contact":"Контакт",
@@ -1047,7 +1059,7 @@ const I18N = {
     "form.newIdea":"Yangi gʻoya","form.newBlocker":"Yangi toʻsiq",
     "form.newClient":"Yangi mijoz","form.addTeam":"Jamoaga qoʻshish",
     "btn.create":"Yaratish","btn.save":"Saqlash","btn.saving":"Saqlanmoqda…","btn.cancel":"Bekor qilish",
-    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.copyCaption":"📋 Matnni nusxalash","btn.copyCaptionShort":"📋 Nusxalash","ref.igNoPreview":"Instagram koʻrinishni bermadi.","ref.addScreenshot":"＋ Skrinshot biriktirish","toast.captionCopied":"Matn nusxalandi","toast.copyFailed":"Nusxalab boʻlmadi — kartochkadan qoʻlda nusxalang","btn.uploadingRefs":"Namunalar yuklanmoqda…",
+    "btn.attachFile":"📎 Fayl biriktirish","btn.refs":"📎 Namunalar","btn.copyCaption":"📋 Matnni nusxalash","btn.copyCaptionShort":"📋 Post matni","ref.igNoPreview":"Instagram koʻrinishni bermadi.","ref.addScreenshot":"＋ Skrinshot biriktirish","toast.captionCopied":"Matn nusxalandi","toast.copyFailed":"Nusxalab boʻlmadi — kartochkadan qoʻlda nusxalang","btn.uploadingRefs":"Namunalar yuklanmoqda…",
     "field.title":"Nomi","field.description":"Tavsif","field.priority":"Muhimlik","field.deadline":"Muddat",
     "field.assignee_ids":"Ijrochilar","field.client_id":"Mijoz","field.project_id":"Loyiha",
     "field.refs":"Namunalar — havolalar va fayllar","field.topic":"Mavzu / nomi","field.rubric":"Rubrika",
@@ -1105,7 +1117,7 @@ const I18N = {
     "form.newIdea":"New idea","form.newBlocker":"New blocker",
     "form.newClient":"New client","form.addTeam":"Add to team",
     "btn.create":"Create","btn.save":"Save","btn.saving":"Saving…","btn.cancel":"Cancel",
-    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.copyCaption":"📋 Copy caption","btn.copyCaptionShort":"📋 Copy","ref.igNoPreview":"Instagram gave no preview.","ref.addScreenshot":"＋ Attach a screenshot","toast.captionCopied":"Caption copied","toast.copyFailed":"Couldn't copy — copy it manually from the card","btn.uploadingRefs":"Uploading references…",
+    "btn.attachFile":"📎 Attach file","btn.refs":"📎 References","btn.copyCaption":"📋 Copy post text","btn.copyCaptionShort":"📋 Post text","ref.igNoPreview":"Instagram gave no preview.","ref.addScreenshot":"＋ Attach a screenshot","toast.captionCopied":"Caption copied","toast.copyFailed":"Couldn't copy — copy it manually from the card","btn.uploadingRefs":"Uploading references…",
     "field.title":"Title","field.description":"Description","field.priority":"Priority","field.deadline":"Deadline",
     "field.assignee_ids":"Assignees","field.client_id":"Client","field.project_id":"Project",
     "field.refs":"References — links & files","field.topic":"Topic / title","field.rubric":"Rubric",
@@ -1240,20 +1252,28 @@ let expandedClient = null;
 let clientProjects = {};  // clientId -> projects array | null(loading)
 let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
-// choose a step type for «+ шаг»: Telegram's native popup, plain prompt elsewhere
+// «+ Задача» on a content card: which job? An in-app action sheet — Telegram's own
+// popup allows only 3 buttons, so with Съёмка / Монтаж / Дизайн there was no way to cancel.
 function pickStepKind(){
   const kinds = ["shoot", "edit", "design"];
+  return pickOne(t("cjob.addWhich"), kinds.map(k => [k, _CJOB_EMOJI[k] + " " + t("cjob." + k)]));
+}
+function pickOne(title, options){
   return new Promise(res => {
-    try {
-      if (tg && tg.showPopup && tg.initData){
-        tg.showPopup({ message: t("cjob.addWhich"),
-          buttons: kinds.map(k => ({ id: k, type: "default", text: _CJOB_EMOJI[k] + " " + t("cjob." + k) })) },
-          id => res(id || null));
-        return;
-      }
-    } catch(e){}
-    const n = window.prompt(t("cjob.addWhich") + "\n" + kinds.map((k, i) => `${i + 1} — ${t("cjob." + k)}`).join("\n"), "3");
-    res(kinds[+n - 1] || null);
+    const box = document.createElement("div");
+    box.className = "pick-overlay";
+    box.innerHTML = `<div class="pick-sheet" role="dialog"><p class="pick-title">${esc(title)}</p>
+      ${options.map(([v, label]) => `<button type="button" class="pick-opt" data-v="${esc(v)}">${esc(label)}</button>`).join("")}
+      <button type="button" class="pick-opt pick-cancel">${esc(t("btn.cancel"))}</button></div>`;
+    const done = v => { box.remove(); sheetBackOff(); res(v); };
+    box.addEventListener("click", e => {
+      const o = e.target.closest(".pick-opt");
+      if (o) done(o.dataset.v || null);
+      else if (!e.target.closest(".pick-sheet")) done(null);    // tap outside = cancel
+    });
+    document.body.appendChild(box);
+    sheetBackOn(() => done(null));                               // Telegram «Назад» = cancel
+    requestAnimationFrame(() => box.classList.add("open"));
   });
 }
 
@@ -1448,9 +1468,12 @@ async function ideaAction(id, what){
 let _swipedAt = 0;
 (function initSwipe(){
   let s = null;
-  const reset = (wrap, card) => {
+  // The touched card must stay in the DOM for the whole gesture: iOS WebKit stops
+  // delivering touchmove/touchend once the touch target is detached (even if re-inserted).
+  // So the coloured background goes in *next to* the card, not around it.
+  const reset = (bg, card) => {
     card.style.transition = "transform .2s ease"; card.style.transform = "";
-    setTimeout(() => { if (wrap.isConnected){ wrap.replaceWith(card); card.style.transition = ""; } }, 220);
+    setTimeout(() => { bg.remove(); card.style.transition = ""; card.style.zIndex = ""; card.style.willChange = ""; }, 220);
   };
   view.addEventListener("touchstart", e => {
     const card = e.target.closest(".card, .icard");
@@ -1466,11 +1489,16 @@ let _swipedAt = 0;
       if (s.lock === "h"){
         s.acts = swipeActionsFor(s.card);
         if (!s.acts || (!s.acts.right && !s.acts.left)){ s.lock = "v"; return; }
-        const wrap = document.createElement("div");
-        wrap.className = "swipe-wrap";
-        wrap.innerHTML = `<div class="swipe-bg"><span>${esc(s.acts.right ? s.acts.right.label : "")}</span><span>${esc(s.acts.left ? s.acts.left.label : "")}</span></div>`;
-        s.card.replaceWith(wrap); wrap.appendChild(s.card);
-        s.wrap = wrap;
+        const card = s.card, parent = card.parentElement;
+        if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
+        const bg = document.createElement("div");
+        bg.className = "swipe-bg";
+        bg.style.cssText = `top:${card.offsetTop}px; left:${card.offsetLeft}px; width:${card.offsetWidth}px; height:${card.offsetHeight}px; inset:auto; border-radius:${getComputedStyle(card).borderRadius}`;
+        bg.innerHTML = `<span>${esc(s.acts.right ? s.acts.right.label : "")}</span><span>${esc(s.acts.left ? s.acts.left.label : "")}</span>`;
+        parent.insertBefore(bg, card);
+        if (getComputedStyle(card).position === "static") card.style.position = "relative";
+        card.style.zIndex = "1"; card.style.willChange = "transform";
+        s.wrap = bg;
       }
     }
     if (s.lock !== "h") return;
@@ -1481,7 +1509,7 @@ let _swipedAt = 0;
     s.dx = dx;
     s.card.style.transform = `translateX(${d}px)`;
     const act = dx > 0 ? s.acts.right : s.acts.left;
-    const bg = s.wrap.firstElementChild;
+    const bg = s.wrap;
     bg.style.background = act ? act.bg : "transparent";
     bg.children[0].style.visibility = dx > 0 ? "visible" : "hidden";
     bg.children[1].style.visibility = dx < 0 ? "visible" : "hidden";
@@ -1523,6 +1551,7 @@ function openTaskView(tk){
   const who = assigneesLabel(tk);
   const canSubmit = isTaskAssignee(tk) && ["pending", "in_progress", "overdue", "revision"].includes(st);
   document.getElementById("taskViewBody").innerHTML = `
+    ${projLabel(tk.project_name)}
     <div class="tv-head">
       <h2>${esc(tk.title || "—")}</h2>
       <span class="pill ${esc(st)}">${esc(STATUS_LABELS[st] || st)}</span>
@@ -1592,6 +1621,7 @@ function taskCard(tk){
     ? `<button class="act ghost" data-task-publish="${tk.id}">🚀 ${esc(t("task.publish"))}</button>` : "";
   return `
   <div class="card tappable" data-task-edit="${tk.id}">
+    ${projLabel(tk.project_name)}
     <div class="row">
       <p class="title">${esc(tk.title || "—")}</p>
       <span class="pill ${esc(st)}">${esc(STATUS_LABELS[st] || st)}</span>
@@ -1616,6 +1646,8 @@ function taskCard(tk){
       : (st === "done" && !mgr) ? `<div class="done-mark">${esc(t("tn.doneMark"))}</div>` : ""))}
   </div>`;
 }
+// project name as a small caption above the card title
+function projLabel(name){ return name ? `<div class="card-proj">${esc(name)}</div>` : ""; }
 function cardActions(html){ return html.trim() ? `<div class="card-actions">${html}</div>` : ""; }
 
 function blockerCard(b){
@@ -1784,6 +1816,7 @@ function contentCard(c, {advance=true, jobs=true}={}){
   const jobBtns = jobs ? contentPrimary(c, canEdit) : "";
   return `
   <div class="card${canEdit ? " tappable" : ""}"${canEdit ? ` data-content-edit="${c.id}"` : ""}>
+    ${projLabel(c.project_name)}
     <div class="row">
       <p class="title">${esc(c.topic || c.number || ("Контент #" + c.id))}</p>
       <span class="pill-group">${late ? `<span class="pill overdue">${esc(STATUS_LABELS.overdue)}</span>` : ""}<span class="pill stage">${esc(PIPELINE_LABELS[st] || st)}</span></span>
@@ -1792,7 +1825,6 @@ function contentCard(c, {advance=true, jobs=true}={}){
       ${c.content_kind ? `<span>🏷 ${esc(KIND_LABEL[c.content_kind] || c.content_kind)}</span>` : ""}
       ${c.format ? `<span>🎞 ${esc(t("fmt." + c.format) || c.format)}</span>` : ""}
       ${when ? `<span${late ? ` class="late"` : ""}>📅 ${esc(when)}</span>` : ""}
-      ${c.project_name ? `<span>📁 ${esc(c.project_name)}</span>` : ""}
       ${who ? `<span>👤 ${esc(who)}</span>` : ""}
     </div>
     ${c.hook ? `<p class="desc">${esc(c.hook)}</p>` : ""}
@@ -1973,6 +2005,7 @@ function shootCard(s){
   const gearN = (s.checklist || []).length, gearD = (s.checklist || []).filter(x => x.done).length;
   return `
   <div class="card tappable${past ? " shoot-past" : ""}" data-shoot-edit="${s.id}">
+    ${projLabel(s.project_name || s.client_name)}
     <div class="row">
       <p class="title">🎬 ${esc(s.title || t("nav.shoots"))}</p>
       <span class="pill ${stCls}">${esc(stLabel)}</span>
@@ -1980,7 +2013,6 @@ function shootCard(s){
     <div class="meta">
       <span>🗓 ${esc(when)}</span>
       ${s.location ? `<span>📍 ${esc(s.location)}</span>` : ""}
-      ${s.project_name ? `<span>📁 ${esc(s.project_name)}</span>` : (s.client_name ? `<span>🏢 ${esc(s.client_name)}</span>` : "")}
     </div>
     ${team || gearN ? `<div class="meta">${team ? `<span>👥 ${esc(team)}</span>` : ""}${gearN ? `<span class="${gearD === gearN ? "gear-ok" : ""}">🧰 ${esc(t("shoot.gear").replace("{d}", gearD).replace("{n}", gearN))}</span>` : ""}</div>` : ""}
     ${s.notes ? `<p class="desc">${esc(s.notes)}</p>` : ""}
