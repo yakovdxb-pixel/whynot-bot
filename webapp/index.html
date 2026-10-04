@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>WHY NOT? OS</title>
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#F4F4F6">
+<meta name="theme-color" content="#F6F0E6">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -36,7 +36,7 @@
     function applyTheme() {
       var dark = !!(tg && tg.colorScheme === "dark");
       document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-      var bg = dark ? "#121316" : "#F4F4F6";
+      var bg = dark ? "#16110E" : "#F6F0E6";
       var meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute("content", bg);
       try { if (tg && tg.setHeaderColor) tg.setHeaderColor(bg); } catch (e) {}
@@ -54,61 +54,70 @@
      --st-* are the status hues (dots, bars, borders); --st-*-ink are the same hues
      shifted just enough for text to reach >= 4.5:1 on cards and on status tints. */
   :root{
-    --bg:#F4F4F6;  --card:#FFFFFF;  --border:#E3E4E8;  --sep:#E3E4E8;
-    --text:#1C1D21; --hint:#686B73;
-    --accent:#33363D; --accent-hover:#1F2126; --accent-soft:#E9EAED; --on-accent:#FFFFFF;   /* graphite */
-    --link:#33363D;                       /* accent used as text */
+    /* autumn: warm cream paper, brown ink, amber/rust touches — brand violet stays the accent */
+    --bg:#F6F0E6;  --card:#FFFCF7;  --border:#E8DCCB;  --sep:#E8DCCB;
+    --text:#2B211B; --hint:#76675A;
+    --accent:#6B3FD6; --accent-hover:#5A32BC; --accent-soft:#EFE6F6; --on-accent:#FFFFFF;   /* brand violet */
+    --link:#5E36C4;                       /* accent used as text */
+    --autumn:#C8692B; --autumn-soft:#F6E3CF; /* rust / pumpkin, for small seasonal touches */
     --btn:var(--accent); --btn-text:var(--on-accent); --fab:var(--accent);
-    --seg-bg:#EBECEF; --hover:#F1F2F4; --on-danger:#FFFFFF;
-    --shadow:0 1px 2px rgba(20,21,25,.05), 0 4px 14px rgba(20,21,25,.06);
-    --shadow-pop:0 10px 28px rgba(20,21,25,.16);
-    --overlay:rgba(20,21,25,.38);
-    --outer:#E6E7EA;                      /* page behind the floating desktop window */
-    --sheet-bg:#FFFFFF; --sheet-card:#F4F4F6;
-    --toast-bg:#1C1D21; --toast-text:#FFFFFF;
+    --seg-bg:#EEE5D7; --hover:#F3EBDF; --on-danger:#FFFFFF;
+    --shadow:0 1px 2px rgba(60,40,20,.06), 0 4px 14px rgba(60,40,20,.07);
+    --shadow-pop:0 10px 28px rgba(60,40,20,.18);
+    --overlay:rgba(40,28,18,.38);
+    --outer:#EADFCF;                      /* page behind the floating desktop window */
+    --sheet-bg:#FFFCF7; --sheet-card:#F6F0E6;
+    --toast-bg:#2B211B; --toast-text:#FFFCF7;
     /* iOS-style frosted bars */
-    --glass-bg:rgba(255,255,255,.22); --glass-border:rgba(255,255,255,.55);
-    --glass-shadow:0 10px 30px rgba(20,21,25,.14), 0 1px 3px rgba(20,21,25,.08);
+    --glass-bg:rgba(255,250,242,.24); --glass-border:rgba(255,255,255,.55);
+    --glass-shadow:0 10px 30px rgba(60,40,20,.14), 0 1px 3px rgba(60,40,20,.08);
     --tab-h:62px;                         /* floating tab bar height */
     --st-done:#1F9D6B;        --st-done-ink:#187751;
     --st-overdue:#E0445A;     --st-overdue-ink:#B53749;
     --st-review:#E08A00;      --st-review-ink:#965C00;
     --st-in_progress:#3B82F6; --st-in_progress-ink:#2E65C0;
-    --st-pending:#8A8398;     --st-pending-ink:#6C6677;
+    --st-pending:#94877A;     --st-pending-ink:#6E6257;
     --st-revision:#D9622B;    --st-revision-ink:#A94C22;
     --st-published:#12805A;   --st-published-ink:#107452;
-    --st-cancelled:#8A8398;   --st-cancelled-ink:#6C6677;
+    --st-cancelled:#94877A;   --st-cancelled-ink:#6E6257;
     color-scheme:light;
   }
   html[data-theme="dark"]{
-    --bg:#121316;  --card:#1C1D21;  --border:#2E3036;  --sep:#2E3036;
-    --text:#F2F3F5; --hint:#A3A6AD;
-    --accent:#E4E6EA; --accent-hover:#FFFFFF; --accent-soft:#2A2C32; --on-accent:#16171A;   /* light graphite */
-    --link:#D9DBE0;
-    --seg-bg:#17181B; --hover:rgba(255,255,255,.06); --on-danger:#16171A;
+    /* autumn night: dark walnut, warm light text, brighter brand violet */
+    --bg:#16110E;  --card:#211A16;  --border:#3A2E26;  --sep:#3A2E26;
+    --text:#F5EEE5; --hint:#B3A493;
+    --accent:#7E55E6; --accent-hover:#8F6AEC; --accent-soft:#2E2238; --on-accent:#FFFFFF;   /* brand violet */
+    --link:#B79CF5;
+    --autumn:#E08A4E; --autumn-soft:#3A2618;
+    --seg-bg:#1B1511; --hover:rgba(255,240,225,.06); --on-danger:#16110E;
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.28);
     --shadow-pop:0 10px 28px rgba(0,0,0,.5);
     --overlay:rgba(0,0,0,.5);
-    --outer:#09090B;
-    --sheet-bg:#1A1B1F; --sheet-card:#25272C;
-    --toast-bg:#F2F3F5; --toast-text:#1C1D21;
-    --glass-bg:rgba(28,29,33,.22); --glass-border:rgba(255,255,255,.12);
+    --outer:#0C0907;
+    --sheet-bg:#1E1814; --sheet-card:#2A221D;
+    --toast-bg:#F5EEE5; --toast-text:#2B211B;
+    --glass-bg:rgba(33,26,22,.24); --glass-border:rgba(255,240,225,.12);
     --glass-shadow:0 10px 30px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
     --st-done:#34C48A;        --st-done-ink:#34C48A;
     --st-overdue:#F2687B;     --st-overdue-ink:#F26D7F;
     --st-review:#F0A030;      --st-review-ink:#F0A030;
     --st-in_progress:#5B9BFF; --st-in_progress-ink:#5B9BFF;
-    --st-pending:#A29BB0;     --st-pending-ink:#A29BB0;
+    --st-pending:#B0A291;     --st-pending-ink:#B0A291;
     --st-revision:#F08A55;    --st-revision-ink:#F08A55;
     --st-published:#2FB07E;   --st-published-ink:#2FB07E;
-    --st-cancelled:#A29BB0;   --st-cancelled-ink:#A29BB0;
+    --st-cancelled:#B0A291;   --st-cancelled-ink:#B0A291;
     color-scheme:dark;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{height:100%; background:var(--bg)}
   body{
     margin:0 auto; padding:0;
-    background:var(--bg); color:var(--text);
+    /* soft autumn light: a pumpkin glow top-right, a violet one bottom-left */
+    background:
+      radial-gradient(120% 60% at 100% 0%, color-mix(in srgb, var(--autumn) 13%, transparent), transparent 60%),
+      radial-gradient(90% 50% at 0% 100%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%),
+      var(--bg);
+    color:var(--text);
     font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
     height:100vh; height:100dvh;
@@ -206,7 +215,7 @@
     overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
     padding:14px 16px calc(var(--tab-h) + 44px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
   }
-  .section-title{font-size:13px; font-weight:700; color:var(--link);
+  .section-title{font-size:13px; font-weight:700; color:var(--autumn);
     text-transform:uppercase; letter-spacing:.04em; margin:18px 2px 8px}
   .section-title:first-child{margin-top:4px}
   details.stale-block > summary{cursor:pointer; list-style:none}
