@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>WHY NOT? OS</title>
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#F6F4FA">
+<meta name="theme-color" content="#F4F4F6">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -36,7 +36,7 @@
     function applyTheme() {
       var dark = !!(tg && tg.colorScheme === "dark");
       document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-      var bg = dark ? "#16101E" : "#F6F4FA";
+      var bg = dark ? "#121316" : "#F4F4F6";
       var meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute("content", bg);
       try { if (tg && tg.setHeaderColor) tg.setHeaderColor(bg); } catch (e) {}
@@ -54,21 +54,21 @@
      --st-* are the status hues (dots, bars, borders); --st-*-ink are the same hues
      shifted just enough for text to reach >= 4.5:1 on cards and on status tints. */
   :root{
-    --bg:#F6F4FA;  --card:#FFFFFF;  --border:#E7E2F0;  --sep:#E7E2F0;
-    --text:#1E1530; --hint:#6E6680;
-    --accent:#6B3FD6; --accent-hover:#5A32BC; --accent-soft:#EFE9FC; --on-accent:#FFFFFF;
-    --link:#6B3FD6;                       /* accent used as text */
+    --bg:#F4F4F6;  --card:#FFFFFF;  --border:#E3E4E8;  --sep:#E3E4E8;
+    --text:#1C1D21; --hint:#686B73;
+    --accent:#33363D; --accent-hover:#1F2126; --accent-soft:#E9EAED; --on-accent:#FFFFFF;   /* graphite */
+    --link:#33363D;                       /* accent used as text */
     --btn:var(--accent); --btn-text:var(--on-accent); --fab:var(--accent);
-    --seg-bg:#F0EDF7; --hover:#F3F0F9; --on-danger:#FFFFFF;
-    --shadow:0 1px 2px rgba(30,21,48,.05), 0 4px 14px rgba(30,21,48,.06);
-    --shadow-pop:0 10px 28px rgba(30,21,48,.16);
-    --overlay:rgba(30,21,48,.38);
-    --outer:#E9E4F2;                      /* page behind the floating desktop window */
-    --sheet-bg:#FFFFFF; --sheet-card:#F6F4FA;
-    --toast-bg:#1E1530; --toast-text:#FFFFFF;
+    --seg-bg:#EBECEF; --hover:#F1F2F4; --on-danger:#FFFFFF;
+    --shadow:0 1px 2px rgba(20,21,25,.05), 0 4px 14px rgba(20,21,25,.06);
+    --shadow-pop:0 10px 28px rgba(20,21,25,.16);
+    --overlay:rgba(20,21,25,.38);
+    --outer:#E6E7EA;                      /* page behind the floating desktop window */
+    --sheet-bg:#FFFFFF; --sheet-card:#F4F4F6;
+    --toast-bg:#1C1D21; --toast-text:#FFFFFF;
     /* iOS-style frosted bars */
     --glass-bg:rgba(255,255,255,.22); --glass-border:rgba(255,255,255,.55);
-    --glass-shadow:0 10px 30px rgba(30,21,48,.14), 0 1px 3px rgba(30,21,48,.08);
+    --glass-shadow:0 10px 30px rgba(20,21,25,.14), 0 1px 3px rgba(20,21,25,.08);
     --tab-h:62px;                         /* floating tab bar height */
     --st-done:#1F9D6B;        --st-done-ink:#187751;
     --st-overdue:#E0445A;     --st-overdue-ink:#B53749;
@@ -81,18 +81,18 @@
     color-scheme:light;
   }
   html[data-theme="dark"]{
-    --bg:#16101E;  --card:#221A2D;  --border:#382D47;  --sep:#382D47;
-    --text:#F1EDF7; --hint:#ABA1BC;
-    --accent:#6B3FD6; --accent-hover:#7D55E0; --accent-soft:#2E2147; --on-accent:#FFFFFF;
-    --link:#A98BF5;
-    --seg-bg:#1B1424; --hover:rgba(255,255,255,.06); --on-danger:#1E1530;
+    --bg:#121316;  --card:#1C1D21;  --border:#2E3036;  --sep:#2E3036;
+    --text:#F2F3F5; --hint:#A3A6AD;
+    --accent:#E4E6EA; --accent-hover:#FFFFFF; --accent-soft:#2A2C32; --on-accent:#16171A;   /* light graphite */
+    --link:#D9DBE0;
+    --seg-bg:#17181B; --hover:rgba(255,255,255,.06); --on-danger:#16171A;
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.28);
     --shadow-pop:0 10px 28px rgba(0,0,0,.5);
     --overlay:rgba(0,0,0,.5);
-    --outer:#0B0710;
-    --sheet-bg:#1E1628; --sheet-card:#2A2036;
-    --toast-bg:#F1EDF7; --toast-text:#1E1530;
-    --glass-bg:rgba(30,22,40,.22); --glass-border:rgba(255,255,255,.12);
+    --outer:#09090B;
+    --sheet-bg:#1A1B1F; --sheet-card:#25272C;
+    --toast-bg:#F2F3F5; --toast-text:#1C1D21;
+    --glass-bg:rgba(28,29,33,.22); --glass-border:rgba(255,255,255,.12);
     --glass-shadow:0 10px 30px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
     --st-done:#34C48A;        --st-done-ink:#34C48A;
     --st-overdue:#F2687B;     --st-overdue-ink:#F26D7F;
@@ -123,7 +123,7 @@
     html{ background:var(--outer); }
     body{
       max-width:460px;
-      box-shadow:0 0 0 1px var(--border), 0 24px 70px rgba(30,21,48,.18);
+      box-shadow:0 0 0 1px var(--border), 0 24px 70px rgba(20,21,25,.18);
       border-radius:18px;
       height:min(880px, calc(100dvh - 40px));
       margin:20px auto;
@@ -138,7 +138,7 @@
   html.tg-desktop{ background:var(--outer); }
   html.tg-desktop body{
     max-width:460px;
-    box-shadow:0 0 0 1px var(--border), 0 24px 70px rgba(30,21,48,.18);
+    box-shadow:0 0 0 1px var(--border), 0 24px 70px rgba(20,21,25,.18);
     border-radius:18px;
     height:min(880px, calc(100dvh - 32px));
     margin:16px auto;
@@ -283,7 +283,7 @@
     transition:background .2s, color .2s;
   }
   .seg{background:var(--seg-bg)}
-  .seg button.on{background:var(--accent); color:var(--on-accent); box-shadow:0 1px 4px rgba(107,63,214,.3)}
+  .seg button.on{background:var(--accent); color:var(--on-accent); box-shadow:0 1px 4px rgba(20,21,25,.25)}
 
   .done-mark{margin-top:10px; text-align:center; color:var(--st-done-ink); font-weight:600; font-size:14px}
 
@@ -305,6 +305,8 @@
   .chain .cs-next{background:transparent; color:var(--hint); border:1px dashed var(--border)}
   .chain .cs-arrow{color:var(--hint); padding:0 1px}
   .chain .cs-add{background:transparent; color:var(--link); border:1px dashed var(--accent); font-weight:600}
+  .chain .cs-step{display:inline-flex; align-items:center}
+  .chain .cs-x{border:none; background:none; color:var(--hint); font-size:11px; padding:2px 4px 2px 2px; cursor:pointer; line-height:1}
   .cjob-chip .cjob-st{flex:0 0 auto}
   .cjob-chip.st-done{opacity:.55; border-left-color:var(--st-done)}
   .cjob-chip.st-overdue{border-left-color:var(--st-overdue)}
@@ -586,7 +588,7 @@
   #installBanner #installText{flex:1}
   #installBanner #installBtn{
     flex:0 0 auto; border:none; border-radius:8px; cursor:pointer;
-    background:#fff; color:var(--accent); font-size:13px; font-weight:700; padding:8px 12px;
+    background:#fff; color:#1C1D21; font-size:13px; font-weight:700; padding:8px 12px;
   }
   #installBanner #installBtn[hidden]{display:none}
   #installBanner #installClose{
@@ -609,7 +611,7 @@
     bottom:calc(var(--tab-h) + 24px + var(--safe-bottom, 0px) + env(safe-area-inset-bottom));
     width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
     background:var(--fab); color:var(--on-accent); font-size:28px; line-height:52px;
-    box-shadow:0 6px 18px rgba(107,63,214,.35); padding:0;
+    box-shadow:0 6px 18px rgba(20,21,25,.3); padding:0;
     transition:transform .12s;
   }
   .fab:hover{background:var(--accent-hover)}
@@ -625,7 +627,7 @@
     /* sheet surface + slightly tinted fields, per theme */
     --bg:var(--sheet-bg);
     --card:var(--sheet-card);
-    box-shadow:0 -10px 30px rgba(30,21,48,.18);
+    box-shadow:0 -10px 30px rgba(20,21,25,.18);
     position:fixed; left:0; right:0; bottom:0; z-index:31;
     background:var(--bg); color:var(--text);
     border-radius:22px 22px 0 0; padding:0 16px calc(20px + env(safe-area-inset-bottom));
@@ -980,7 +982,7 @@ const I18N = {
     "na.title":"Доступ закрыт","na.sub":"Приложение только для команды. Передай администратору свой Telegram ID:","na.copy":"Нажми, чтобы скопировать",
     "login.title":"Вход в WHY NOT? OS","login.sub":"Войди через Telegram — так приложение работает в браузере отдельно от чатов.","login.noBot":"Вход через браузер пока не настроен. Открой приложение из бота.",
     "content.advance":"Продвинуть →","content.final":"Финальный этап",
-    "cjob.ai":"ИИ-вставка","chain.plan":"⚙️ Шаги","chain.launch":"🚀 Запустить","chain.launched":"Запущено — исполнитель получил задачу","chain.approve":"✅ Утвердить","chain.publish":"📢 Опубликовано","chain.approval":"Утверждение","chain.addStep":"+ шаг","chain.addWhich":"Какой шаг добавить?","chain.launchMonth":"🚀 Запустить месяц","chain.launchMonthQ":"Запустить в работу все запланированные публикации клиента? Исполнители первых шагов получат задачи.","chain.launchedN":"Запущено публикаций: {n}","content.archive":"🗄 В архив","content.archived":"В архиве","content.restore":"↩ Вернуть","content.restored":"Возвращено","content.archiveTab":"🗄 Архив","st.queued":"в очереди","cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи",
+    "cjob.ai":"ИИ-вставка","chain.plan":"⚙️ Шаги","chain.launch":"🚀 Запустить","chain.launched":"Запущено — исполнитель получил задачу","chain.approve":"✅ Утвердить","chain.publish":"📢 Опубликовано","chain.approval":"Утверждение","chain.addStep":"+ шаг","chain.removeActiveQ":"Убрать шаг, над которым уже работают? Работа перейдёт к следующему шагу.","chain.addWhich":"Какой шаг добавить?","chain.launchMonth":"🚀 Запустить месяц","chain.launchMonthQ":"Запустить в работу все запланированные публикации клиента? Исполнители первых шагов получат задачи.","chain.launchedN":"Запущено публикаций: {n}","content.archive":"🗄 В архив","content.archived":"В архиве","content.restore":"↩ Вернуть","content.restored":"Возвращено","content.archiveTab":"🗄 Архив","st.queued":"в очереди","cjob.shoot":"Съёмка","cjob.design":"Дизайн","cjob.edit":"Монтаж","cjob.toTasks":"→ В задачи",
     "cjob.new.shoot":"Съёмка по контенту","cjob.new.design":"Дизайн по контенту","cjob.new.edit":"Монтаж по контенту",
     "cjob.st.pending":"ожидает","cjob.st.in_progress":"в работе","cjob.st.done":"готово","cjob.st.overdue":"просрочено","cjob.st.cancelled":"отменено",
     "blocker.word":"Блокер","blocker.by":"сообщил","blocker.to":"на",
@@ -1038,7 +1040,7 @@ const I18N = {
     "na.title":"Kirish yopiq","na.sub":"Ilova faqat jamoa uchun. Telegram ID raqamingizni administratorga bering:","na.copy":"Nusxalash uchun bosing",
     "login.title":"WHY NOT? OS ga kirish","login.sub":"Telegram orqali kiring — ilova brauzerda chatlardan alohida ishlaydi.","login.noBot":"Brauzer orqali kirish hali sozlanmagan. Ilovani botdan oching.",
     "content.advance":"Keyingi bosqich →","content.final":"Yakuniy bosqich",
-    "cjob.ai":"AI-qoʻshimcha","chain.plan":"⚙️ Bosqichlar","chain.launch":"🚀 Ishga tushirish","chain.launched":"Ishga tushirildi — ijrochi vazifani oldi","chain.approve":"✅ Tasdiqlash","chain.publish":"📢 Joylandi","chain.approval":"Tasdiqlash","chain.addStep":"+ bosqich","chain.addWhich":"Qaysi bosqichni qoʻshish kerak?","chain.launchMonth":"🚀 Oyni ishga tushirish","chain.launchMonthQ":"Mijozning barcha rejalashtirilgan postlarini ishga tushirasizmi? Birinchi bosqich ijrochilari vazifa oladi.","chain.launchedN":"Ishga tushirildi: {n}","content.archive":"🗄 Arxivga","content.archived":"Arxivda","content.restore":"↩ Qaytarish","content.restored":"Qaytarildi","content.archiveTab":"🗄 Arxiv","st.queued":"navbatda","cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga",
+    "cjob.ai":"AI-qoʻshimcha","chain.plan":"⚙️ Bosqichlar","chain.launch":"🚀 Ishga tushirish","chain.launched":"Ishga tushirildi — ijrochi vazifani oldi","chain.approve":"✅ Tasdiqlash","chain.publish":"📢 Joylandi","chain.approval":"Tasdiqlash","chain.addStep":"+ bosqich","chain.removeActiveQ":"Ustida ishlanayotgan bosqichni olib tashlaysizmi? Ish keyingi bosqichga oʻtadi.","chain.addWhich":"Qaysi bosqichni qoʻshish kerak?","chain.launchMonth":"🚀 Oyni ishga tushirish","chain.launchMonthQ":"Mijozning barcha rejalashtirilgan postlarini ishga tushirasizmi? Birinchi bosqich ijrochilari vazifa oladi.","chain.launchedN":"Ishga tushirildi: {n}","content.archive":"🗄 Arxivga","content.archived":"Arxivda","content.restore":"↩ Qaytarish","content.restored":"Qaytarildi","content.archiveTab":"🗄 Arxiv","st.queued":"navbatda","cjob.shoot":"Suratga olish","cjob.design":"Dizayn","cjob.edit":"Montaj","cjob.toTasks":"→ Vazifalarga",
     "cjob.new.shoot":"Kontent uchun suratga olish","cjob.new.design":"Kontent uchun dizayn","cjob.new.edit":"Kontent uchun montaj",
     "cjob.st.pending":"kutilmoqda","cjob.st.in_progress":"jarayonda","cjob.st.done":"tayyor","cjob.st.overdue":"muddati o‘tgan","cjob.st.cancelled":"bekor qilingan",
     "blocker.word":"Toʻsiq","blocker.by":"xabar berdi","blocker.to":"kimga",
@@ -1096,7 +1098,7 @@ const I18N = {
     "na.title":"Access denied","na.sub":"The app is team-only. Send your Telegram ID to an admin:","na.copy":"Tap to copy",
     "login.title":"Sign in to WHY NOT? OS","login.sub":"Sign in with Telegram — the app then runs in the browser, separate from your chats.","login.noBot":"Browser sign-in isn\u2019t set up yet. Open the app from the bot.",
     "content.advance":"Advance →","content.final":"Final stage",
-    "cjob.ai":"AI insert","chain.plan":"⚙️ Steps","chain.launch":"🚀 Launch","chain.launched":"Launched — the assignee got the task","chain.approve":"✅ Approve","chain.publish":"📢 Published","chain.approval":"Approval","chain.addStep":"+ step","chain.addWhich":"Which step to add?","chain.launchMonth":"🚀 Launch month","chain.launchMonthQ":"Launch all planned posts of this client? First-step assignees will get their tasks.","chain.launchedN":"Launched: {n}","content.archive":"🗄 Archive","content.archived":"Archived","content.restore":"↩ Restore","content.restored":"Restored","content.archiveTab":"🗄 Archive","st.queued":"queued","cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks",
+    "cjob.ai":"AI insert","chain.plan":"⚙️ Steps","chain.launch":"🚀 Launch","chain.launched":"Launched — the assignee got the task","chain.approve":"✅ Approve","chain.publish":"📢 Published","chain.approval":"Approval","chain.addStep":"+ step","chain.removeActiveQ":"Remove the step someone is working on? Work moves to the next step.","chain.addWhich":"Which step to add?","chain.launchMonth":"🚀 Launch month","chain.launchMonthQ":"Launch all planned posts of this client? First-step assignees will get their tasks.","chain.launchedN":"Launched: {n}","content.archive":"🗄 Archive","content.archived":"Archived","content.restore":"↩ Restore","content.restored":"Restored","content.archiveTab":"🗄 Archive","st.queued":"queued","cjob.shoot":"Shoot","cjob.design":"Design","cjob.edit":"Edit","cjob.toTasks":"→ To tasks",
     "cjob.new.shoot":"Shoot for content","cjob.new.design":"Design for content","cjob.new.edit":"Edit for content",
     "cjob.st.pending":"pending","cjob.st.in_progress":"in progress","cjob.st.done":"done","cjob.st.overdue":"overdue","cjob.st.cancelled":"cancelled",
     "blocker.word":"Blocker","blocker.by":"reported by","blocker.to":"for",
@@ -1192,18 +1194,17 @@ let ME = null;            // current user {id, role, full_name, registered, ...}
 let busy = false;
 // choose a step type for «+ шаг»: Telegram's native popup, plain prompt elsewhere
 function pickStepKind(){
-  const kinds = ["shoot", "edit", "design", "ai"];
+  const kinds = ["shoot", "edit", "design"];
   return new Promise(res => {
     try {
       if (tg && tg.showPopup && tg.initData){
-        // Telegram popups take at most 3 buttons: the steps that usually get added
         tg.showPopup({ message: t("chain.addWhich"),
-          buttons: ["ai", "edit", "design"].map(k => ({ id: k, type: "default", text: _CJOB_EMOJI[k] + " " + t("cjob." + k) })) },
+          buttons: kinds.map(k => ({ id: k, type: "default", text: _CJOB_EMOJI[k] + " " + t("cjob." + k) })) },
           id => res(id || null));
         return;
       }
     } catch(e){}
-    const n = window.prompt(t("chain.addWhich") + "\n" + kinds.map((k, i) => `${i + 1} — ${t("cjob." + k)}`).join("\n"), "4");
+    const n = window.prompt(t("chain.addWhich") + "\n" + kinds.map((k, i) => `${i + 1} — ${t("cjob." + k)}`).join("\n"), "3");
     res(kinds[+n - 1] || null);
   });
 }
@@ -1681,7 +1682,8 @@ function chainLine(c, steps, canEdit){
     const late = now && j.deadline && new Date(j.deadline) < new Date();
     const extra = now ? [short(j.assignee_name), j.deadline ? fmtDate(j.deadline) : ""].filter(Boolean).join(" · ") : "";
     const cls = done ? "cs-done" : now ? "cs-now" + (late ? " cs-late" : "") : "cs-next";
-    return `<button class="cjob-chip ${cls}" data-cjob-open="${j.id}" data-cid="${c.id}">${done ? "✓" : now ? "●" : "○"} ${em} ${esc(t("cjob." + j.kind))}${extra ? " · " + esc(extra) : ""}</button>`;
+    const removable = canEdit && !done && (st === "script" || st === "revisions");
+    return `<span class="cs-step"><button class="cjob-chip ${cls}" data-cjob-open="${j.id}" data-cid="${c.id}">${done ? "✓" : now ? "●" : "○"} ${em} ${esc(t("cjob." + j.kind))}${extra ? " · " + esc(extra) : ""}</button>${removable ? `<button class="cs-x" data-chain-del="${j.id}" data-cid="${c.id}" aria-label="Убрать шаг">✕</button>` : ""}</span>`;
   });
   const apprCls = st === "approval" ? "cs-now" : (st === "done" || st === "published") ? "cs-done" : "cs-next";
   parts.push(`<span class="cjob-chip ${apprCls}">${apprCls === "cs-done" ? "✓" : apprCls === "cs-now" ? "●" : "○"} ${esc(t("chain.approval"))}</span>`);
@@ -2525,6 +2527,20 @@ view.addEventListener("click", async e => {
     return;
   }
   if (e.target.closest("[data-carchive]")){ contentArchived = !contentArchived; haptic(); load("content"); return; }
+
+  const stepDel = e.target.closest("[data-chain-del]");
+  if (stepDel && !busy){
+    const c = contentById[+stepDel.dataset.cid];
+    const j = c && (c.jobs || []).find(x => x.id === +stepDel.dataset.chainDel);
+    // removing the step someone is working on needs a confirm; a planned one goes right away
+    if (j && j.status !== "queued" && !(await askConfirm(t("chain.removeActiveQ")))) return;
+    busy = true;
+    try { await api(`/api/content/${stepDel.dataset.cid}/chain/step/${stepDel.dataset.chainDel}`, { method:"DELETE" }); haptic(); }
+    catch(err){ toast(err.message); }
+    finally { busy = false; }
+    await load(currentTab);
+    return;
+  }
 
   const chainBtn = e.target.closest("[data-chain-plan], [data-chain-launch], [data-launch-month], [data-chain-add]");
   if (chainBtn && !busy){

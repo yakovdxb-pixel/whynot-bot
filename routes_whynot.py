@@ -1326,6 +1326,34 @@ async def add_chain_step(content_id: int, body: ChainStepAdd,
     return await _one_content(session, item, user)
 
 
+@router.delete("/content/{content_id}/chain/step/{task_id}")
+async def remove_chain_step(content_id: int, task_id: int, bg: BackgroundTasks,
+                            user: dict = Depends(member), session=Depends(get_session)):
+    """Drop a step that isn't needed (not every post needs a shoot or a design).
+    Only steps that aren't finished; if the current step is removed the next one starts."""
+    item = await _content_for_edit(session, content_id, user)
+    step = (await session.execute(select(Task).where(
+        Task.id == task_id, Task.content_id == item.id, Task.step_no.isnot(None)))).scalar_one_or_none()
+    if not step:
+        raise HTTPException(404, "шаг не найден")
+    if step.status in ("done", "published"):
+        raise HTTPException(400, "шаг уже сдан")
+    was_active = step.status != "queued"
+    await session.execute(sa_delete(Task).where(Task.id == step.id))
+    await session.flush()
+    left = await _chain_steps(session, item.id)
+    for i, t in enumerate(left, 1):          # keep 1..n without gaps
+        t.step_no = i
+    if was_active and item.launched_at and not any(t.status not in ("queued", "done", "published", "cancelled") for t in left):
+        nxt = next((t for t in left if t.status == "queued"), None)
+        if nxt:
+            await _start_step(session, bg, item, nxt)
+        elif left and all(t.status in ("done", "published", "cancelled") for t in left):
+            item.pipeline_status = "approval"
+    await session.commit()
+    return await _one_content(session, item, user)
+
+
 async def _launch(session, bg, item, uid):
     steps = await _chain_steps(session, item.id) or await _create_chain(session, item, uid)
     item.launched_at = _now()
