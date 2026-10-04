@@ -9,6 +9,7 @@ was wiped on every deploy.
 import logging
 import os
 import re
+from datetime import timezone, timedelta
 from telegram import (
     Update, InlineKeyboardMarkup, InlineKeyboardButton,
     ReplyKeyboardRemove, WebAppInfo, MenuButtonWebApp, BotCommand
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 TOKEN = os.getenv('BOT_TOKEN')
+# the team works in Tashkent: times in messages are Tashkent time (DB stores UTC)
+_TASHKENT = timezone(timedelta(hours=5))
 WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://worker-production-7137.up.railway.app/webapp"
 
 
@@ -356,7 +359,7 @@ async def pg_overdue_job(context: ContextTypes.DEFAULT_TYPE):
                     aids = [task.assignee_id]
                 tgs = list((await s.execute(select(User.telegram_id).where(
                     User.id.in_(aids), User.telegram_id.isnot(None)))).scalars().all())
-                dl = task.deadline.strftime("%d.%m %H:%M")
+                dl = task.deadline.astimezone(_TASHKENT).strftime("%d.%m %H:%M")
                 for tg in tgs:
                     try:
                         await context.bot.send_message(tg, f"⏰ Просрочена задача: {task.title}\nДедлайн был {dl}")

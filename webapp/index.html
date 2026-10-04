@@ -1281,25 +1281,31 @@ async function api(path, opts){
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => (
   {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]
 ));
+// the team works in Tashkent: dates/times are shown and typed in Tashkent time,
+// whatever zone the phone is set to (the server reads typed times as Tashkent too)
+const TZ = "Asia/Tashkent";
 function fmtDate(v){
   if(!v) return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v += "T12:00:00+05:00";   // a bare date is that day in Tashkent
   const d = new Date(v);
   if(isNaN(d)) return String(v);
-  return d.toLocaleDateString("ru-RU", {day:"2-digit", month:"short"});
+  return d.toLocaleDateString("ru-RU", {day:"2-digit", month:"short", timeZone:TZ});
 }
 function fmtDateTime(v){
   if(!v) return null;
   const d = new Date(v);
   if(isNaN(d)) return String(v);
-  return d.toLocaleString("ru-RU", {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"});
+  return d.toLocaleString("ru-RU", {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit", timeZone:TZ});
 }
 function toLocalInput(v){
   // ISO -> "YYYY-MM-DDTHH:MM" for <input type=datetime-local>
   if(!v) return "";
   const d = new Date(v);
   if(isNaN(d)) return "";
-  const p = n => String(n).padStart(2,"0");
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {timeZone:TZ, hourCycle:"h23",
+    year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"})
+    .formatToParts(d).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 }
 function deadlineMeta(v){
   const f = fmtDate(v);

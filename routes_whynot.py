@@ -64,6 +64,15 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+# The whole team works in Tashkent. Times typed in the app (datetime-local, no zone)
+# are Tashkent wall-clock time; texts for people show Tashkent time too.
+TASHKENT = timezone(timedelta(hours=5))
+
+
+def _tk(dt, fmt="%d.%m %H:%M"):
+    return dt.astimezone(TASHKENT).strftime(fmt)
+
+
 # ── auth ────────────────────────────────────────────────────────
 
 def _parse_init_data(init_data: str) -> dict:
@@ -460,12 +469,12 @@ def _parse_dt(v):
     if not v:
         return None
     try:
-        dt = datetime.fromisoformat(v + "T00:00:00+00:00") if len(v) == 10 \
+        dt = datetime.fromisoformat(v + "T00:00:00") if len(v) == 10 \
             else datetime.fromisoformat(v)
     except ValueError:
         raise HTTPException(422, f"bad datetime: {v!r}")
-    if dt.tzinfo is None:                      # datetime-local inputs have no tz
-        dt = dt.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:                      # datetime-local inputs: Tashkent time
+        dt = dt.replace(tzinfo=TASHKENT)
     return dt
 
 
@@ -897,7 +906,6 @@ CONTENT_STAGE_RU = {"script": "В процессе", "approval": "На одоб�
                     "revisions": "Правка", "done": "Готов", "published": "Опубликовано"}
 
 # production jobs dispatched from a content card (stored as linked tasks)
-TASHKENT = timezone(timedelta(hours=5))
 CJOB_KINDS = ("shoot", "design", "edit", "ai")
 CJOB_RU = {"shoot": "Съёмка", "design": "Дизайн", "edit": "Монтаж", "ai": "ИИ-вставка"}
 CJOB_EMOJI = {"shoot": "🎥", "design": "🎨", "edit": "✂️", "ai": "🤖"}
@@ -1131,7 +1139,7 @@ async def create_content_job(content_id: int, kind: str, body: ContentJobCreate,
     await _log(session, "task", "created", obj.id, uid, obj.title)
     await _log_status(session, "task", obj.id, "pending", uid)
 
-    dl = due.strftime("%d.%m.%Y %H:%M") if due else "без срока"
+    dl = _tk(due, "%d.%m.%Y %H:%M") if due else "без срока"
     for a in aids:
         tg = await _telegram_id_for(session, a)
         if tg:
@@ -1266,7 +1274,7 @@ async def _start_step(session, bg, item, step):
     step.status = "pending"
     step.updated_at = _now()
     topic = item.topic or f"контент #{item.id}"
-    dl = f" · до {step.deadline.astimezone(TASHKENT).strftime('%d.%m %H:%M')}" if step.deadline else ""
+    dl = f" · до {_tk(step.deadline)}" if step.deadline else ""
     for a in await _task_assignee_ids(session, step.id, step.assignee_id):
         tg = await _telegram_id_for(session, a)
         if tg:
@@ -1874,7 +1882,7 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
         raise HTTPException(400, "один из исполнителей не найден")
     await _log(session, "task", "created", obj.id, uid, title)
 
-    dl = deadline.strftime("%d.%m.%Y") if deadline else "без срока"
+    dl = _tk(deadline, "%d.%m.%Y %H:%M") if deadline else "без срока"
     for a in aids:
         tg = await _telegram_id_for(session, a)
         if tg:
@@ -2388,7 +2396,7 @@ async def create_shoot(body: ShootCreate, bg: BackgroundTasks,
         await session.rollback()
         raise HTTPException(400, "участник не найден")
     await _log(session, "task", "created", obj.id, user["id"], f"Съёмка: {title}")
-    when = obj.shoot_at.strftime("%d.%m %H:%M") if obj.shoot_at else "дата не задана"
+    when = _tk(obj.shoot_at) if obj.shoot_at else "дата не задана"
     for uid in pids:
         tg = await _telegram_id_for(session, uid)
         if tg:
