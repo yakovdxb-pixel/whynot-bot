@@ -266,7 +266,8 @@ async def member(user: dict = Depends(current_user)) -> dict:
 # ── models ──────────────────────────────────────────────────────
 
 TASK_STATUSES = {"pending", "in_progress", "review", "revision", "done", "published", "cancelled", "overdue",
-                 "queued"}   # queued = a production-chain step whose turn hasn't come yet
+                 "queued",   # queued = a production-chain step whose turn hasn't come yet
+                 "client"}   # client = the AM sent it to the client for approval; executor is free
 OPEN_TASK_STATUSES = ("pending", "in_progress", "overdue", "revision")
 CLOSED_TASK_STATUSES = ("done", "published", "cancelled")
 USER_ROLES = {"admin", "am", "director", "editor", "designer",
@@ -280,7 +281,7 @@ FORMAT_ALIASES = {"reel": "reels", "video": "youtube_long", "article": "other"}
 STATUS_RU = {"pending": "Ожидает", "in_progress": "В работе", "done": "Готово",
              "overdue": "Просрочено", "cancelled": "Отменено",
              "review": "На проверке", "revision": "На доработке", "published": "Опубликовано",
-             "queued": "В очереди"}
+             "queued": "В очереди", "client": "На утверждении у клиента"}
 
 
 class TaskPatch(BaseModel):
@@ -2765,7 +2766,7 @@ async def team_load(user: dict = Depends(member), session=Depends(get_session)):
     rows = (await session.execute(
         select(TaskAssignee.user_id, Task)
         .join(Task, Task.id == TaskAssignee.task_id)
-        .where(Task.status.in_(OPEN_TASK_STATUSES + ("review", "queued"))))).all()
+        .where(Task.status.in_(OPEN_TASK_STATUSES + ("review", "queued", "client"))))).all()
     shoots = (await session.execute(
         select(ShootParticipant.user_id, ShootSession)
         .join(ShootSession, ShootSession.id == ShootParticipant.shoot_id)
@@ -2786,7 +2787,7 @@ async def team_load(user: dict = Depends(member), session=Depends(get_session)):
     for uid, sh in shoots:
         if uid in by:
             by[uid]["shoots"].append(sh)
-    rank = {"in_progress": 0, "revision": 1, "overdue": 2, "pending": 3, "review": 4, "queued": 5}
+    rank = {"in_progress": 0, "revision": 1, "overdue": 2, "pending": 3, "review": 4, "client": 5, "queued": 6}
 
     def task_out(t):
         return {"id": t.id, "title": t.title, "status": t.status, "kind": t.job_kind,
@@ -2798,8 +2799,8 @@ async def team_load(user: dict = Depends(member), session=Depends(get_session)):
     out, projects = [], {}
     for u in people:
         ts = sorted(by[u.id]["tasks"], key=lambda t: (rank.get(t.status, 9), t.deadline is None, t.deadline or now))
-        active = [t for t in ts if t.status != "queued"]
-        ends = [t.deadline for t in ts if t.deadline] + [sh.shoot_at for sh in by[u.id]["shoots"]]
+        active = [t for t in ts if t.status not in ("queued", "client")]   # «у клиента» doesn't keep anyone busy
+        ends = [t.deadline for t in ts if t.deadline and t.status != "client"] + [sh.shoot_at for sh in by[u.id]["shoots"]]
         for t in active:
             if not t.project_id:
                 continue
@@ -2816,7 +2817,8 @@ async def team_load(user: dict = Depends(member), session=Depends(get_session)):
             "id": u.id, "name": u.full_name, "role": u.role,
             "open": len([t for t in active if t.status != "review"]),
             "review": len([t for t in active if t.status == "review"]),
-            "queued": len(ts) - len(active),
+            "queued": len([t for t in ts if t.status == "queued"]),
+            "client": len([t for t in ts if t.status == "client"]),
             "overdue": len([t for t in active if t.deadline and t.deadline < now and t.status != "review"]),
             "revisions": sum(revs.get(t.id, 0) for t in active),
             "revisions_30d": rev30.get(u.id, 0),

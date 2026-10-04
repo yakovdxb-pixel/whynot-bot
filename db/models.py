@@ -267,6 +267,9 @@ class Task(Base):
     actual_completion = Column(DateTime(timezone=True))
     overdue_notified_at = Column(DateTime(timezone=True))
     remind_notified_at  = Column(DateTime(timezone=True))   # «2 часа до дедлайна» sent
+    eta_at              = Column(DateTime(timezone=True))   # executor: «возьмусь за правки в …»
+    eta_notified_at     = Column(DateTime(timezone=True))   # «время взяться за правки» sent
+    client_nudged_at    = Column(DateTime(timezone=True))   # «клиент молчит сутки» sent to the AM
     overdue_reason   = Column(overdue_reason_enum)
     overdue_comment  = Column(Text)
     related_links    = Column(JSONB, default=list)
@@ -646,6 +649,10 @@ _MIGRATIONS = [
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remind_notified_at TIMESTAMPTZ",
     "ALTER TABLE shoot_sessions ADD COLUMN IF NOT EXISTS checklist TEXT",
     "ALTER TABLE shoot_sessions ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ",
+    # 2026-10: client approval step + executor's own «when I take the revisions»
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS eta_at TIMESTAMPTZ",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS eta_notified_at TIMESTAMPTZ",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_nudged_at TIMESTAMPTZ",
 ]
 
 

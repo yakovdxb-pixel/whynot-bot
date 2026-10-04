@@ -44,13 +44,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardRemove(),
         )
         return
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🚀 Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))
-    ]])
-    await msg.reply_text(
-        "👋 *WHY NOT? OS*\n\nЗадачи, контент-план и команда — в приложении 👇",
-        parse_mode='Markdown', reply_markup=kb,
-    )
+    role = await _pg_role(update.effective_user.id)
+    if not role:
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🚀 Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))
+        ]])
+        await msg.reply_text(
+            "👋 *WHY NOT? OS*\n\nЗадачи, контент-план и команда — в приложении 👇",
+            parse_mode='Markdown', reply_markup=kb,
+        )
+        return
+    if role in MANAGER_ROLES:
+        hint = ("Планы, задачи, сроки и загрузка команды — в приложении.\n"
+                "Здесь — проверка работ: «👀 На проверке» покажет присланные файлы "
+                "с кнопками «✅ Принять / 🔄 Правки».")
+    else:
+        hint = ("Твои задачи и сроки — в приложении.\n"
+                "Готово? Жми «📤 Сдать работу», выбери задачу и пришли файл или ссылку — "
+                "AM проверит его в теме проекта.")
+    await msg.reply_text(f"👋 WHY NOT? OS\n\n{hint}", reply_markup=_menu_kb(role))
 
 
 async def _pg_role(telegram_id: int):
@@ -194,10 +206,22 @@ async def submit_file_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if proj[1]:
                 cn = (await s.execute(select(Client.name).where(Client.id == proj[1]))).scalar_one_or_none()
                 client_name = cn or client_name
-            tasks = (await s.execute(select(Task.id, Task.title).where(
+            open_q = select(Task.id, Task.title).where(
                 Task.project_id == proj_id,
-                Task.status.notin_(("done", "published"))
-            ).order_by(Task.deadline.is_(None), Task.deadline).limit(30))).all()
+                Task.status.notin_(("done", "published", "cancelled", "client", "queued")))
+            # the sender's own tasks only; everyone's if they have none here
+            from db.models import TaskAssignee, User
+            from sqlalchemy import or_
+            me = (await s.execute(select(User.id).where(
+                User.telegram_id == update.effective_user.id))).scalar_one_or_none()
+            tasks = []
+            if me:
+                mine = select(TaskAssignee.task_id).where(TaskAssignee.user_id == me)
+                tasks = (await s.execute(open_q.where(or_(Task.assignee_id == me, Task.id.in_(mine)))
+                         .order_by(Task.deadline.is_(None), Task.deadline).limit(30))).all()
+            if not tasks:
+                tasks = (await s.execute(open_q.order_by(Task.deadline.is_(None), Task.deadline)
+                         .limit(30))).all()
     except Exception as e:
         logger.warning(f"submit_file_prompt: {e}")
         return
@@ -270,9 +294,8 @@ async def subfile_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                               .where(Client.id == proj[1]))).scalar_one_or_none()
                         cname = cn or cname
 
-            admins = list((await s.execute(select(User.telegram_id).where(
-                User.role.in_(("admin", "am")), User.telegram_id.isnot(None),
-                User.is_active.is_(True)))).scalars().all())
+            admins = await _project_am_tgs(s, task.project_id)
+            version = await _task_version(s, task.id)
     except Exception as e:
         logger.warning(f"subfile_pick_cb: {e}")
         await q.edit_message_text("Что-то пошло не так, попробуй ещё раз.")
@@ -282,18 +305,22 @@ async def subfile_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                               f"AM: смотри файл выше и жми кнопку 👇",
                               reply_markup=_review_kb(task.id))
 
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))
-    ]])
     who = f" по клиенту {cname}" if cname else ""
     for tg in admins:
         if tg == pending["from_user"]:
             continue
         try:
             await context.bot.send_message(
-                tg, f"📎 {submitter_name} сдал задачу «{task.title}»{who}", reply_markup=kb)
+                tg, f"📎 {submitter_name} сдал «{task.title}»{who} — версия {version}. Файл в теме проекта.",
+                reply_markup=_review_kb(task.id))
         except Exception:
             pass
+    try:   # keep the executor busy while the AM looks at it
+        from db.models import AsyncSessionLocal
+        async with AsyncSessionLocal() as s:
+            await _suggest_next(context, s, task)
+    except Exception as e:
+        logger.warning(f"suggest_next: {e}")
 
 
 async def subfile_keep_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -355,10 +382,23 @@ async def subfile_keep_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MANAGER_ROLES = ("admin", "am", "director")
 
 
-def _review_kb(task_id):
+def _review_kb(task_id, client=False):
+    if client:   # the AM sent it to the client and waits for their answer
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Клиент принял", callback_data=f"rvok_{task_id}"),
+            InlineKeyboardButton("🔥 Правки клиента", callback_data=f"rvfix_{task_id}"),
+        ]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Принять", callback_data=f"rvok_{task_id}"),
+         InlineKeyboardButton("🔄 Правки", callback_data=f"rvfix_{task_id}")],
+        [InlineKeyboardButton("🕓 На утверждении у клиента", callback_data=f"rvcli_{task_id}")],
+    ])
+
+
+def _eta_kb(task_id):
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Принять", callback_data=f"rvok_{task_id}"),
-        InlineKeyboardButton("🔄 Правки", callback_data=f"rvfix_{task_id}"),
+        InlineKeyboardButton("▶️ Беру сейчас", callback_data=f"etanow_{task_id}"),
+        InlineKeyboardButton("⏰ Укажу время", callback_data=f"etaset_{task_id}"),
     ]])
 
 
@@ -414,10 +454,10 @@ async def _assignee_tgs(s, task):
         User.id.in_(uids), User.telegram_id.isnot(None)))).scalars().all())
 
 
-async def _dm_assignees(context, s, task, text):
+async def _dm_assignees(context, s, task, text, kb=None):
     for tg in await _assignee_tgs(s, task):
         try:
-            await context.bot.send_message(tg, text)
+            await context.bot.send_message(tg, text, reply_markup=kb)
         except Exception:
             pass   # never pressed Start — Telegram won't let the bot write first
 
@@ -426,10 +466,20 @@ def _thread_of(msg):
     return msg.message_thread_id if getattr(msg, "is_topic_message", False) else None
 
 
+async def _edit(q, text, reply_markup=None):
+    """Edit the pressed message: text for text posts, caption for photo/video/file posts."""
+    m = q.message
+    if m.photo or m.video or m.document or m.caption is not None:
+        await q.edit_message_caption(text[:1024], reply_markup=reply_markup)
+    else:
+        await q.edit_message_text(text, reply_markup=reply_markup)
+
+
 async def review_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Принять / 🔄 Правки pressed under a submitted file (AM / director / admin only)."""
+    """✅ Принять / 🔄 Правки / 🕓 На утверждении under a submitted file (AM / director / admin);
+    once at the client: ✅ Клиент принял / 🔥 Правки клиента."""
     q = update.callback_query
-    m = re.match(r"^rv(ok|fix)_(\d+)$", q.data or "")
+    m = re.match(r"^rv(ok|fix|cli)_(\d+)$", q.data or "")
     if not m:
         await q.answer()
         return
@@ -447,10 +497,11 @@ async def review_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await q.answer("Задача не найдена (возможно, удалена)", show_alert=True)
                 await q.edit_message_reply_markup(None)
                 return
-            if task.status != "review":
+            if task.status not in ("review", "client") or (action == "cli" and task.status != "review"):
                 await q.answer("Уже решено — смотри статус в приложении", show_alert=True)
                 await q.edit_message_reply_markup(None)
                 return
+            at_client = task.status == "client"
             version = await _task_version(s, task.id)
             am = (await s.execute(select(User.full_name).where(
                 User.telegram_id == q.from_user.id))).scalar_one_or_none() or q.from_user.first_name
@@ -463,13 +514,29 @@ async def review_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await s.commit()
                 await _log_task_status(s, task.id, "done", q.from_user.id)
                 await q.answer("Принято ✅")
-                await q.edit_message_text(f"✅ Версия {version} принята — «{task.title}» ({am})")
-                await _dm_assignees(context, s, task, f"✅ Принято! Задача «{task.title}» (версия {version})")
+                who_ok = "клиент принял" if at_client else "принята"
+                await _edit(q, f"✅ Версия {version} {who_ok} — «{task.title}» ({am})")
+                await _dm_assignees(context, s, task, f"✅ {'Клиент принял' if at_client else 'Принято'}! "
+                                                      f"Задача «{task.title}» (версия {version})")
                 try:   # all jobs of the content done -> content goes to the AM for approval
                     from routes_whynot import _advance_chain
                     await _advance_chain(s, _Bg(context.application), task)
                 except Exception as e:
                     logger.warning(f"review_cb advance: {e}")
+                return
+            if action == "cli":
+                task.status = "client"
+                task.client_nudged_at = None
+                task.updated_at = _dt.now(_tz.utc)
+                await s.commit()
+                await _log_task_status(s, task.id, "client", q.from_user.id)
+                await q.answer("Ждём ответа клиента")
+                await _edit(q, f"🕓 Версия {version} «{task.title}» — на утверждении у клиента ({am}).\n"
+                               f"Ответил клиент — жми кнопку 👇", reply_markup=_review_kb(task.id, client=True))
+                await _dm_assignees(context, s, task,
+                                    f"🕓 «{task.title}» (версия {version}) — у клиента на утверждении. "
+                                    f"Пока ждём ответа, ты свободен.")
+                await _suggest_next(context, s, task)
                 return
             title = task.title
     except Exception as e:
@@ -479,12 +546,13 @@ async def review_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔄 Правки: start collecting the AM's notes as replies to one message
     await q.answer()
     msg = q.message
-    await q.edit_message_text(f"🔄 Версия {version} · «{title}» — {am} пишет правки…")
+    kind = "правки клиента" if at_client else "правки"
+    await _edit(q, f"🔄 Версия {version} · «{title}» — {am} пишет {kind}…")
     from html import escape
     who = f'<a href="tg://user?id={q.from_user.id}">{escape(q.from_user.first_name or "AM")}</a>'
     ask = await context.bot.send_message(
         msg.chat_id,
-        f"✍️ {who}, правки к версии {version} «{escape(title)}»: отвечай на это сообщение — "
+        f"✍️ {who}, {kind} к версии {version} «{escape(title)}»: отвечай на это сообщение — "
         f"по одной правке в ответе. Когда всё — жми «📨 Отправить», исполнитель получит их одним сообщением.",
         parse_mode="HTML", message_thread_id=_thread_of(msg),
         reply_markup=ForceReply(selective=True, input_field_placeholder="Что поправить?"))
@@ -492,7 +560,8 @@ async def review_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ctl = await context.bot.send_message(msg.chat_id, "Правок пока нет.",
                                          message_thread_id=_thread_of(msg), reply_markup=_collect_kb(0))
     context.chat_data[f"rvask_{ask.message_id}"] = {
-        "task": task_id, "version": version, "items": [], "ctl": ctl.message_id, "am": q.from_user.id}
+        "task": task_id, "version": version, "items": [], "ctl": ctl.message_id, "am": q.from_user.id,
+        "client": at_client}
     context.chat_data[f"rvctl_{ctl.message_id}"] = ask.message_id
 
 
@@ -505,6 +574,7 @@ async def revision_comment_reply(update: Update, context: ContextTypes.DEFAULT_T
     if not st or await _pg_role(update.effective_user.id) not in MANAGER_ROLES:
         return
     st["items"].append(msg.text.strip()[:1000])
+    st.setdefault("msgs", []).append(msg.message_id)
     n = len(st["items"])
     lines = "\n".join(f"{i}. {t}" for i, t in enumerate(st["items"], 1))
     try:
@@ -512,6 +582,15 @@ async def revision_comment_reply(update: Update, context: ContextTypes.DEFAULT_T
                                             message_id=st["ctl"], reply_markup=_collect_kb(n))
     except Exception as e:
         logger.warning(f"revision list update: {e}")
+
+
+async def _tidy_revision(context, chat_id, ask_id, st):
+    """The notes now live in one summary message — remove the prompt and the single replies."""
+    for mid in [ask_id] + st.get("msgs", []):
+        try:
+            await context.bot.delete_message(chat_id, mid)
+        except Exception:
+            pass   # no rights / too old — harmless
 
 
 async def revision_send_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -529,9 +608,11 @@ async def revision_send_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data == "rvcancel":
         context.chat_data.pop(f"rvask_{ask_id}", None)
         context.chat_data.pop(f"rvctl_{q.message.message_id}", None)
+        await _tidy_revision(context, q.message.chat_id, ask_id, st)
         await q.answer("Отменено")
-        await q.edit_message_text("✖ Правки отменены — файл всё ещё на проверке.",
-                                  reply_markup=_review_kb(st["task"]))
+        await q.edit_message_text("✖ Правки отменены — работа всё ещё " +
+                                  ("у клиента." if st.get("client") else "на проверке."),
+                                  reply_markup=_review_kb(st["task"], client=st.get("client")))
         return
     if not st["items"]:
         await q.answer("Сначала напиши хотя бы одну правку ответом на сообщение выше", show_alert=True)
@@ -547,7 +628,12 @@ async def revision_send_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await q.answer("Задача не найдена", show_alert=True)
                 return
             task.status = "revision"
-            task.review_comment = f"Версия {st['version']}:\n{lines}"
+            client = st.get("client")
+            head = "🔥 Правки клиента" if client else "🔄 Правки"
+            task.review_comment = f"{head} к версии {st['version']}:\n{lines}"
+            task.eta_at = task.eta_notified_at = None
+            if client:
+                task.priority = "urgent"     # client is waiting: goes first everywhere
             task.updated_at = _dt.now(_tz.utc)
             await s.commit()
             await _log_task_status(s, task.id, "revision", q.from_user.id)
@@ -555,8 +641,9 @@ async def revision_send_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 StatusEvent.entity == "task", StatusEvent.entity_id == task.id,
                 StatusEvent.status == "revision"))).scalar_one()
             await _dm_assignees(context, s, task,
-                                f"🔄 Правки к версии {st['version']} — «{task.title}»:\n{lines}\n\n"
-                                f"Исправь и пришли новую версию в тему проекта.")
+                                f"{'🔥 Срочно: правки клиента' if client else '🔄 Правки'} к версии "
+                                f"{st['version']} — «{task.title}»:\n{lines}\n\n"
+                                f"Когда возьмёшься? AM увидит твой ответ.", kb=_eta_kb(task.id))
             title = task.title
     except Exception as e:
         logger.warning(f"revision_send_cb: {e}")
@@ -564,200 +651,384 @@ async def revision_send_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.chat_data.pop(f"rvask_{ask_id}", None)
     context.chat_data.pop(f"rvctl_{q.message.message_id}", None)
+    await _tidy_revision(context, q.message.chat_id, ask_id, st)
     await q.answer("Отправлено исполнителю")
     await q.edit_message_text(f"🔄 Правка №{n} · версия {st['version']} «{title}» — отправлено исполнителю:\n{lines}")
 
 
-# ── /task: a task from any message in a bound topic ─────────────────
-# Reply to a message with «/task @исполнитель 25.09 18:00»: text → task, its photo /
-# video / file and links → the task's references, project = the topic's project.
+# ── keep the executor busy while the AM / client decide ──────────────────
 
-def _tk_now():
-    from datetime import datetime as _dt
-    return _dt.now(_TASHKENT)
-
-
-def _parse_deadline(words):
-    """«15:00» · «25.09» · «25.09 18:00» · «завтра 12:00» → aware datetime (Tashkent) or None.
-    A bare time that already passed today means tomorrow; a bare date means 18:00."""
-    from datetime import datetime as _dt
-    now = _tk_now()
-    day, hm = None, None
-    for w in words:
-        w = w.strip(",.").lower()
-        if w in ("сегодня", "bugun"):
-            day = now.date()
-        elif w in ("завтра", "ertaga"):
-            day = (now + timedelta(days=1)).date()
-        elif re.fullmatch(r"\d{1,2}[:.]\d{2}", w) and ":" in w:
-            h, mi = map(int, w.split(":"))
-            if h < 24 and mi < 60:
-                hm = (h, mi)
-        elif re.fullmatch(r"\d{1,2}\.\d{1,2}(\.\d{2,4})?", w):
-            parts = [int(x) for x in w.split(".")]
-            y = parts[2] if len(parts) == 3 else now.year
-            y = y + 2000 if y < 100 else y
-            try:
-                day = _dt(y, parts[1], parts[0]).date()
-            except ValueError:
-                continue
-            if len(parts) == 2 and (now.date() - day).days > 60:
-                day = day.replace(year=y + 1)     # «05.01» said in December
-    if not day and not hm:
-        return None
-    if not hm:
-        hm = (18, 0)
-    if not day:
-        day = now.date()
-        if (hm[0], hm[1]) <= (now.hour, now.minute):
-            day = (now + timedelta(days=1)).date()
-    return _dt(day.year, day.month, day.day, hm[0], hm[1], tzinfo=_TASHKENT)
-
-
-async def _topic_project(s, chat_id, thread_id):
-    from db.models import ProjectChat
-    from sqlalchemy import select
-    pid = (await s.execute(select(ProjectChat.project_id).where(
-        ProjectChat.chat_id == chat_id, ProjectChat.thread_id == (thread_id or None)))).scalar_one_or_none()
-    if not pid:
-        pid = (await s.execute(select(ProjectChat.project_id).where(
-            ProjectChat.chat_id == chat_id))).scalars().first()
-    return pid
-
-
-async def task_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.effective_message
-    if not msg or update.effective_chat.type not in ("group", "supergroup"):
-        await msg.reply_text("Команда /task работает в теме проекта: ответь ею на сообщение.")
-        return
-    if await _pg_role(update.effective_user.id) not in MANAGER_ROLES:
-        await msg.reply_text("Ставить задачи командой /task может только AM.")
-        return
-    src = msg.reply_to_message
-    # in forum topics a plain message is technically a «reply» to the topic's service message
-    if not src or src.forum_topic_created:
-        await msg.reply_text(
-            "Ответь командой на сообщение, из которого сделать задачу:\n"
-            "/task @исполнитель 15:00\n/task Баходир 25.09 18:00\n/task @аня завтра 12:00")
-        return
-    words = (msg.text or "").split()[1:]
-    try:
-        from db.models import (AsyncSessionLocal, Task, TaskAssignee, User, Project,
-                               ReferenceItem, StatusEvent)
-        from sqlalchemy import select, func
-        async with AsyncSessionLocal() as s:
-            pid = await _topic_project(s, msg.chat_id, _thread_of(msg) or 0)
-            if not pid:
-                await msg.reply_text("Эта тема не привязана к проекту — сначала /bind.")
-                return
-            proj = (await s.execute(select(Project).where(Project.id == pid))).scalar_one_or_none()
-            people = (await s.execute(select(User).where(User.is_active.is_(True)))).scalars().all()
-            # who: @username / tapped name (text_mention) / a plain first name
-            picked, unknown = [], []
-            for e in msg.entities or []:
-                if e.type == "text_mention" and e.user:
-                    u = next((p for p in people if p.telegram_id == e.user.id), None)
-                    (picked.append(u) if u else unknown.append(e.user.first_name))
-                elif e.type == "mention":
-                    nick = msg.text[e.offset + 1:e.offset + e.length].lower()
-                    u = next((p for p in people if (p.username or "").lower() == nick), None)
-                    (picked.append(u) if u else unknown.append("@" + nick))
-            if not picked and not unknown:
-                for w in words:
-                    lw = w.strip(",.").lower()
-                    u = next((p for p in people if p.full_name and (
-                        p.full_name.lower() == lw or p.full_name.lower().split()[0] == lw)), None)
-                    if u:
-                        picked.append(u)
-            if unknown or not picked:
-                names = ", ".join(sorted(p.full_name.split()[0] for p in people if p.full_name))
-                miss = f"Не нашёл: {', '.join(unknown)}. " if unknown else ""
-                await msg.reply_text(
-                    f"{miss}Укажи исполнителя: @username или имя — {names}.\n"
-                    f"(@username бот узнаёт, когда человек хоть раз открыл приложение или написал в группе.)")
-                return
-            picked = list({u.id: u for u in picked}.values())
-            deadline = _parse_deadline(words)
-            text = (src.text or src.caption or "").strip()
-            default = {"photo": "Фото", "video": "Видео", "document": "Файл"}
-            kind = "photo" if src.photo else "video" if src.video else "document" if src.document else None
-            title = (text.split("\n")[0][:120] if text else
-                     f"{default.get(kind, 'Задача')} из темы ({_tk_now().strftime('%d.%m')})")
-            creator = next((p for p in people if p.telegram_id == update.effective_user.id), None)
-            task = Task(title=title, description=text or None, status="pending", type="general",
-                        priority="normal", project_id=pid, client_id=proj.client_id if proj else None,
-                        created_by=creator.id if creator else None, assignee_id=picked[0].id,
-                        deadline=deadline)
-            s.add(task)
-            await s.flush()
-            for u in picked:
-                s.add(TaskAssignee(task_id=task.id, user_id=u.id))
-            # attachments + links of the source message → the task's references
-            refs = 0
-            f = (src.photo[-1] if src.photo else src.video or src.document)
-            if f:
-                s.add(ReferenceItem(task_id=task.id, kind="file", tg_file_id=f.file_id,
-                                    mime=getattr(f, "mime_type", None) or ("image/jpeg" if src.photo else None),
-                                    file_name=getattr(f, "file_name", None) or default[kind].lower(),
-                                    tg_chat_id=src.chat_id, tg_message_id=src.message_id,
-                                    added_by=creator.id if creator else None))
-                refs += 1
-            ents = src.entities or src.caption_entities or ()
-            body = src.text or src.caption or ""
-            urls = []
-            for e in ents:
-                if e.type == "url":
-                    urls.append(src.parse_entity(e) if src.text else src.parse_caption_entity(e))
-                elif e.type == "text_link" and e.url:
-                    urls.append(e.url)
-            for u in dict.fromkeys(x for x in urls if x):
-                s.add(ReferenceItem(task_id=task.id, kind="link",
-                                    url=u if "://" in u else "https://" + u,
-                                    added_by=creator.id if creator else None))
-                refs += 1
-            s.add(StatusEvent(entity="task", entity_id=task.id, status="pending",
-                              actor_id=creator.id if creator else None))
-            await s.commit()
-            tgs = [u.telegram_id for u in picked if u.telegram_id]
-    except Exception as e:
-        logger.warning(f"task_cmd: {e}")
-        await msg.reply_text("Не получилось создать задачу, попробуй ещё раз.")
-        return
-    who = ", ".join(u.full_name for u in picked)
-    dl = deadline.strftime("%d.%m %H:%M") if deadline else "без срока"
-    card = (f"📋 Задача #{task.id}: {title}\n👤 {who}\n⏰ {dl}"
-            + (f"\n📎 референсов: {refs}" if refs else "")
-            + ("\n\nСрок не понял — поставь в приложении." if not deadline and len(words) > len(picked) else ""))
-    await src.reply_text(card)
-    for tg in tgs:
+async def _suggest_next(context, s, task):
+    """After a hand-in (or when it went to the client): offer the executor their next task."""
+    from db.models import Task, TaskAssignee, User
+    from sqlalchemy import select, or_
+    uids = list((await s.execute(select(TaskAssignee.user_id)
+                                 .where(TaskAssignee.task_id == task.id))).scalars().all()) \
+        or ([task.assignee_id] if task.assignee_id else [])
+    for uid in uids:
+        tg = (await s.execute(select(User.telegram_id).where(User.id == uid))).scalar_one_or_none()
+        if not tg:
+            continue
+        mine = select(TaskAssignee.task_id).where(TaskAssignee.user_id == uid)
+        busy = (await s.execute(select(Task.id).where(
+            or_(Task.assignee_id == uid, Task.id.in_(mine)), Task.id != task.id,
+            Task.status == "in_progress").limit(1))).first()
+        if busy:
+            continue       # already working on something — don't distract
+        nxt = (await s.execute(select(Task).where(
+            or_(Task.assignee_id == uid, Task.id.in_(mine)), Task.id != task.id,
+            Task.status.in_(("pending", "overdue", "revision", "in_progress")))
+            .order_by(Task.priority != "urgent", Task.deadline.is_(None), Task.deadline)
+            .limit(1))).scalar_one_or_none()
+        seen = context.bot_data.setdefault("nudged", {})
+        if seen.get(uid) == (nxt.id if nxt else 0):
+            continue       # already offered exactly this
+        seen[uid] = nxt.id if nxt else 0
         try:
-            await context.bot.send_message(
-                tg, f"📋 Тебе назначена задача: {title}\n⏰ {dl}\n📁 {proj.name if proj else ''}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                    "Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))]]))
+            if nxt:
+                dl = f" (до {nxt.deadline.astimezone(_TASHKENT).strftime('%d.%m %H:%M')})" if nxt.deadline else ""
+                kb = None if nxt.status == "in_progress" else InlineKeyboardMarkup([[
+                    InlineKeyboardButton("▶️ Взял в работу", callback_data=f"take_{nxt.id}")]])
+                await context.bot.send_message(tg, f"👉 Пока ждём ответа — следующая: «{nxt.title}»{dl}",
+                                               reply_markup=kb)
+            else:
+                await context.bot.send_message(tg, "👌 Других задач нет — напиши AM, что свободен.")
         except Exception:
             pass
 
 
-async def remember_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Keep users.username fresh so «/task @someone» finds people (checked once per run)."""
-    u = update.effective_user
-    if not u or u.is_bot or not u.username:
+async def take_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """▶️ Взял в работу."""
+    q = update.callback_query
+    tid = int(q.data.split("_")[1])
+    from db.models import AsyncSessionLocal, Task
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as s:
+        task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+        if not task or task.status not in ("pending", "overdue"):
+            await q.answer("Задача уже в работе или закрыта")
+            await q.edit_message_reply_markup(None)
+            return
+        task.status = "in_progress"
+        await s.commit()
+        await _log_task_status(s, task.id, "in_progress", q.from_user.id)
+    await q.answer("В работе ▶️")
+    await q.edit_message_text(f"▶️ В работе: «{task.title}»", reply_markup=_submit_btn(task.id))
+
+
+async def _tell_revision_author(context, s, task, text):
+    """DM whoever sent the last revision (the AM) — e.g. when the executor will take it."""
+    from db.models import StatusEvent, User
+    from sqlalchemy import select
+    tg = (await s.execute(select(User.telegram_id).join(StatusEvent, StatusEvent.actor_id == User.id).where(
+        StatusEvent.entity == "task", StatusEvent.entity_id == task.id, StatusEvent.status == "revision")
+        .order_by(StatusEvent.created_at.desc()).limit(1))).scalar_one_or_none()
+    if tg:
+        try:
+            await context.bot.send_message(tg, text)
+        except Exception:
+            pass
+
+
+async def eta_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """▶️ Беру сейчас / ⏰ Укажу время — the executor's answer to revisions."""
+    q = update.callback_query
+    action, tid = q.data.split("_")
+    tid = int(tid)
+    from db.models import AsyncSessionLocal, Task, User
+    from sqlalchemy import select
+    from datetime import datetime as _dt, timezone as _tz
+    async with AsyncSessionLocal() as s:
+        task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+        if not task or task.status != "revision":
+            await q.answer("Правки уже сданы или задача закрыта")
+            await q.edit_message_reply_markup(None)
+            return
+        if action == "etaset":
+            context.user_data["eta_task"] = tid
+            await q.answer()
+            await q.message.reply_text("Во сколько возьмёшься? Напиши время, например 15:40")
+            return
+        now = _dt.now(_tz.utc)
+        task.eta_at = task.eta_notified_at = now
+        await s.commit()
+        who = (await s.execute(select(User.full_name).where(
+            User.telegram_id == q.from_user.id))).scalar_one_or_none() or q.from_user.first_name
+        await _tell_revision_author(context, s, task, f"▶️ {who} взял правки по «{task.title}» сейчас "
+                                                      f"({now.astimezone(_TASHKENT).strftime('%H:%M')})")
+    await q.answer("AM знает, что ты взялся")
+    await q.edit_message_reply_markup(_submit_btn(tid, "📤 Сдать новую версию"))
+
+
+def _parse_hhmm(text):
+    """«15:40» / «15.40» / «1540» → today in Tashkent (tomorrow if already passed)."""
+    from datetime import datetime as _dt
+    m = re.fullmatch(r"\s*(\d{1,2})[:.\s]?(\d{2})\s*", text or "")
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        return None
+    now = _tk_now()
+    at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+    return at if at > now else at + timedelta(days=1)
+
+
+async def _eta_answer(update, context, tid):
+    msg = update.effective_message
+    at = _parse_hhmm(msg.text)
+    if not at:
+        await msg.reply_text("Не понял время. Напиши так: 15:40")
         return
-    seen = context.bot_data.setdefault("unames", {})
-    if seen.get(u.id) == u.username.lower():
-        return
-    seen[u.id] = u.username.lower()
+    context.user_data.pop("eta_task", None)
+    from db.models import AsyncSessionLocal, Task, User
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as s:
+        task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+        if not task or task.status != "revision":
+            await msg.reply_text("Правки уже сданы или задача закрыта.")
+            return
+        task.eta_at, task.eta_notified_at = at, None
+        await s.commit()
+        who = (await s.execute(select(User.full_name).where(
+            User.telegram_id == update.effective_user.id))).scalar_one_or_none() or update.effective_user.first_name
+        day = "" if at.date() == _tk_now().date() else " завтра"
+        await _tell_revision_author(context, s, task, f"⏰ {who} возьмёт правки по «{task.title}»{day} в {at:%H:%M}")
+    await msg.reply_text(f"👌 Записал: берёшь{day} в {at:%H:%M}. AM в курсе. Напомню в это время.",
+                         reply_markup=_submit_btn(tid, "📤 Сдать новую версию"))
+
+
+# ── work in Telegram: role keyboard in the bot's private chat ─────────────
+# Planning lives in the Mini App; the hand-in / review loop runs here on buttons.
+BTN_SUBMIT = "📤 Сдать работу"
+BTN_REVIEW = "👀 На проверке"
+BTN_APP = "📱 Приложение"
+OPEN_STATUSES = ("pending", "in_progress", "revision", "overdue")
+
+
+def _menu_kb(role):
+    from telegram import ReplyKeyboardMarkup, KeyboardButton
+    main = BTN_REVIEW if role in MANAGER_ROLES else BTN_SUBMIT
+    return ReplyKeyboardMarkup([[KeyboardButton(main),
+                                 KeyboardButton(BTN_APP, web_app=WebAppInfo(url=WEBAPP_URL))]],
+                               resize_keyboard=True, is_persistent=True)
+
+
+def _submit_btn(task_id, label="📤 Сдать"):
+    return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=f"dmsub_{task_id}")]])
+
+
+async def submit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«📤 Сдать работу»: pick one of my open tasks."""
+    msg = update.effective_message
     try:
-        from db.models import AsyncSessionLocal, User
-        from sqlalchemy import update as sa_update
+        from db.models import AsyncSessionLocal, Task, TaskAssignee, User
+        from sqlalchemy import select, or_
         async with AsyncSessionLocal() as s:
-            await s.execute(sa_update(User).where(User.telegram_id == u.id,
-                                                  User.username.is_distinct_from(u.username.lower()))
-                            .values(username=u.username.lower()))
-            await s.commit()
+            uid = (await s.execute(select(User.id).where(
+                User.telegram_id == update.effective_user.id))).scalar_one_or_none()
+            if not uid:
+                await msg.reply_text("Ты ещё не в команде — открой приложение и зарегистрируйся.")
+                return
+            mine = select(TaskAssignee.task_id).where(TaskAssignee.user_id == uid)
+            tasks = (await s.execute(select(Task).where(
+                or_(Task.assignee_id == uid, Task.id.in_(mine)),
+                Task.status.in_(OPEN_STATUSES))
+                .order_by(Task.priority != "urgent", Task.status != "revision",
+                          Task.deadline.is_(None), Task.deadline).limit(20))).scalars().all()
     except Exception as e:
-        logger.warning(f"remember_username: {e}")
+        logger.warning(f"submit_menu: {e}")
+        await msg.reply_text("Что-то пошло не так, попробуй ещё раз.")
+        return
+    if not tasks:
+        await msg.reply_text("У тебя нет открытых задач 👌")
+        return
+    def label(t):
+        dl = f" · до {t.deadline.astimezone(_TASHKENT).strftime('%d.%m %H:%M')}" if t.deadline else ""
+        mark = ("🔥 " if t.priority == "urgent" and t.status == "revision" else "🔄 " if t.status == "revision"
+                else "🔴 " if t.status == "overdue" else "")
+        return f"{mark}{t.title}{dl}"[:64]
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(label(t), callback_data=f"dmsub_{t.id}")] for t in tasks])
+    await msg.reply_text("Какую задачу сдаёшь?", reply_markup=kb)
+
+
+async def submit_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """A task picked for hand-in (from the list, a reminder or the revision message)."""
+    q = update.callback_query
+    tid = int(q.data.split("_")[1])
+    from db.models import AsyncSessionLocal, Task
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as s:
+        task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+    if not task or task.status not in OPEN_STATUSES:
+        await q.answer("Эта задача уже сдана или закрыта", show_alert=True)
+        return
+    if q.message.chat.type != "private":
+        # pressed in a group — the file goes to the private chat, not to everyone
+        await q.answer("Сдать можно в личке с ботом: «📤 Сдать работу»", show_alert=True)
+        return
+    await q.answer()
+    context.user_data["submit_task"] = tid
+    await q.message.reply_text(
+        f"📎 «{task.title}»\nПришли сюда файл (фото, видео, документ) или ссылку на работу.")
+
+
+async def dm_submission(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """The file / link for the picked task: → review, posted to the project topic as a new
+    version with ✅ Принять / 🔄 Правки for the AM."""
+    msg = update.effective_message
+    if context.user_data.get("eta_task") and msg.text:
+        await _eta_answer(update, context, context.user_data["eta_task"])
+        return
+    tid = context.user_data.get("submit_task")
+    if not tid:
+        if not msg.text:   # a file with no task picked
+            await msg.reply_text("Сначала выбери задачу: «📤 Сдать работу» внизу.")
+        return
+    fid = ftype = link = None
+    if msg.photo:
+        fid, ftype = msg.photo[-1].file_id, "photo"
+    elif msg.video:
+        fid, ftype = msg.video.file_id, "video"
+    elif msg.document:
+        fid, ftype = msg.document.file_id, "document"
+    elif msg.text:
+        m = re.search(r"https?://\S+|\b[\w-]+\.[a-z]{2,}/\S*", msg.text)
+        link = m.group(0) if m else None
+    if not fid and not link:
+        await msg.reply_text("Нужен файл или ссылка. Пришли ещё раз 🙂")
+        return
+    context.user_data.pop("submit_task", None)
+    try:
+        from db.models import AsyncSessionLocal, Task, User, ReferenceItem
+        from sqlalchemy import select
+        from datetime import datetime as _dt, timezone as _tz
+        async with AsyncSessionLocal() as s:
+            task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+            if not task or task.status not in OPEN_STATUSES:
+                await msg.reply_text("Эта задача уже сдана или закрыта.")
+                return
+            me = (await s.execute(select(User).where(
+                User.telegram_id == update.effective_user.id))).scalar_one_or_none()
+            if fid:
+                task.file_id, task.file_type = fid, ftype
+            else:
+                s.add(ReferenceItem(task_id=task.id, kind="link",
+                                    url=link if "://" in link else "https://" + link,
+                                    title="Сдано", added_by=me.id if me else None))
+            task.status = "review"
+            task.submitted_at = _dt.now(_tz.utc)
+            await s.commit()
+            await _log_task_status(s, task.id, "review", update.effective_user.id)
+            version = await _task_version(s, task.id)
+            who = me.full_name if me else update.effective_user.first_name
+            posted = await _post_for_review(context, s, task, version, who, fid, ftype, link)
+            if posted:   # the file is in the topic; the AM in charge also gets it in private
+                await _post_for_review(context, s, task, version, who, fid, ftype, link,
+                                       chats=[(tg, None) for tg in await _project_am_tgs(s, task.project_id)
+                                              if tg != update.effective_user.id])
+    except Exception as e:
+        logger.warning(f"dm_submission: {e}")
+        await msg.reply_text("Не получилось сдать, попробуй ещё раз.")
+        return
+    await msg.reply_text(f"✅ Сдано: «{task.title}», версия {version}. "
+                         + ("AM проверит в теме проекта." if posted else "AM получил на проверку."))
+    try:
+        from db.models import AsyncSessionLocal
+        async with AsyncSessionLocal() as s:
+            await _suggest_next(context, s, task)
+    except Exception as e:
+        logger.warning(f"suggest_next: {e}")
+
+
+async def _project_am_tgs(s, project_id):
+    """Telegram ids of the AM responsible for the project (project or client AM);
+    all managers if nobody is set."""
+    from db.models import Project, Client, User
+    from sqlalchemy import select
+    am_ids = set()
+    if project_id:
+        row = (await s.execute(select(Project.am_id, Client.am_id).join(
+            Client, Client.id == Project.client_id, isouter=True).where(Project.id == project_id))).first()
+        am_ids = {x for x in (row or ()) if x}
+    q = select(User.telegram_id).where(User.is_active.is_(True), User.telegram_id.isnot(None))
+    q = q.where(User.id.in_(am_ids)) if am_ids else q.where(User.role.in_(("admin", "am")))
+    return list((await s.execute(q)).scalars().all())
+
+
+async def _post_for_review(context, s, task, version, who, fid=None, ftype=None, link=None, chats=None,
+                           client=False):
+    """Show a handed-in work with ✅ Принять / 🔄 Правки: in the project's topic(s), or —
+    if the project has none — in the managers' private chats. Returns True if posted to a topic."""
+    from db.models import ProjectChat, User
+    from sqlalchemy import select
+    cap = (f"📎 Версия {version} · «{task.title}»\n👤 {who}" + (f"\n🔗 {link}" if link else "")
+           + ("\n🕓 у клиента на утверждении" if client else ""))
+    targets, in_topic = chats, False
+    if targets is None:
+        targets = (await s.execute(select(ProjectChat.chat_id, ProjectChat.thread_id)
+                                   .where(ProjectChat.project_id == task.project_id))).all() if task.project_id else []
+        in_topic = bool(targets)
+        if not targets:
+            targets = [(tg, None) for tg in (await s.execute(select(User.telegram_id).where(
+                User.role.in_(MANAGER_ROLES), User.is_active.is_(True),
+                User.telegram_id.isnot(None)))).scalars().all()]
+    send = {"photo": context.bot.send_photo, "video": context.bot.send_video}.get(ftype, context.bot.send_document)
+    for chat_id, thread_id in targets:
+        try:
+            if fid:
+                await send(chat_id, fid, caption=cap[:1024], message_thread_id=thread_id or None,
+                           reply_markup=_review_kb(task.id, client))
+            else:
+                await context.bot.send_message(chat_id, cap, message_thread_id=thread_id or None,
+                                               reply_markup=_review_kb(task.id, client))
+        except Exception as e:
+            logger.warning(f"post_for_review {chat_id}: {e}")
+    return in_topic
+
+
+async def review_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«👀 На проверке» (AM): every handed-in work, each with ✅ Принять / 🔄 Правки."""
+    msg = update.effective_message
+    if await _pg_role(update.effective_user.id) not in MANAGER_ROLES:
+        await msg.reply_text("Это меню для AM.")
+        return
+    try:
+        from db.models import AsyncSessionLocal, Task, User, Project
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as s:
+            q_rev = select(Task).where(Task.status.in_(("review", "client")))
+            if await _pg_role(update.effective_user.id) == "am":
+                from db.models import Client
+                me = (await s.execute(select(User.id).where(
+                    User.telegram_id == update.effective_user.id))).scalar_one()
+                my_projects = select(Project.id).join(Client, Client.id == Project.client_id, isouter=True) \
+                    .where((Project.am_id == me) | (Client.am_id == me))
+                if (await s.execute(my_projects.limit(1))).first():
+                    q_rev = q_rev.where(Task.project_id.in_(my_projects))
+            tasks = (await s.execute(q_rev
+                                     .order_by(Task.submitted_at.is_(None), Task.submitted_at)
+                                     .limit(15))).scalars().all()
+            if not tasks:
+                await msg.reply_text("На проверке ничего нет 👌")
+                return
+            n_cli = len([t for t in tasks if t.status == "client"])
+            await msg.reply_text(f"На проверке: {len(tasks) - n_cli}" + (f" · у клиента: {n_cli}" if n_cli else ""))
+            for t in tasks:
+                who = (await s.execute(select(User.full_name).where(
+                    User.id == t.assignee_id))).scalar_one_or_none() if t.assignee_id else None
+                proj = (await s.execute(select(Project.name).where(
+                    Project.id == t.project_id))).scalar_one_or_none() if t.project_id else None
+                version = await _task_version(s, t.id)
+                await _post_for_review(context, s, t, version,
+                                       f"{who or '—'}" + (f" · 📁 {proj}" if proj else ""),
+                                       t.file_id, t.file_type, chats=[(msg.chat_id, None)],
+                                       client=t.status == "client")
+    except Exception as e:
+        logger.warning(f"review_list: {e}")
+        await msg.reply_text("Что-то пошло не так, попробуй ещё раз.")
+
+
+def _tk_now():
+    from datetime import datetime as _dt
+    return _dt.now(_TASHKENT)
 
 
 # ── deadlines: «2 часа до дедлайна» + «просрочена» (not at night) ─────
@@ -787,19 +1058,52 @@ async def pg_overdue_job(context: ContextTypes.DEFAULT_TYPE):
                 dl = task.deadline.astimezone(_TASHKENT).strftime("%H:%M")
                 await _dm_assignees(context, s, task,
                                     f"⏳ До дедлайна {left_s} (в {dl}): {task.title}\n"
-                                    f"Готово — сдай файл в тему проекта.")
+                                    f"Готово — сдавай 👇", kb=_submit_btn(task.id))
                 task.remind_notified_at = now
+            await s.commit()
+
+            # «you said you'd take the revisions at 15:40»
+            due = (await s.execute(select(Task).where(
+                Task.status == "revision", Task.eta_at.isnot(None), Task.eta_at <= now,
+                Task.eta_notified_at.is_(None)).limit(50))).scalars().all()
+            for task in due:
+                await _dm_assignees(context, s, task,
+                                    f"⏰ {task.eta_at.astimezone(_TASHKENT):%H:%M} — время взяться за правки "
+                                    f"«{task.title}»", kb=_submit_btn(task.id, "📤 Сдать новую версию"))
+                task.eta_notified_at = now
             await s.commit()
 
             if _quiet_now():
                 return
+            # the client has been silent for a day -> nudge the AM who sent it
+            from db.models import StatusEvent, User
+            silent = (await s.execute(select(Task, User.telegram_id)
+                      .join(StatusEvent, (StatusEvent.entity == "task") & (StatusEvent.entity_id == Task.id)
+                            & (StatusEvent.status == "client"))
+                      .join(User, User.id == StatusEvent.actor_id)
+                      .where(Task.status == "client", Task.client_nudged_at.is_(None),
+                             StatusEvent.created_at < now - _td(hours=24))
+                      .order_by(StatusEvent.created_at.desc()).limit(50))).all()
+            for task, am_tg in silent:
+                if task.client_nudged_at:
+                    continue
+                try:
+                    await context.bot.send_message(
+                        am_tg, f"🕓 Клиент молчит больше суток по «{task.title}» — напомни ему.",
+                        reply_markup=_review_kb(task.id, client=True))
+                except Exception:
+                    pass
+                task.client_nudged_at = now
+            await s.commit()
+
             tasks = (await s.execute(select(Task).where(
                 Task.deadline.isnot(None), Task.deadline < now - _td(minutes=15),
                 Task.status.in_(("pending", "in_progress")),
                 Task.overdue_notified_at.is_(None)).limit(50))).scalars().all()
             for task in tasks:
                 dl = task.deadline.astimezone(_TASHKENT).strftime("%d.%m %H:%M")
-                await _dm_assignees(context, s, task, f"⏰ Просрочена задача: {task.title}\nДедлайн был {dl}")
+                await _dm_assignees(context, s, task, f"⏰ Просрочена задача: {task.title}\nДедлайн был {dl}",
+                                    kb=_submit_btn(task.id))
                 for chat_id, thread_id in (await s.execute(select(
                         ProjectChat.chat_id, ProjectChat.thread_id)
                         .where(ProjectChat.project_id == task.project_id))).all():
@@ -1054,7 +1358,6 @@ async def _post_init(app: Application):
             BotCommand("start",   "Открыть приложение"),
             BotCommand("install", "Поставить иконку на телефон"),
             BotCommand("bind",    "Привязать тему к проекту / завести клиента (AM)"),
-            BotCommand("task",    "Задача из сообщения: ответь /task @кто 15:00 (AM)"),
         ])
         logger.info("✅ menu button + commands set")
     except Exception as e:
@@ -1063,8 +1366,9 @@ async def _post_init(app: Application):
 
 # ── main ────────────────────────────────────────────────────────
 
-def main():
-    app = Application.builder().token(TOKEN).post_init(_post_init).build()
+def build_app(builder=None):
+    """All handlers + jobs. `builder` lets a test harness plug in a recording bot."""
+    app = (builder or Application.builder().token(TOKEN)).post_init(_post_init).build()
 
     app.job_queue.run_repeating(pg_overdue_job, interval=300, first=90)
     app.job_queue.run_repeating(shoot_reminder_job, interval=300, first=120)
@@ -1074,7 +1378,6 @@ def main():
     app.add_handler(CommandHandler("install", install_cmd))
     app.add_handler(CommandHandler("bind",    bind_cmd))
     app.add_handler(CommandHandler("unbind",  unbind_cmd))
-    app.add_handler(CommandHandler("task",    task_cmd))
     app.add_handler(CallbackQueryHandler(bind_pick_cb, pattern=r"^pcbind_\d+_\d+$"))
 
     # Group media log + reaction-to-reference
@@ -1088,15 +1391,27 @@ def main():
     app.add_handler(CallbackQueryHandler(subfile_pick_cb, pattern=r"^subfile_\d+_\d+$"))
     app.add_handler(CallbackQueryHandler(subfile_keep_cb, pattern=r"^sub(ref|new)_\d+$"))
     # AM review in the group: ✅ / 🔄 buttons + the reply with what to fix
-    app.add_handler(CallbackQueryHandler(review_cb, pattern=r"^rv(ok|fix)_\d+$"))
+    app.add_handler(CallbackQueryHandler(review_cb, pattern=r"^rv(ok|fix|cli)_\d+$"))
+    app.add_handler(CallbackQueryHandler(eta_cb, pattern=r"^eta(now|set)_\d+$"))
+    app.add_handler(CallbackQueryHandler(take_cb, pattern=r"^take_\d+$"))
     app.add_handler(CallbackQueryHandler(revision_send_cb, pattern=r"^rv(send|cancel)$"))
+    # private chat: role keyboard, hand-in of a file / link, review list
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.Text([BTN_SUBMIT]), submit_menu))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.Text([BTN_REVIEW]), review_list))
+    app.add_handler(CallbackQueryHandler(submit_pick_cb, pattern=r"^dmsub_\d+$"))
     app.add_handler(MessageHandler(
-        filters.TEXT & filters.REPLY & filters.ChatType.GROUPS & ~filters.COMMAND,
+        filters.TEXT & filters.REPLY & ~filters.COMMAND,      # group topic or the AM's private chat
         revision_comment_reply), group=3)
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & ~filters.COMMAND & ~filters.REPLY
+        & ~filters.Text([BTN_SUBMIT, BTN_REVIEW, BTN_APP])
+        & (filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT), dm_submission), group=5)
 
-    # remember @usernames (for /task @someone) — its own group, sees every update
-    app.add_handler(MessageHandler(filters.ALL, remember_username), group=4)
+    return app
 
+
+def main():
+    app = build_app()
     logger.info("✅ WHY NOT? OS бот запущен")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
