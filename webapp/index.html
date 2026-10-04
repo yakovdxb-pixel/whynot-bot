@@ -317,6 +317,10 @@
   .card-actions > button{flex:1 1 0; min-width:0; margin-top:0; padding:10px 8px; font-size:14px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .card-actions > .done-mark{flex:1; margin-top:0; align-self:center}
+  @media (hover:none) and (pointer:coarse){
+    .card-actions > .swipe-dup{display:none}            /* swipe right does it on phones */
+    .card-actions:not(:has(> :not(.swipe-dup))){display:none}
+  }
   /* link covers in the refs strip: ▶ marks a video, plain cover = photo/page */
   .ref-thumb .rt-play{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none}
   .ref-thumb .rt-play::after{content:"▶"; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,.55);
@@ -1694,11 +1698,12 @@ function chainLine(c, steps, canEdit){
 function contentPrimary(c, steps, legacy, canEdit){
   const st = c.pipeline_status || "script";
   if (!canEdit) return "";
-  if (st === "approval" && isManager()) return `<button class="act" data-advance="${c.id}">${esc(t("chain.approve"))}</button>`;
-  if (st === "done" && isManager()) return `<button class="act" data-advance="${c.id}">${esc(t("chain.publish"))}</button>`;
+  // .swipe-dup: on touch screens swipe right does this, so the button is hidden there
+  if (st === "approval" && isManager()) return `<button class="act swipe-dup" data-advance="${c.id}">${esc(t("chain.approve"))}</button>`;
+  if (st === "done" && isManager()) return `<button class="act swipe-dup" data-advance="${c.id}">${esc(t("chain.publish"))}</button>`;
   if (st !== "script" || c.launched_at || legacy.length) return "";
   return (steps.length ? "" : `<button class="act ghost" data-chain-plan="${c.id}">${esc(t("chain.plan"))}</button>`)
-    + `<button class="act" data-chain-launch="${c.id}">${esc(t("chain.launch"))}</button>`;
+    + `<button class="act swipe-dup" data-chain-launch="${c.id}">${esc(t("chain.launch"))}</button>`;
 }
 
 function cjobChip(c, j){
