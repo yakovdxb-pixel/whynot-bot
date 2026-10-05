@@ -471,12 +471,19 @@
   .mp-opt .mp-load{font-weight:500; color:var(--hint); font-size:11px; margin-left:3px}
   .mp-opt .mp-load.hot{color:var(--st-overdue-ink)}
   /* Telegram-like swipe actions on cards */
-  /* swipe: horizontal drags are ours (vertical still scrolls); the bg sits behind the card */
-  #view .card, #view .icard{touch-action:pan-y}
-  .swipe-bg{position:absolute; z-index:0; display:flex; align-items:center;
-    justify-content:space-between; padding:0 16px; color:#fff; font-size:14px; font-weight:600; overflow:hidden}
-  .swipe-bg span{opacity:.75; transition:opacity .12s, transform .12s; white-space:nowrap}
-  .swipe-bg span.armed{opacity:1; font-weight:800; transform:scale(1.06)}
+  /* swipe = native horizontal scroll: [action ←] [card] [→ action], snaps back to the card */
+  .sw-row{display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none; margin-bottom:10px; border-radius:18px}
+  .sw-row::-webkit-scrollbar{display:none}
+  .igrid .sw-row{margin-bottom:0; border-radius:16px}
+  .sw-card{flex:0 0 100%; scroll-snap-align:start; scroll-snap-stop:always; min-width:0}
+  .sw-card > .card, .sw-card > .icard{margin-bottom:0; height:100%}
+  .sw-act{flex:0 0 46%; display:flex; align-items:center; padding:0 16px; color:#fff; font-size:14px;
+    font-weight:600; white-space:nowrap; overflow:hidden}
+  .sw-l{justify-content:flex-end; border-radius:18px 0 0 18px}
+  .sw-r{justify-content:flex-start; border-radius:0 18px 18px 0}
+  .sw-act span{opacity:.75; transition:opacity .12s, transform .12s}
+  .sw-act.armed span{opacity:1; font-weight:800; transform:scale(1.08)}
   /* inline video: cover with ▶ -> embedded player (Instagram / YouTube / TikTok) */
   .vmedia{position:relative; margin-top:10px; border-radius:14px; overflow:hidden; cursor:pointer;
     background:#0d0a12; aspect-ratio:4/5; max-height:420px}
@@ -1429,7 +1436,7 @@ function swipeActionsFor(card){
         : tk ? { label: t("swipe.open"), bg: "var(--st-pending)", run: () => openTaskView(tk) } : null,
     };
   }
-  if (card.matches("[data-content-edit]") || btn("[data-advance], [data-copy-caption]")){
+  if (card.matches("[data-content-edit]") || btn("[data-advance]")){
     const go = btn("[data-advance]");
     const cid = +(card.dataset.contentEdit || 0);
     const c = contentById[cid];
@@ -1465,72 +1472,50 @@ async function ideaAction(id, what){
   finally { busy = false; }
   await load(currentTab);
 }
-let _swipedAt = 0;
-(function initSwipe(){
-  let s = null;
-  // The touched card must stay in the DOM for the whole gesture: iOS WebKit stops
-  // delivering touchmove/touchend once the touch target is detached (even if re-inserted).
-  // So the coloured background goes in *next to* the card, not around it.
-  const reset = (bg, card) => {
-    card.style.transition = "transform .2s ease"; card.style.transform = "";
-    setTimeout(() => { bg.remove(); card.style.transition = ""; card.style.zIndex = ""; card.style.willChange = ""; }, 220);
-  };
-  view.addEventListener("touchstart", e => {
-    const card = e.target.closest(".card, .icard");
-    if (!card || e.touches.length !== 1 || e.target.closest("input, textarea, select, iframe, .vmedia.playing")) return;
-    s = { card, x0: e.touches[0].clientX, y0: e.touches[0].clientY, dx: 0, lock: null, acts: null, wrap: null, armed: false };
-  }, { passive: true });
-  view.addEventListener("touchmove", e => {
-    if (!s) return;
-    const dx = e.touches[0].clientX - s.x0, dy = e.touches[0].clientY - s.y0;
-    if (!s.lock){
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      s.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? "h" : "v";
-      if (s.lock === "h"){
-        s.acts = swipeActionsFor(s.card);
-        if (!s.acts || (!s.acts.right && !s.acts.left)){ s.lock = "v"; return; }
-        const card = s.card, parent = card.parentElement;
-        if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
-        const bg = document.createElement("div");
-        bg.className = "swipe-bg";
-        bg.style.cssText = `top:${card.offsetTop}px; left:${card.offsetLeft}px; width:${card.offsetWidth}px; height:${card.offsetHeight}px; inset:auto; border-radius:${getComputedStyle(card).borderRadius}`;
-        bg.innerHTML = `<span>${esc(s.acts.right ? s.acts.right.label : "")}</span><span>${esc(s.acts.left ? s.acts.left.label : "")}</span>`;
-        parent.insertBefore(bg, card);
-        if (getComputedStyle(card).position === "static") card.style.position = "relative";
-        card.style.zIndex = "1"; card.style.willChange = "transform";
-        s.wrap = bg;
+/* Swipes (phones only). Each swipeable card sits in its own horizontal scroller with
+   the action panels on its sides, so the drag itself is native scrolling — nothing for
+   Telegram's WebView or iOS to cancel. Releasing past SWIPE_AT runs the action, then the
+   row snaps back to the card. */
+const TOUCH_UI = matchMedia("(hover:none) and (pointer:coarse)").matches;
+function decorateSwipes(root){
+  if (!TOUCH_UI || !root) return;
+  root.querySelectorAll(".card[data-task-edit], .card[data-content-edit], .icard").forEach(card => {
+    if (card.closest(".sw-row, .sheet, .tv-sheet")) return;
+    const acts = swipeActionsFor(card);
+    if (!acts || (!acts.right && !acts.left)) return;
+    const row = document.createElement("div");
+    row.className = "sw-row";
+    const panel = (act, side) => act ? `<div class="sw-act sw-${side}" style="background:${act.bg}"><span>${esc(act.label)}</span></div>` : "";
+    card.replaceWith(row);
+    row.innerHTML = panel(acts.right, "l") + `<div class="sw-card"></div>` + panel(acts.left, "r");
+    row.querySelector(".sw-card").appendChild(card);
+    const rest = () => (row.querySelector(".sw-l") ? row.querySelector(".sw-l").offsetWidth : 0);
+    row.scrollLeft = rest();
+    let touching = false, fired = false;
+    const offset = () => rest() - row.scrollLeft;           // > 0: dragged right
+    const arm = () => {
+      const d = offset(), act = d > 0 ? acts.right : acts.left;
+      const on = !!act && Math.abs(d) >= SWIPE_AT;
+      const p = row.querySelector(d > 0 ? ".sw-l" : ".sw-r");
+      if (p && p.classList.contains("armed") !== on){ p.classList.toggle("armed", on); if (on) haptic(); }
+    };
+    row.addEventListener("scroll", () => { if (touching) arm(); }, { passive: true });
+    row.addEventListener("touchstart", () => { touching = true; fired = false; }, { passive: true });
+    const release = () => {
+      if (!touching) return;
+      touching = false;
+      const d = offset(), act = d > 0 ? acts.right : acts.left;
+      row.querySelectorAll(".sw-act.armed").forEach(p => p.classList.remove("armed"));
+      if (act && Math.abs(d) >= SWIPE_AT && !fired){
+        fired = true;
+        row.scrollTo({ left: rest(), behavior: "smooth" });
+        setTimeout(() => act.run(), 180);
       }
-    }
-    if (s.lock !== "h") return;
-    e.preventDefault();
-    let d = dx;
-    if ((d > 0 && !s.acts.right) || (d < 0 && !s.acts.left)) d = d / 6;          // resist the empty side
-    else if (Math.abs(d) > SWIPE_AT) d = Math.sign(d) * (SWIPE_AT + (Math.abs(d) - SWIPE_AT) / 3);
-    s.dx = dx;
-    s.card.style.transform = `translateX(${d}px)`;
-    const act = dx > 0 ? s.acts.right : s.acts.left;
-    const bg = s.wrap;
-    bg.style.background = act ? act.bg : "transparent";
-    bg.children[0].style.visibility = dx > 0 ? "visible" : "hidden";
-    bg.children[1].style.visibility = dx < 0 ? "visible" : "hidden";
-    const armed = !!act && Math.abs(dx) >= SWIPE_AT;
-    if (armed !== s.armed){ s.armed = armed; if (armed) haptic(); bg.children[dx > 0 ? 0 : 1].classList.toggle("armed", armed); }
-  }, { passive: false });
-  const end = () => {
-    if (!s) return;
-    const st = s; s = null;
-    if (st.lock !== "h" || !st.wrap) return;
-    _swipedAt = Date.now();
-    const act = st.dx > 0 ? st.acts.right : st.acts.left;
-    reset(st.wrap, st.card);
-    if (act && Math.abs(st.dx) >= SWIPE_AT) setTimeout(() => act.run(), 160);
-  };
-  view.addEventListener("touchend", end);
-  view.addEventListener("touchcancel", end);
-  // a swipe must not also count as a tap on the card
-  // (only real taps — the swipe action itself clicks the card's button programmatically)
-  document.addEventListener("click", e => { if (e.isTrusted && Date.now() - _swipedAt < 450){ e.stopPropagation(); e.preventDefault(); } }, true);
-})();
+    };
+    row.addEventListener("touchend", release, { passive: true });
+    row.addEventListener("touchcancel", release, { passive: true });
+  });
+}
 
 function isTaskAssignee(tk){
   return !!ME && (tk.assignee_id === ME.id || (tk.assignees || []).some(a => a.id === ME.id));
@@ -1830,7 +1815,7 @@ function contentCard(c, {advance=true, jobs=true}={}){
     ${c.hook ? `<p class="desc">${esc(c.hook)}</p>` : ""}
     ${refStrip("content", c.id, c.refs_count || 0, c.ref_thumbs)}
     ${jobList}
-    ${cardActions((c.caption ? `<button class="act ghost" data-copy-caption="${c.id}" title="${esc(t("btn.copyCaption"))}">${esc(t(jobBtns ? "btn.copyCaptionShort" : "btn.copyCaption"))}</button>` : "") + jobBtns)}
+    ${cardActions(jobBtns)}
   </div>`;
 }
 
@@ -2516,6 +2501,7 @@ async function load(tab){
   view.innerHTML = `<div class="loader">${esc(t("misc.loading"))}</div>`;
   try {
     await RENDERERS[tab]();
+    decorateSwipes(view);
     accessDenied = false;
   } catch (e){
     const code = e && e.detail && e.detail.code;
@@ -2779,12 +2765,7 @@ view.addEventListener("click", async e => {
     return;
   }
 
-  const copyCap = e.target.closest("[data-copy-caption]");
-  if (copyCap){
-    const c = contentById[+copyCap.dataset.copyCaption];
-    if (c && c.caption && await copyText(c.caption)){ haptic(); toast(t("toast.captionCopied")); }
-    return;
-  }
+
 
   const ideaCard = e.target.closest("[data-idea-open]");
   if (ideaCard && !e.target.closest("button, a")){
