@@ -169,8 +169,14 @@ async def reaction_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"reaction_ref: {e}")
 
 
+SUBMIT_STATUSES = ("pending", "in_progress", "revision", "overdue", "review")   # a new file = new version
+
+
 async def submit_file_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """A photo/video/document dropped in a project's bound topic -> ask which active task it's for."""
+    """A photo/video/document dropped in a project's bound topic by someone with tasks there:
+    one open task → attached right away as the next version; several → «к какой задаче?»
+    (only their own). No own task here (raw footage, an AM sharing something) → silence;
+    the ✍ reaction still saves it to references. An album asks once."""
     msg = update.effective_message
     if not msg or update.effective_chat.type not in ("group", "supergroup"):
         return
@@ -184,84 +190,66 @@ async def submit_file_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         fid, ftype, mime, fname = d.file_id, "document", d.mime_type, d.file_name
     if not fid:
         return
+    # an album = several updates with one media_group_id: only its first file is handled
+    if msg.media_group_id:
+        seen = context.chat_data.setdefault("albums", {})
+        if msg.media_group_id in seen:
+            return
+        seen[msg.media_group_id] = True
+        if len(seen) > 200:
+            seen.pop(next(iter(seen)))
 
     thread_id = getattr(msg, "message_thread_id", None) or 0
     try:
-        from db.models import AsyncSessionLocal, ProjectChat, Project, Client, Task
-        from sqlalchemy import select
+        from db.models import AsyncSessionLocal, Task, TaskAssignee, User
+        from sqlalchemy import select, or_
         async with AsyncSessionLocal() as s:
-            proj_id = (await s.execute(select(ProjectChat.project_id).where(
-                ProjectChat.chat_id == msg.chat_id,
-                ProjectChat.thread_id == (thread_id or None)))).scalar_one_or_none()
-            if not proj_id:
-                proj_id = (await s.execute(select(ProjectChat.project_id).where(
-                    ProjectChat.chat_id == msg.chat_id))).scalar_one_or_none()
+            proj_id = await _topic_project(s, msg.chat_id, thread_id)
             if not proj_id:
                 return  # chat/topic isn't bound to a project (see /bind) — nothing to do
-            proj = (await s.execute(select(Project.name, Project.client_id)
-                    .where(Project.id == proj_id))).first()
-            if not proj:
-                return
-            client_name = proj[0]
-            if proj[1]:
-                cn = (await s.execute(select(Client.name).where(Client.id == proj[1]))).scalar_one_or_none()
-                client_name = cn or client_name
-            open_q = select(Task.id, Task.title).where(
-                Task.project_id == proj_id,
-                Task.status.notin_(("done", "published", "cancelled", "client", "queued")))
-            # the sender's own tasks only; everyone's if they have none here
-            from db.models import TaskAssignee, User
-            from sqlalchemy import or_
             me = (await s.execute(select(User.id).where(
                 User.telegram_id == update.effective_user.id))).scalar_one_or_none()
-            tasks = []
-            if me:
-                mine = select(TaskAssignee.task_id).where(TaskAssignee.user_id == me)
-                tasks = (await s.execute(open_q.where(or_(Task.assignee_id == me, Task.id.in_(mine)))
-                         .order_by(Task.deadline.is_(None), Task.deadline).limit(30))).all()
-            if not tasks:
-                tasks = (await s.execute(open_q.order_by(Task.deadline.is_(None), Task.deadline)
-                         .limit(30))).all()
+            if not me:
+                return
+            mine = select(TaskAssignee.task_id).where(TaskAssignee.user_id == me)
+            tasks = (await s.execute(select(Task.id, Task.title).where(
+                Task.project_id == proj_id, Task.status.in_(SUBMIT_STATUSES),
+                or_(Task.assignee_id == me, Task.id.in_(mine)))
+                .order_by(Task.priority != "urgent", Task.deadline.is_(None), Task.deadline)
+                .limit(20))).all()
     except Exception as e:
         logger.warning(f"submit_file_prompt: {e}")
         return
+    if not tasks:
+        return
 
-    # stash the file — the callback can't carry it (64-byte callback_data limit)
-    context.chat_data[f"subfile_{msg.message_id}"] = {
-        "file_id": fid, "file_type": ftype, "from_user": update.effective_user.id,
-        "project_id": proj_id, "mime": mime, "file_name": fname,
-        "caption": (msg.caption or "").strip(), "chat_id": msg.chat_id,
-    }
+    pending = {"file_id": fid, "file_type": ftype, "from_user": update.effective_user.id,
+               "project_id": proj_id, "mime": mime, "file_name": fname,
+               "caption": (msg.caption or "").strip(), "chat_id": msg.chat_id}
+    if len(tasks) == 1:
+        res = await _submit_from_group(context, tasks[0][0], pending)
+        if res:
+            task, version, prev = res
+            context.chat_data[f"undo_{task.id}"] = {**prev, "by": update.effective_user.id}
+            await msg.reply_text(f"📎 Версия {version} · «{task.title}» — на проверке\n"
+                                 f"AM: смотри файл выше и жми кнопку 👇",
+                                 message_thread_id=thread_id or None,
+                                 reply_markup=_review_kb(task.id, undo=True))
+        return
+
+    # several tasks: which one? (the callback can't carry the file — 64-byte limit)
+    context.chat_data[f"subfile_{msg.message_id}"] = pending
     kb = [[InlineKeyboardButton(f"📋 {title}"[:64], callback_data=f"subfile_{msg.message_id}_{tid}")]
           for tid, title in tasks]
-    # Always offer a way to keep the file, even when no task fits.
-    kb.append([
-        InlineKeyboardButton("📌 В референсы", callback_data=f"subref_{msg.message_id}"),
-        InlineKeyboardButton("➕ Новая задача", callback_data=f"subnew_{msg.message_id}"),
-    ])
-    text = ("📎 К какой задаче относится файл?" if tasks else
-            f"📎 У клиента {client_name} нет активных задач. Что сделать с файлом?")
-    await msg.reply_text(text, message_thread_id=thread_id or None,
+    kb.append([InlineKeyboardButton("✖ Это не сдача", callback_data=f"subskip_{msg.message_id}")])
+    await msg.reply_text("📎 К какой задаче этот файл?", message_thread_id=thread_id or None,
                          reply_markup=InlineKeyboardMarkup(kb))
 
 
-async def subfile_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Executor picked which task the submitted file belongs to -> status=review, notify managers."""
-    q = update.callback_query
-    await q.answer()
-    m = re.match(r"^subfile_(\d+)_(\d+)$", q.data or "")
-    if not m:
-        return
-    orig_msg_id, task_id = int(m.group(1)), int(m.group(2))
-    pending = context.chat_data.pop(f"subfile_{orig_msg_id}", None)
-    if not pending:
-        await q.edit_message_text("⌛ Файл потерян (бот перезапускался) — отправь его ещё раз.")
-        return
-
-    task = None
-    cname = None
-    submitter_name = "Кто-то"
-    admins = []
+async def _submit_from_group(context, task_id, pending):
+    """Attach a file posted in the topic to a task as its next version (status → review),
+    tell the AM in charge, offer the executor their next task. Returns (task, version, prev)
+    where prev lets «✖ Это не сдача» put things back."""
     try:
         from db.models import AsyncSessionLocal, Task, User, Project, Client
         from sqlalchemy import select
@@ -269,58 +257,118 @@ async def subfile_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with AsyncSessionLocal() as s:
             task = (await s.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
             if not task:
-                await q.edit_message_text("Задача не найдена (возможно, удалена).")
-                return
-            task.file_id = pending["file_id"]
-            task.file_type = pending["file_type"]
+                return None
+            prev = {"status": task.status, "file_id": task.file_id, "file_type": task.file_type,
+                    "submitted_at": task.submitted_at}
+            task.file_id, task.file_type = pending["file_id"], pending["file_type"]
             task.status = "review"
             task.submitted_at = _dt.now(_tz.utc)
             await s.commit()
             await _log_task_status(s, task.id, "review", pending["from_user"])
             version = await _task_version(s, task.id)
-
-            row = (await s.execute(select(User.full_name).where(
-                User.telegram_id == pending["from_user"]))).first()
-            if row:
-                submitter_name = row[0]
-
+            who = (await s.execute(select(User.full_name).where(
+                User.telegram_id == pending["from_user"]))).scalar_one_or_none() or "Кто-то"
+            cname = None
             if task.project_id:
-                proj = (await s.execute(select(Project.name, Project.client_id)
-                        .where(Project.id == task.project_id))).first()
-                if proj:
-                    cname = proj[0]
-                    if proj[1]:
-                        cn = (await s.execute(select(Client.name)
-                              .where(Client.id == proj[1]))).scalar_one_or_none()
-                        cname = cn or cname
-
-            admins = await _project_am_tgs(s, task.project_id)
-            version = await _task_version(s, task.id)
+                cname = (await s.execute(select(Client.name).join(Project, Project.client_id == Client.id)
+                         .where(Project.id == task.project_id))).scalar_one_or_none()
+            for tg in await _project_am_tgs(s, task.project_id):
+                if tg == pending["from_user"]:
+                    continue
+                try:
+                    await context.bot.send_message(
+                        tg, f"📎 {who} сдал «{task.title}»" + (f" по клиенту {cname}" if cname else "")
+                        + f" — версия {version}. Файл в теме проекта.", reply_markup=_review_kb(task.id))
+                except Exception:
+                    pass
+            await _suggest_next(context, s, task)
+            return task, version, prev
     except Exception as e:
-        logger.warning(f"subfile_pick_cb: {e}")
-        await q.edit_message_text("Что-то пошло не так, попробуй ещё раз.")
-        return
+        logger.warning(f"_submit_from_group: {e}")
+        return None
 
+
+async def subfile_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """The executor picked which of their tasks the file is for."""
+    q = update.callback_query
+    m = re.match(r"^subfile_(\d+)_(\d+)$", q.data or "")
+    if not m:
+        await q.answer()
+        return
+    orig_msg_id, task_id = int(m.group(1)), int(m.group(2))
+    pending = context.chat_data.get(f"subfile_{orig_msg_id}")
+    if pending and q.from_user.id != pending["from_user"]:
+        await q.answer("Выбирает тот, кто прислал файл", show_alert=True)
+        return
+    await q.answer()
+    context.chat_data.pop(f"subfile_{orig_msg_id}", None)
+    if not pending:
+        await q.edit_message_text("⌛ Файл потерян (бот перезапускался) — отправь его ещё раз.")
+        return
+    res = await _submit_from_group(context, task_id, pending)
+    if not res:
+        await q.edit_message_text("Задача не найдена (возможно, удалена).")
+        return
+    task, version, prev = res
+    context.chat_data[f"undo_{task.id}"] = {**prev, "by": q.from_user.id}
     await q.edit_message_text(f"📎 Версия {version} · «{task.title}» — на проверке\n"
                               f"AM: смотри файл выше и жми кнопку 👇",
-                              reply_markup=_review_kb(task.id))
+                              reply_markup=_review_kb(task.id, undo=True))
 
-    who = f" по клиенту {cname}" if cname else ""
-    for tg in admins:
-        if tg == pending["from_user"]:
-            continue
-        try:
-            await context.bot.send_message(
-                tg, f"📎 {submitter_name} сдал «{task.title}»{who} — версия {version}. Файл в теме проекта.",
-                reply_markup=_review_kb(task.id))
-        except Exception:
-            pass
-    try:   # keep the executor busy while the AM looks at it
-        from db.models import AsyncSessionLocal
+
+async def subfile_skip_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«✖ Это не сдача» under the «к какой задаче?» question."""
+    q = update.callback_query
+    mid = int(q.data.split("_")[1])
+    pending = context.chat_data.get(f"subfile_{mid}")
+    if pending and q.from_user.id != pending["from_user"] and await _pg_role(q.from_user.id) not in MANAGER_ROLES:
+        await q.answer("Это решает тот, кто прислал файл", show_alert=True)
+        return
+    context.chat_data.pop(f"subfile_{mid}", None)
+    await q.answer("Ок")
+    try:
+        await q.message.delete()
+    except Exception:
+        await q.edit_message_text("✖ Не сдача — файл просто остался в теме.")
+
+
+async def subfile_undo_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«✖ Это не сдача» under an auto-attached file: put the task back as it was."""
+    q = update.callback_query
+    tid = int(q.data.split("_")[1])
+    prev = context.chat_data.get(f"undo_{tid}")
+    if not prev:
+        await q.answer("Уже нельзя отменить — поправь в приложении", show_alert=True)
+        return
+    if q.from_user.id != prev["by"]:
+        await q.answer("Отменить может тот, кто прислал файл", show_alert=True)
+        return
+    try:
+        from db.models import AsyncSessionLocal, Task, StatusEvent
+        from sqlalchemy import select, delete as sa_delete
         async with AsyncSessionLocal() as s:
-            await _suggest_next(context, s, task)
+            task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+            if not task or task.status != "review":
+                await q.answer("AM уже посмотрел — поправь в приложении", show_alert=True)
+                return
+            task.status, task.file_id, task.file_type, task.submitted_at = (
+                prev["status"], prev["file_id"], prev["file_type"], prev["submitted_at"])
+            last = (await s.execute(select(StatusEvent.id).where(
+                StatusEvent.entity == "task", StatusEvent.entity_id == tid, StatusEvent.status == "review")
+                .order_by(StatusEvent.created_at.desc()).limit(1))).scalar_one_or_none()
+            if last:      # not a version after all
+                await s.execute(sa_delete(StatusEvent).where(StatusEvent.id == last))
+            await s.commit()
     except Exception as e:
-        logger.warning(f"suggest_next: {e}")
+        logger.warning(f"subfile_undo_cb: {e}")
+        await q.answer("Не получилось, попробуй ещё раз", show_alert=True)
+        return
+    context.chat_data.pop(f"undo_{tid}", None)
+    await q.answer("Отменено")
+    try:
+        await q.message.delete()
+    except Exception:
+        await q.edit_message_text("✖ Не сдача — задача как была.")
 
 
 async def subfile_keep_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -382,17 +430,20 @@ async def subfile_keep_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MANAGER_ROLES = ("admin", "am", "director")
 
 
-def _review_kb(task_id, client=False):
+def _review_kb(task_id, client=False, undo=False):
     if client:   # the AM sent it to the client and waits for their answer
         return InlineKeyboardMarkup([[
             InlineKeyboardButton("✅ Клиент принял", callback_data=f"rvok_{task_id}"),
             InlineKeyboardButton("🔥 Правки клиента", callback_data=f"rvfix_{task_id}"),
         ]])
-    return InlineKeyboardMarkup([
+    rows = [
         [InlineKeyboardButton("✅ Принять", callback_data=f"rvok_{task_id}"),
          InlineKeyboardButton("🔄 Правки", callback_data=f"rvfix_{task_id}")],
         [InlineKeyboardButton("🕓 На утверждении у клиента", callback_data=f"rvcli_{task_id}")],
-    ])
+    ]
+    if undo:   # for the executor: the file was attached automatically — maybe it isn't a hand-in
+        rows.append([InlineKeyboardButton("✖ Это не сдача", callback_data=f"subundo_{task_id}")])
+    return InlineKeyboardMarkup(rows)
 
 
 def _eta_kb(task_id):
@@ -1026,6 +1077,18 @@ async def review_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("Что-то пошло не так, попробуй ещё раз.")
 
 
+async def _topic_project(s, chat_id, thread_id):
+    """Project bound to this forum topic (or to the whole chat)."""
+    from db.models import ProjectChat
+    from sqlalchemy import select
+    pid = (await s.execute(select(ProjectChat.project_id).where(
+        ProjectChat.chat_id == chat_id, ProjectChat.thread_id == (thread_id or None)))).scalar_one_or_none()
+    if not pid:
+        pid = (await s.execute(select(ProjectChat.project_id).where(
+            ProjectChat.chat_id == chat_id))).scalars().first()
+    return pid
+
+
 def _tk_now():
     from datetime import datetime as _dt
     return _dt.now(_TASHKENT)
@@ -1390,6 +1453,8 @@ def build_app(builder=None):
         submit_file_prompt), group=2)
     app.add_handler(CallbackQueryHandler(subfile_pick_cb, pattern=r"^subfile_\d+_\d+$"))
     app.add_handler(CallbackQueryHandler(subfile_keep_cb, pattern=r"^sub(ref|new)_\d+$"))
+    app.add_handler(CallbackQueryHandler(subfile_skip_cb, pattern=r"^subskip_\d+$"))
+    app.add_handler(CallbackQueryHandler(subfile_undo_cb, pattern=r"^subundo_\d+$"))
     # AM review in the group: ✅ / 🔄 buttons + the reply with what to fix
     app.add_handler(CallbackQueryHandler(review_cb, pattern=r"^rv(ok|fix|cli)_\d+$"))
     app.add_handler(CallbackQueryHandler(eta_cb, pattern=r"^eta(now|set)_\d+$"))
