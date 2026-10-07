@@ -1982,7 +1982,10 @@ let shootUpcomingOnly = false;
 function shootCard(s){
   shootById[s.id] = s;
   const when = s.shoot_at ? fmtDateTime(s.shoot_at) : t("field.shoot_at");
-  const team = (s.participants || []).map(p => p.name).filter(Boolean).join(", ");
+  // crew with their answer to the bot's «✅ Принял / ❌ Не смогу» (only matters before the shoot)
+  const upcoming = (s.status || "planned") === "planned" && !(s.shoot_at && new Date(s.shoot_at).getTime() < Date.now());
+  const mark = p => !upcoming ? "" : p.response === "accepted" ? " ✅" : p.response === "declined" ? " ❌" : " ❓";
+  const team = (s.participants || []).filter(p => p.name).map(p => p.name + mark(p)).join(", ");
   // still «planned» but the date is gone -> show it as «прошла» (stored status untouched)
   const past = (s.status || "planned") === "planned" && s.shoot_at && new Date(s.shoot_at).getTime() < Date.now();
   const stCls = past ? "cancelled" : s.status === "done" ? "done" : s.status === "cancelled" ? "cancelled" : "in_progress";

@@ -1182,6 +1182,56 @@ async def pg_overdue_job(context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"pg_overdue_job: {e}")
 
 
+def _shoot_kb(shoot_id):
+    return InlineKeyboardMarkup([[InlineKeyboardButton("✅ Принял", callback_data=f"shok_{shoot_id}"),
+                                  InlineKeyboardButton("❌ Не смогу", callback_data=f"shno_{shoot_id}")]])
+
+
+async def shoot_answer_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«✅ Принял / ❌ Не смогу» under a shoot invitation → recorded + the AM who set it is told."""
+    q = update.callback_query
+    action, sid = q.data.split("_")
+    sid = int(sid)
+    try:
+        from db.models import AsyncSessionLocal, ShootSession, ShootParticipant, User
+        from sqlalchemy import select
+        from datetime import datetime as _dt, timezone as _tz
+        async with AsyncSessionLocal() as s:
+            me = (await s.execute(select(User).where(User.telegram_id == q.from_user.id))).scalar_one_or_none()
+            sh = (await s.execute(select(ShootSession).where(ShootSession.id == sid))).scalar_one_or_none()
+            part = (await s.execute(select(ShootParticipant).where(
+                ShootParticipant.shoot_id == sid, ShootParticipant.user_id == (me.id if me else 0)))).scalar_one_or_none()
+            if not sh or sh.status == "cancelled" or not part:
+                await q.answer("Съёмка отменена или тебя убрали из команды", show_alert=True)
+                await q.edit_message_reply_markup(None)
+                return
+            ok = action == "shok"
+            part.response = "accepted" if ok else "declined"
+            part.responded_at = _dt.now(_tz.utc)
+            await s.commit()
+            when = sh.shoot_at.astimezone(_TASHKENT).strftime("%d.%m %H:%M") if sh.shoot_at else "дата не задана"
+            am = (await s.execute(select(User.telegram_id).where(User.id == sh.created_by))).scalar_one_or_none() \
+                if sh.created_by else None
+            if not am:
+                ams = await _project_am_tgs(s, sh.project_id)
+                am = ams[0] if ams else None
+    except Exception as e:
+        logger.warning(f"shoot_answer_cb: {e}")
+        await q.answer("Не получилось, попробуй ещё раз", show_alert=True)
+        return
+    await q.answer("Записал ✅" if ok else "Записал — AM узнает")
+    base = (q.message.text or "").split("\n\nПодтверди")[0]
+    await q.edit_message_text(base + ("\n\n✅ Ты подтвердил съёмку" if ok else
+                                      "\n\n❌ Ты отметил, что не сможешь — AM в курсе"))
+    if am and am != q.from_user.id:
+        try:
+            await context.bot.send_message(
+                am, (f"✅ {me.full_name} подтвердил съёмку «{sh.title}» — {when}" if ok else
+                     f"❌ {me.full_name} не сможет на съёмку «{sh.title}» — {when}. Найди замену в приложении."))
+        except Exception:
+            pass
+
+
 async def shoot_reminder_job(context: ContextTypes.DEFAULT_TYPE):
     """From 19:00 Tashkent: remind the crew about tomorrow's shoots (once per shoot),
     with place, time, project and the gear checklist."""
@@ -1200,9 +1250,10 @@ async def shoot_reminder_job(context: ContextTypes.DEFAULT_TYPE):
                 ShootSession.shoot_at >= start, ShootSession.shoot_at < start + timedelta(days=1),
                 ShootSession.status == "planned", ShootSession.reminded_at.is_(None)))).scalars().all()
             for sh in shoots:
-                tgs = (await s.execute(select(User.telegram_id)
-                       .join(ShootParticipant, ShootParticipant.user_id == User.id)
-                       .where(ShootParticipant.shoot_id == sh.id, User.telegram_id.isnot(None)))).scalars().all()
+                crew = (await s.execute(select(User.telegram_id, User.full_name, ShootParticipant.response)
+                        .join(ShootParticipant, ShootParticipant.user_id == User.id)
+                        .where(ShootParticipant.shoot_id == sh.id, User.telegram_id.isnot(None)))).all()
+                tgs = [tg for tg, _, resp in crew if resp != "declined"]
                 proj = (await s.execute(select(Project.name).where(
                     Project.id == sh.project_id))).scalar_one_or_none() if sh.project_id else None
                 try:
@@ -1216,11 +1267,28 @@ async def shoot_reminder_job(context: ContextTypes.DEFAULT_TYPE):
                         + (f"📁 {proj}\n" if proj else "")
                         + (f"\nЧек-лист техники:\n{gear}\n" if gear else "")
                         + "\nПроверь технику и заряди батареи сегодня вечером 🔋")
+                silent = {tg for tg, _, resp in crew if resp is None}
                 for tg in tgs:
                     try:
-                        await context.bot.send_message(tg, text)
+                        await context.bot.send_message(
+                            tg, text + ("\n\nТы ещё не подтвердил 👇" if tg in silent else ""),
+                            reply_markup=_shoot_kb(sh.id) if tg in silent else None)
                     except Exception:
                         pass
+                # the AM: who hasn't confirmed / can't come
+                waiting = [n for _, n, resp in crew if resp is None]
+                no = [n for _, n, resp in crew if resp == "declined"]
+                if waiting or no:
+                    am = (await s.execute(select(User.telegram_id).where(User.id == sh.created_by))).scalar_one_or_none() \
+                        if sh.created_by else None
+                    for tg in ([am] if am else await _project_am_tgs(s, sh.project_id)):
+                        try:
+                            await context.bot.send_message(
+                                tg, f"🎬 Завтра «{sh.title}» {sh.shoot_at.astimezone(_TASHKENT):%H:%M}"
+                                    + (f"\n❓ Не подтвердили: {', '.join(waiting)}" if waiting else "")
+                                    + (f"\n❌ Не смогут: {', '.join(no)}" if no else ""))
+                        except Exception:
+                            pass
                 sh.reminded_at = _dt.now(_TASHKENT)
             await s.commit()
     except Exception as e:
@@ -1459,6 +1527,7 @@ def build_app(builder=None):
     app.add_handler(CallbackQueryHandler(review_cb, pattern=r"^rv(ok|fix|cli)_\d+$"))
     app.add_handler(CallbackQueryHandler(eta_cb, pattern=r"^eta(now|set)_\d+$"))
     app.add_handler(CallbackQueryHandler(take_cb, pattern=r"^take_\d+$"))
+    app.add_handler(CallbackQueryHandler(shoot_answer_cb, pattern=r"^sh(ok|no)_\d+$"))
     app.add_handler(CallbackQueryHandler(revision_send_cb, pattern=r"^rv(send|cancel)$"))
     # private chat: role keyboard, hand-in of a file / link, review list
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.Text([BTN_SUBMIT]), submit_menu))

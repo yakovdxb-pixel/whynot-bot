@@ -1816,13 +1816,17 @@ async def _log(session, entity, action, entity_id, actor_id, title=None):
         print(f"activity log failed ({entity}/{action}): {e}")
 
 
-async def _tg_send(chat_id: int, text: str, thread_id: int | None = None):
-    """Fire a Telegram message (DM or group/topic). Best-effort — never raises."""
+async def _tg_send(chat_id: int, text: str, thread_id: int | None = None, buttons=None):
+    """Fire a Telegram message (DM or group/topic). Best-effort — never raises.
+    buttons: [[(label, callback_data), ...], ...] — handled by the bot process."""
     if not (BOT_TOKEN and chat_id):
         return
     payload = {"chat_id": chat_id, "text": text}
     if thread_id:
         payload["message_thread_id"] = thread_id
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": [
+            [{"text": t, "callback_data": d} for t, d in row] for row in buttons]}
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.post(
@@ -2366,11 +2370,12 @@ async def _attach_shoot(session, shoots):
         return []
     ids = [s.id for s in shoots]
     parts = (await session.execute(
-        select(ShootParticipant.shoot_id, ShootParticipant.user_id)
+        select(ShootParticipant.shoot_id, ShootParticipant.user_id, ShootParticipant.response)
         .where(ShootParticipant.shoot_id.in_(ids)))).all()
-    by_shoot = {}
-    for sid, uid in parts:
+    by_shoot, answers = {}, {}
+    for sid, uid, resp in parts:
         by_shoot.setdefault(sid, []).append(uid)
+        answers[(sid, uid)] = resp
     names = await _names_for(session, {u for lst in by_shoot.values() for u in lst})
     cnames = await _client_names(session, [s.client_id for s in shoots])
     pnames = await _projects_map(session, [s.project_id for s in shoots])
@@ -2380,7 +2385,7 @@ async def _attach_shoot(session, shoots):
         d["shoot_at"] = s.shoot_at.isoformat() if s.shoot_at else None
         d["checklist"] = _checklist_out(s.checklist)
         d.pop("reminded_at", None)
-        d["participants"] = [{"id": i, "name": names.get(i)}
+        d["participants"] = [{"id": i, "name": names.get(i), "response": answers.get((s.id, i))}
                              for i in by_shoot.get(s.id, [])]
         d["client_name"] = cnames.get(s.client_id)
         d["project_name"] = pnames.get(s.project_id)
@@ -2401,10 +2406,15 @@ async def list_shoots(upcoming: bool = False,
 
 
 async def _sync_shoot_participants(session, shoot_id, ids):
+    """Remove the dropped, add the new — people who stay keep their «✅ Принял» answer."""
     ids = list(dict.fromkeys(ids or []))
-    await session.execute(sa_delete(ShootParticipant).where(ShootParticipant.shoot_id == shoot_id))
+    have = set((await session.execute(select(ShootParticipant.user_id).where(
+        ShootParticipant.shoot_id == shoot_id))).scalars().all())
+    await session.execute(sa_delete(ShootParticipant).where(
+        ShootParticipant.shoot_id == shoot_id, ShootParticipant.user_id.notin_(ids or [0])))
     for uid in ids:
-        session.add(ShootParticipant(shoot_id=shoot_id, user_id=uid))
+        if uid not in have:
+            session.add(ShootParticipant(shoot_id=shoot_id, user_id=uid))
     return ids
 
 
@@ -2469,11 +2479,7 @@ async def create_shoot(body: ShootCreate, bg: BackgroundTasks,
         raise HTTPException(400, "участник не найден")
     await _log(session, "task", "created", obj.id, user["id"], f"Съёмка: {title}")
     when = _tk(obj.shoot_at) if obj.shoot_at else "дата не задана"
-    for uid in pids:
-        tg = await _telegram_id_for(session, uid)
-        if tg:
-            bg.add_task(_tg_send, tg,
-                        f"🎬 Съёмка: {title}\nКогда: {when}\nМесто: {obj.location or '—'}")
+    await _ask_shoot_confirm(session, bg, obj, pids, f"🎬 Съёмка: {title}\nКогда: {when}\nМесто: {obj.location or '—'}")
     await _notify_project(bg, session, obj.project_id,
                           f"🎬 Съёмка запланирована: {title}\nКогда: {when}")
     return (await _attach_shoot(session, [obj]))[0]
@@ -2489,10 +2495,12 @@ async def update_shoot(shoot_id: int, patch: ShootPatch, bg: BackgroundTasks,
     data = patch.model_dump(exclude_unset=True)
     if "title" in data and _clean(data["title"]):
         obj.title = _clean(data["title"])
+    moved = False
     if "shoot_at" in data:
         new_at = _parse_dt(data["shoot_at"])
         if new_at != obj.shoot_at:
             obj.reminded_at = None          # moved -> remind again the evening before
+            moved = obj.shoot_at is not None or new_at is not None
         obj.shoot_at = new_at
     if "checklist" in data:
         obj.checklist = _checklist_in(data["checklist"])
@@ -2508,6 +2516,8 @@ async def update_shoot(shoot_id: int, patch: ShootPatch, bg: BackgroundTasks,
             raise HTTPException(422, f"status must be one of {sorted(SHOOT_STATUSES)}")
         obj.status = data["status"]
     obj.updated_at = _now()
+    before = set((await session.execute(select(ShootParticipant.user_id).where(
+        ShootParticipant.shoot_id == obj.id))).scalars().all())
     if "participant_ids" in data:
         await _sync_shoot_participants(session, obj.id, data["participant_ids"])
     try:
@@ -2516,7 +2526,32 @@ async def update_shoot(shoot_id: int, patch: ShootPatch, bg: BackgroundTasks,
         await session.rollback()
         raise HTTPException(400, "ссылка на несуществующий id")
     await session.refresh(obj)
+    crew = set((await session.execute(select(ShootParticipant.user_id).where(
+        ShootParticipant.shoot_id == obj.id))).scalars().all())
+    if obj.status == "planned":
+        when = _tk(obj.shoot_at) if obj.shoot_at else "дата не задана"
+        if moved:      # everyone confirms the new time
+            await _ask_shoot_confirm(session, bg, obj, list(crew),
+                                     f"🔁 Съёмка перенесена: {obj.title}\nТеперь: {when}\nМесто: {obj.location or '—'}")
+        elif crew - before:
+            await _ask_shoot_confirm(session, bg, obj, list(crew - before),
+                                     f"🎬 Съёмка: {obj.title}\nКогда: {when}\nМесто: {obj.location or '—'}")
     return (await _attach_shoot(session, [obj]))[0]
+
+
+async def _ask_shoot_confirm(session, bg, shoot, uids, text):
+    """DM the crew with «✅ Принял / ❌ Не смогу» (answers go to the bot); resets their answer."""
+    if not uids:
+        return
+    await session.execute(sa_update(ShootParticipant).where(
+        ShootParticipant.shoot_id == shoot.id, ShootParticipant.user_id.in_(uids))
+        .values(response=None, responded_at=None))
+    await session.commit()
+    for uid in uids:
+        tg = await _telegram_id_for(session, uid)
+        if tg:
+            bg.add_task(_tg_send, tg, text + "\n\nПодтверди, что увидел 👇", None,
+                        [[("✅ Принял", f"shok_{shoot.id}"), ("❌ Не смогу", f"shno_{shoot.id}")]])
 
 
 # ── project ↔ chat bindings (read-only; writes come from the bot /bind) ─

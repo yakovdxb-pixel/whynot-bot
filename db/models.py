@@ -580,6 +580,8 @@ class ShootParticipant(Base):
     shoot_id = Column(Integer, ForeignKey('shoot_sessions.id', ondelete='CASCADE'), nullable=False)
     user_id  = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     role     = Column(Text)                            # free-text on-set role, optional
+    response     = Column(Text)                        # None = no answer yet | 'accepted' | 'declined'
+    responded_at = Column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint('shoot_id', 'user_id', name='uq_shoot_participant'),
@@ -653,6 +655,9 @@ _MIGRATIONS = [
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS eta_at TIMESTAMPTZ",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS eta_notified_at TIMESTAMPTZ",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_nudged_at TIMESTAMPTZ",
+    # 2026-10: crew confirms a shoot («✅ Принял / ❌ Не смогу»)
+    "ALTER TABLE shoot_participants ADD COLUMN IF NOT EXISTS response TEXT",
+    "ALTER TABLE shoot_participants ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ",
 ]
 
 
