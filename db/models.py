@@ -270,6 +270,11 @@ class Task(Base):
     eta_at              = Column(DateTime(timezone=True))   # executor: «возьмусь за правки в …»
     eta_notified_at     = Column(DateTime(timezone=True))   # «время взяться за правки» sent
     client_nudged_at    = Column(DateTime(timezone=True))   # «клиент молчит сутки» sent to the AM
+    # «✅ Принял / ⏰ Не успею к сроку» on a new task
+    accept_asked_at     = Column(DateTime(timezone=True))   # buttons sent to the assignee
+    accepted_at         = Column(DateTime(timezone=True))   # assignee confirmed they saw it
+    accept_nudged_at    = Column(DateTime(timezone=True))   # 2 h without an answer: asked again
+    accept_escalated_at = Column(DateTime(timezone=True))   # still nothing: the AM was told
     overdue_reason   = Column(overdue_reason_enum)
     overdue_comment  = Column(Text)
     related_links    = Column(JSONB, default=list)
@@ -658,6 +663,11 @@ _MIGRATIONS = [
     # 2026-10: crew confirms a shoot («✅ Принял / ❌ Не смогу»)
     "ALTER TABLE shoot_participants ADD COLUMN IF NOT EXISTS response TEXT",
     "ALTER TABLE shoot_participants ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ",
+    # 2026-10: assignee confirms a new task
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS accept_asked_at TIMESTAMPTZ",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS accept_nudged_at TIMESTAMPTZ",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS accept_escalated_at TIMESTAMPTZ",
 ]
 
 

@@ -263,6 +263,7 @@ async def _submit_from_group(context, task_id, pending):
             task.file_id, task.file_type = pending["file_id"], pending["file_type"]
             task.status = "review"
             task.submitted_at = _dt.now(_tz.utc)
+            task.accepted_at = task.accepted_at or task.submitted_at
             await s.commit()
             await _log_task_status(s, task.id, "review", pending["from_user"])
             version = await _task_version(s, task.id)
@@ -811,6 +812,127 @@ async def eta_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_reply_markup(_submit_btn(tid, "📤 Сдать новую версию"))
 
 
+def _task_kb(task_id):
+    return InlineKeyboardMarkup([[InlineKeyboardButton("✅ Принял", callback_data=f"tkok_{task_id}"),
+                                  InlineKeyboardButton("⏰ Не успею к сроку", callback_data=f"tklate_{task_id}")]])
+
+
+async def _task_author_tg(s, task):
+    """Who should hear the answer: the task's creator, else the project's AM."""
+    from db.models import User
+    from sqlalchemy import select
+    if task.created_by:
+        tg = (await s.execute(select(User.telegram_id).where(User.id == task.created_by))).scalar_one_or_none()
+        if tg:
+            return tg
+    ams = await _project_am_tgs(s, task.project_id)
+    return ams[0] if ams else None
+
+
+async def task_accept_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«✅ Принял» → task in work, the AM sees it. «⏰ Не успею к сроку» → asks by when."""
+    q = update.callback_query
+    action, tid = q.data.split("_")
+    tid = int(tid)
+    from db.models import AsyncSessionLocal, Task, User
+    from sqlalchemy import select
+    from datetime import datetime as _dt, timezone as _tz
+    async with AsyncSessionLocal() as s:
+        task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+        if not task or task.status in ("done", "published", "cancelled"):
+            await q.answer("Задача уже закрыта или удалена", show_alert=True)
+            await q.edit_message_reply_markup(None)
+            return
+        me = (await s.execute(select(User.full_name).where(
+            User.telegram_id == q.from_user.id))).scalar_one_or_none() or q.from_user.first_name
+        if task.accepted_at is None:
+            task.accepted_at = _dt.now(_tz.utc)
+        base = (q.message.text or "").split("\n\nПодтверди")[0]
+        if action == "tklate":
+            await s.commit()
+            context.user_data["late_task"] = tid
+            await q.answer()
+            await q.edit_message_text(base + "\n\n⏰ Ты отметил, что к сроку не успеваешь")
+            await q.message.reply_text("К какому времени успеешь? Напиши, например: 18:30 · завтра 15:00 · 12.10 11:00")
+            return
+        took = task.status in ("pending", "overdue")
+        if took:
+            task.status = "in_progress"
+        await s.commit()
+        if took:
+            await _log_task_status(s, task.id, "in_progress", q.from_user.id)
+        am = await _task_author_tg(s, task)
+        if am and am != q.from_user.id:
+            try:
+                await context.bot.send_message(am, f"✅ {me} принял задачу «{task.title}»")
+            except Exception:
+                pass
+    await q.answer("Принял ✅ — задача в работе")
+    await q.edit_message_text(base + "\n\n✅ Ты принял задачу — она в работе", reply_markup=_submit_btn(tid))
+
+
+def _parse_when(text):
+    """«18:30» · «завтра 15:00» · «12.10 11:00» · «12.10» → Tashkent datetime (or None)."""
+    from datetime import datetime as _dt
+    t = (text or "").lower().replace(",", " ").split()
+    now = _tk_now()
+    day, hm = None, None
+    for w in t:
+        if w in ("сегодня", "bugun"):
+            day = now.date()
+        elif w in ("завтра", "ertaga"):
+            day = (now + timedelta(days=1)).date()
+        elif re.fullmatch(r"\d{1,2}[:.]\d{2}", w) and (":" in w or day or hm is None and len(t) == 1):
+            h, mi = map(int, re.split(r"[:.]", w))
+            if h < 24 and mi < 60 and (":" in w or day):
+                hm = (h, mi)
+            elif ":" not in w:      # «12.10» = a date
+                try:
+                    day = _dt(now.year, mi, h).date()
+                except ValueError:
+                    pass
+        elif re.fullmatch(r"\d{1,2}\.\d{1,2}(\.\d{2,4})?", w):
+            p = [int(x) for x in w.split(".")]
+            try:
+                day = _dt((p[2] + 2000 if len(p) == 3 and p[2] < 100 else p[2]) if len(p) == 3 else now.year, p[1], p[0]).date()
+            except ValueError:
+                pass
+    if not day and not hm:
+        return None
+    hm = hm or (18, 0)
+    if not day:
+        day = now.date() if (hm[0], hm[1]) > (now.hour, now.minute) else (now + timedelta(days=1)).date()
+    return _dt(day.year, day.month, day.day, hm[0], hm[1], tzinfo=_TASHKENT)
+
+
+async def _late_answer(update, context, tid):
+    msg = update.effective_message
+    when = _parse_when(msg.text)
+    if not when:
+        await msg.reply_text("Не понял. Напиши так: 18:30 · завтра 15:00 · 12.10 11:00")
+        return
+    context.user_data.pop("late_task", None)
+    from db.models import AsyncSessionLocal, Task, User
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as s:
+        task = (await s.execute(select(Task).where(Task.id == tid))).scalar_one_or_none()
+        if not task:
+            return
+        me = (await s.execute(select(User.full_name).where(
+            User.telegram_id == update.effective_user.id))).scalar_one_or_none() or update.effective_user.first_name
+        dl = task.deadline.astimezone(_TASHKENT).strftime("%d.%m %H:%M") if task.deadline else "без срока"
+        am = await _task_author_tg(s, task)
+        if am:
+            try:
+                await context.bot.send_message(
+                    am, f"⏰ {me} не успевает к сроку по «{task.title}» ({dl}).\n"
+                        f"Предлагает: {when:%d.%m %H:%M}. Перенести срок — в приложении.")
+            except Exception:
+                pass
+    await msg.reply_text(f"👌 Передал AM: успеешь к {when:%d.%m %H:%M}. Срок поменяет AM, если согласен.",
+                         reply_markup=_submit_btn(tid))
+
+
 def _parse_hhmm(text):
     """«15:40» / «15.40» / «1540» → today in Tashkent (tomorrow if already passed)."""
     from datetime import datetime as _dt
@@ -925,6 +1047,9 @@ async def dm_submission(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """The file / link for the picked task: → review, posted to the project topic as a new
     version with ✅ Принять / 🔄 Правки for the AM."""
     msg = update.effective_message
+    if context.user_data.get("late_task") and msg.text:
+        await _late_answer(update, context, context.user_data["late_task"])
+        return
     if context.user_data.get("eta_task") and msg.text:
         await _eta_answer(update, context, context.user_data["eta_task"])
         return
@@ -966,6 +1091,7 @@ async def dm_submission(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     title="Сдано", added_by=me.id if me else None))
             task.status = "review"
             task.submitted_at = _dt.now(_tz.utc)
+            task.accepted_at = task.accepted_at or task.submitted_at
             await s.commit()
             await _log_task_status(s, task.id, "review", update.effective_user.id)
             version = await _task_version(s, task.id)
@@ -1138,6 +1264,33 @@ async def pg_overdue_job(context: ContextTypes.DEFAULT_TYPE):
 
             if _quiet_now():
                 return
+            # new task not confirmed: ask again after 2 h, tell the AM 2 h after that
+            unseen = (await s.execute(select(Task).where(
+                Task.accepted_at.is_(None), Task.accept_asked_at.isnot(None),
+                Task.accept_escalated_at.is_(None),
+                Task.status.in_(("pending", "overdue", "in_progress")),
+                Task.accept_asked_at < now - _td(hours=2)).limit(50))).scalars().all()
+            for task in unseen:
+                if task.accept_nudged_at is None:
+                    await _dm_assignees(context, s, task, f"👀 Ты ещё не подтвердил задачу «{task.title}»"
+                                        + (f"\n⏰ {task.deadline.astimezone(_TASHKENT):%d.%m %H:%M}" if task.deadline else ""),
+                                        kb=_task_kb(task.id))
+                    task.accept_nudged_at = now
+                elif task.accept_nudged_at < now - _td(hours=2):
+                    from db.models import TaskAssignee, User
+                    names = (await s.execute(select(User.full_name).join(TaskAssignee, TaskAssignee.user_id == User.id)
+                             .where(TaskAssignee.task_id == task.id))).scalars().all()
+                    am = await _task_author_tg(s, task)
+                    if am:
+                        try:
+                            await context.bot.send_message(
+                                am, f"❓ {', '.join(names) or 'Исполнитель'} не подтвердил задачу «{task.title}» "
+                                    f"(напоминали дважды). Свяжись напрямую.")
+                        except Exception:
+                            pass
+                    task.accept_escalated_at = now
+            await s.commit()
+
             # the client has been silent for a day -> nudge the AM who sent it
             from db.models import StatusEvent, User
             silent = (await s.execute(select(Task, User.telegram_id)
@@ -1528,6 +1681,7 @@ def build_app(builder=None):
     app.add_handler(CallbackQueryHandler(eta_cb, pattern=r"^eta(now|set)_\d+$"))
     app.add_handler(CallbackQueryHandler(take_cb, pattern=r"^take_\d+$"))
     app.add_handler(CallbackQueryHandler(shoot_answer_cb, pattern=r"^sh(ok|no)_\d+$"))
+    app.add_handler(CallbackQueryHandler(task_accept_cb, pattern=r"^tk(ok|late)_\d+$"))
     app.add_handler(CallbackQueryHandler(revision_send_cb, pattern=r"^rv(send|cancel)$"))
     # private chat: role keyboard, hand-in of a file / link, review list
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.Text([BTN_SUBMIT]), submit_menu))

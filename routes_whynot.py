@@ -749,10 +749,10 @@ async def update_task(task_id: int, patch: TaskPatch, bg: BackgroundTasks,
         if task.status == "done":
             await _advance_chain(session, bg, task)
 
-    for a in new_notify:
-        tg = await _telegram_id_for(session, a)
-        if tg:
-            bg.add_task(_tg_send, tg, f"📋 Тебе назначена задача: {task.title}")
+    if new_notify:
+        dl = _tk(task.deadline, "%d.%m %H:%M") if task.deadline else "без срока"
+        await _ask_task_accept(session, bg, task, new_notify, user["id"],
+                               f"📋 Тебе назначена задача: {task.title}\n⏰ {dl}")
     if new_notify:
         who = ", ".join(filter(None, (await _names_for(session, new_notify)).values()))
         await _notify_project(bg, session, task.project_id,
@@ -1161,16 +1161,12 @@ async def create_content_job(content_id: int, kind: str, body: ContentJobCreate,
     await _log_status(session, "task", obj.id, "pending", uid)
 
     dl = _tk(due, "%d.%m.%Y %H:%M") if due else "без срока"
-    for a in aids:
-        tg = await _telegram_id_for(session, a)
-        if tg:
-            lines = [f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]} · контент «{topic}»",
-                     f"Дедлайн: {dl}"]
-            if obj.location:
-                lines.append(f"Адрес: {obj.location}")
-            if obj.description:
-                lines.append(f"Заметки: {obj.description}")
-            bg.add_task(_tg_send, tg, "\n".join(lines))
+    lines = [f"{CJOB_EMOJI[kind]} {CJOB_RU[kind]} · контент «{topic}»", f"⏰ {dl}"]
+    if obj.location:
+        lines.append(f"Адрес: {obj.location}")
+    if obj.description:
+        lines.append(f"Заметки: {obj.description}")
+    await _ask_task_accept(session, bg, obj, aids, uid, "\n".join(lines))
     who = ", ".join(filter(None, (await _names_for(session, aids)).values())) or "—"
     await _notify_project(
         bg, session, item.project_id,
@@ -1838,6 +1834,26 @@ async def _tg_send(chat_id: int, text: str, thread_id: int | None = None, button
         print(f"notify {chat_id} failed: {e}")
 
 
+async def _ask_task_accept(session, bg, task, uids, actor_id, text):
+    """DM new assignees with «✅ Принял / ⏰ Не успею к сроку» (answers go to the bot, which
+    also re-asks after 2 h and then tells the AM). Assigning yourself needs no confirmation."""
+    others = [u for u in dict.fromkeys(uids or []) if u and u != actor_id]
+    now = _now()
+    if not others:
+        if uids and task.accepted_at is None:
+            task.accepted_at = now
+            await session.commit()
+        return
+    task.accept_asked_at, task.accepted_at = now, None
+    task.accept_nudged_at = task.accept_escalated_at = None
+    await session.commit()
+    for uid in others:
+        tg = await _telegram_id_for(session, uid)
+        if tg:
+            bg.add_task(_tg_send, tg, text + "\n\nПодтверди, что увидел 👇", None,
+                        [[("✅ Принял", f"tkok_{task.id}"), ("⏰ Не успею к сроку", f"tklate_{task.id}")]])
+
+
 async def _project_chats(session, project_id):
     """[(chat_id, thread_id), ...] bound to this project."""
     if not project_id:
@@ -1908,11 +1924,8 @@ async def create_task(body: TaskCreate, bg: BackgroundTasks,
     await _log(session, "task", "created", obj.id, uid, title)
 
     dl = _tk(deadline, "%d.%m.%Y %H:%M") if deadline else "без срока"
-    for a in aids:
-        tg = await _telegram_id_for(session, a)
-        if tg:
-            bg.add_task(_tg_send, tg,
-                        f"📋 Тебе назначена задача: {title}\nПриоритет: {prio}\nДедлайн: {dl}")
+    await _ask_task_accept(session, bg, obj, aids, uid,
+                           f"📋 Тебе назначена задача: {title}\nПриоритет: {prio}\n⏰ {dl}")
     who = ", ".join(filter(None, (await _names_for(session, aids)).values())) or "—"
     await _notify_project(
         bg, session, obj.project_id,
