@@ -3010,6 +3010,71 @@ async def stats(month: str | None = None, user: dict = Depends(member), session=
     }
 
 
+@router.get("/team/{user_id}/history")
+async def person_history(user_id: int, days: int = 7, user: dict = Depends(member), session=Depends(get_session)):
+    """One person's work: what is open right now and since when (in work / revisions /
+    waiting for the AM / at the client / not started), plus a timeline of the last `days`
+    days — started, handed in (version N), revisions from whom (with the comment),
+    sent to the client, accepted. Times come from status_events."""
+    if user["role"] not in MANAGER_ROLES:
+        raise HTTPException(403, "только для admin / am / director")
+    who = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not who:
+        raise HTTPException(404, "User not found")
+    mine = select(TaskAssignee.task_id).where(TaskAssignee.user_id == user_id)
+    tasks = (await session.execute(select(Task).where(
+        or_(Task.assignee_id == user_id, Task.id.in_(mine))))).scalars().all()
+    by_id = {t.id: t for t in tasks}
+    pnames = await _projects_map(session, [t.project_id for t in tasks])
+    evs = (await session.execute(select(StatusEvent).where(
+        StatusEvent.entity == "task", StatusEvent.entity_id.in_(list(by_id) or [0]))
+        .order_by(StatusEvent.created_at, StatusEvent.id))).scalars().all()
+    names = await _names_for(session, [e.actor_id for e in evs])
+    now = _now()
+    since_from = now - timedelta(days=max(1, min(days, 60)))
+
+    last_change, versions, timeline = {}, {}, []
+    last_rev = {}
+    for e in evs:
+        last_change[e.entity_id] = e.created_at
+        if e.status == "review":
+            versions[e.entity_id] = versions.get(e.entity_id, 0) + 1
+        if e.status == "revision":
+            last_rev[e.entity_id] = e.id
+    seen_v = {}
+    for e in evs:
+        t = by_id[e.entity_id]
+        if e.status == "review":
+            seen_v[t.id] = seen_v.get(t.id, 0) + 1
+        if e.created_at < since_from:
+            continue
+        timeline.append({
+            "at": e.created_at.isoformat(), "status": e.status, "task_id": t.id, "task": t.title,
+            "project": pnames.get(t.project_id), "by": names.get(e.actor_id),
+            "by_self": e.actor_id == user_id,
+            "version": seen_v.get(t.id) if e.status == "review" else None,
+            # the comment is stored for the latest revision only
+            "comment": t.review_comment if e.status == "revision" and last_rev.get(t.id) == e.id else None,
+        })
+    for t in tasks:     # «✅ Принял» from the bot (not a status change)
+        if t.accepted_at and t.accept_asked_at and t.accepted_at >= since_from:
+            timeline.append({"at": t.accepted_at.isoformat(), "status": "accepted", "task_id": t.id,
+                             "task": t.title, "project": pnames.get(t.project_id), "by": who.full_name,
+                             "by_self": True, "version": None, "comment": None})
+    timeline.sort(key=lambda r: r["at"], reverse=True)
+
+    order = {"in_progress": 0, "revision": 1, "overdue": 2, "review": 3, "client": 4, "pending": 5}
+    current = sorted(({
+        "id": t.id, "title": t.title, "project": pnames.get(t.project_id), "status": t.status,
+        "since": (last_change.get(t.id) or t.created_at).isoformat() if (last_change.get(t.id) or t.created_at) else None,
+        "deadline": t.deadline.isoformat() if t.deadline else None,
+        "eta_at": t.eta_at.isoformat() if t.eta_at else None,
+        "unseen": bool(t.accept_asked_at and not t.accepted_at),
+        "version": versions.get(t.id, 0),
+    } for t in tasks if t.status in order), key=lambda r: (order[r["status"]], r["since"] or ""))
+    return {"name": who.full_name, "role": who.role, "now": current, "timeline": timeline[:150]}
+
+
 # telegram_id -> (reachable, checked_at). True is cached longer than False so a fresh
 # «Start» shows up within a couple of minutes.
 _REACH_CACHE: dict = {}

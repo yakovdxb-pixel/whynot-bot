@@ -435,18 +435,23 @@
   .chk-field .rf-row input{flex:1; min-width:0}
   .chk-field .chk-add{flex:0 0 52px; padding:0}
   .chk-del{border:none; background:none; color:var(--hint); font-size:12px; cursor:pointer; padding:2px 6px}
+  .ph-now{background:var(--sheet-card); border-radius:12px; padding:9px 11px; margin-bottom:7px; border-left:3px solid var(--st-pending)}
+  .ph-now.st-in_progress{border-left-color:var(--st-in_progress)} .ph-now.st-revision{border-left-color:var(--st-revision)}
+  .ph-now.st-overdue{border-left-color:var(--st-overdue)} .ph-now.st-review{border-left-color:var(--st-review)}
+  .ph-now.st-client{border-left-color:var(--accent)}
+  .ph-top{display:flex; justify-content:space-between; font-size:12px; color:var(--hint)}
+  .ph-top b{color:var(--text)}
+  .ph-title{font-weight:600; font-size:14px; margin-top:2px}
+  .ph-title small, .ph-ev small{color:var(--hint); font-weight:400}
+  .ph-sub{font-size:12px; color:var(--hint); margin-top:2px}
+  .ph-day{font-size:12px; font-weight:700; color:var(--autumn); margin:12px 0 4px; text-transform:uppercase; letter-spacing:.04em}
+  .ph-ev{display:flex; gap:10px; padding:6px 0; border-bottom:1px solid var(--sep); font-size:13px}
+  .ph-time{flex:0 0 42px; color:var(--hint); font-variant-numeric:tabular-nums}
+  .ph-task{font-size:12px; color:var(--hint)}
   .ld-week{display:flex; flex-wrap:wrap; gap:4px 6px; align-items:center; margin-top:8px; font-size:12px}
   .ld-week span{background:var(--hover); border-radius:8px; padding:3px 8px}
   .ld-week span.today{background:var(--autumn-soft)}
   .ld-week span.hint{background:none; padding:0}
-  .ld-proj{padding:4px 13px}
-  .ld-prow{padding:9px 0}
-  .ld-prow + .ld-prow{border-top:1px solid var(--border)}
-  .ld-prow .nm{font-size:14px}
-  .ld-pmeta{font-size:11px; color:var(--hint); white-space:nowrap}
-  .ld-who{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px}
-  .ld-who span{font-size:12px; background:var(--accent-soft); border-radius:999px; padding:3px 9px}
-  .ld-list small{display:block; color:var(--hint); font-size:11px; margin-top:1px}
   .ld-rev{color:var(--st-overdue-ink); font-weight:700}
   .ld-card{padding:12px 13px}
   .ld-head{display:flex; align-items:center; gap:8px}
@@ -458,10 +463,6 @@
   .ld-now{font-size:13px; margin-top:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .ld-now b{color:var(--link)}
   .ld-sub{font-size:11px; color:var(--hint); margin-top:3px}
-  .ld-list{margin-top:9px; border-top:1px solid var(--border); padding-top:7px; display:none}
-  .ld-card.open .ld-list{display:block}
-  .ld-list div{font-size:13px; padding:4px 0; display:flex; gap:8px; justify-content:space-between}
-  .ld-list div span:last-child{color:var(--hint); white-space:nowrap; font-size:12px}
   .mp-opt .mp-load{font-weight:500; color:var(--hint); font-size:11px; margin-left:3px}
   .mp-opt .mp-load.hot{color:var(--st-overdue-ink)}
   /* Telegram-like swipe actions on cards */
@@ -1014,7 +1015,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
     "sec.tasks":"Задачи","sec.stale":"Зависшие — просрочка больше 7 дней","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
-    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","nav.load":"Загрузка команды","load.free":"свободен","load.busyTill":"занят до {d}","load.overdue":"просрочек: {n}","load.overloaded":"перегружен","load.now":"Сейчас","load.next":"дальше: {n}","load.queued":"в очереди: {n}","load.review":"на проверке: {n}","load.shoot":"съёмка","load.nothing":"задач нет","load.legend":"📅 — сроки и съёмки на неделю вперёд. Нажмите на человека, чтобы увидеть все его задачи.","swipe.open":"👁 Открыть","idea.reject":"✖ Отклонить","idea.rejected":"Отклонено","board.allProjects":"Все","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
+    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","nav.load":"Загрузка команды","load.free":"свободен","load.busyTill":"занят до {d}","load.overdue":"просрочек: {n}","load.overloaded":"перегружен","load.now":"Сейчас","load.next":"дальше: {n}","load.queued":"в очереди: {n}","load.review":"на проверке: {n}","load.shoot":"съёмка","load.nothing":"задач нет","load.legend":"📅 — сроки и съёмки на неделю вперёд. Нажмите на человека — увидите, чем он занят сейчас и историю работы по времени.","swipe.open":"👁 Открыть","idea.reject":"✖ Отклонить","idea.rejected":"Отклонено","board.allProjects":"Все","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
     "empty.shoots":"Съёмок пока нет — добавь через «+»",
     "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
@@ -1072,7 +1073,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
     "sec.tasks":"Vazifalar","sec.stale":"Osilib qolganlar — 7 kundan ortiq kechikkan","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
-    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","nav.load":"Jamoa bandligi","load.free":"boʻsh","load.busyTill":"{d} gacha band","load.overdue":"kechikkan: {n}","load.overloaded":"ortiqcha band","load.now":"Hozir","load.next":"keyin: {n}","load.queued":"navbatda: {n}","load.review":"tekshiruvda: {n}","load.shoot":"suratga olish","load.nothing":"vazifa yoʻq","load.legend":"📅 — bir hafta oldinga muddatlar va suratga olishlar. Barcha vazifalarni koʻrish uchun odamni bosing.","swipe.open":"👁 Ochish","idea.reject":"✖ Rad etish","idea.rejected":"Rad etildi","board.allProjects":"Barchasi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
+    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","nav.load":"Jamoa bandligi","load.free":"boʻsh","load.busyTill":"{d} gacha band","load.overdue":"kechikkan: {n}","load.overloaded":"ortiqcha band","load.now":"Hozir","load.next":"keyin: {n}","load.queued":"navbatda: {n}","load.review":"tekshiruvda: {n}","load.shoot":"suratga olish","load.nothing":"vazifa yoʻq","load.legend":"📅 — bir hafta oldinga muddatlar va suratga olishlar. Odamni bosing — hozir nima bilan bandligi va ish tarixi vaqt boʻyicha.","swipe.open":"👁 Ochish","idea.reject":"✖ Rad etish","idea.rejected":"Rad etildi","board.allProjects":"Barchasi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
     "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
     "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
@@ -1130,7 +1131,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
     "sec.tasks":"Tasks","sec.stale":"Stuck — overdue by more than 7 days","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
-    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","nav.load":"Team load","load.free":"free","load.busyTill":"busy till {d}","load.overdue":"overdue: {n}","load.overloaded":"overloaded","load.now":"Now","load.next":"next: {n}","load.queued":"queued: {n}","load.review":"in review: {n}","load.shoot":"shoot","load.nothing":"no tasks","load.legend":"📅 — deadlines and shoots for the week ahead. Tap a person to see all their tasks.","swipe.open":"👁 Open","idea.reject":"✖ Reject","idea.rejected":"Rejected","board.allProjects":"All","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
+    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","nav.load":"Team load","load.free":"free","load.busyTill":"busy till {d}","load.overdue":"overdue: {n}","load.overloaded":"overloaded","load.now":"Now","load.next":"next: {n}","load.queued":"queued: {n}","load.review":"in review: {n}","load.shoot":"shoot","load.nothing":"no tasks","load.legend":"📅 — deadlines and shoots for the week ahead. Tap a person to see what they are doing now and their work history with times.","swipe.open":"👁 Open","idea.reject":"✖ Reject","idea.rejected":"Rejected","board.allProjects":"All","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
     "empty.shoots":"No shoots yet — add one with “+”",
     "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
@@ -1907,19 +1908,10 @@ async function renderLoad(){
       <div class="ld-now">${now ? `<b>${esc(t("load.now"))}:</b> ${esc(now.title)}` : `<span class="hint">${esc(t("load.nothing"))}</span>`}</div>
       ${sub ? `<div class="ld-sub">${esc(sub)}</div>` : ""}
       ${weekLine(p)}
-      <div class="ld-list">${p.tasks.map(tk => `<div><span>${esc(tk.title)}${tk.project ? `<small>📁 ${esc(tk.project)}${tk.days ? " · " + esc(t("load.days").replace("{n}", tk.days)) : ""}</small>` : ""}</span><span>${tk.revisions ? `<b class="ld-rev">🔄${tk.revisions}</b> ` : ""}${esc(STATUS_LABELS[tk.status] || tk.status)}${tk.deadline ? " · " + esc(fmtDate(tk.deadline)) : ""}</span></div>`).join("")
-        || `<div><span class="hint">${esc(t("load.nothing"))}</span></div>`}</div>
     </div>`;
   }).join("");
-  const short = n => (n || "—").split(" ")[0];
-  const projBlock = projects.length ? `<div class="section-title">📁 ${esc(t("load.projects"))}</div><div class="card ld-proj">` + projects.map(pr => `
-    <div class="ld-prow">
-      <div class="ld-head"><span class="nm">${esc(pr.name || "—")}</span>
-        <span class="ld-pmeta">${esc([t("load.peopleN").replace("{n}", pr.people.length), t("load.tasksN").replace("{n}", pr.tasks)].join(" · "))}${pr.revisions ? ` · <b class="ld-rev">🔄${pr.revisions}</b>` : ""}</span></div>
-      <div class="ld-who">${pr.people.map(w => `<span>${w.kinds.map(k => _CJOB_EMOJI[k] || "📋").join("")} ${esc(short(w.name))}</span>`).join("")}</div>
-    </div>`).join("") + `</div><div class="section-title">👥 ${esc(t("load.byPerson"))}</div>` : "";
-  view.innerHTML = projBlock + `<p class="hint" style="margin:0 2px 10px">${esc(t("load.legend"))}</p>` + cards;
-  view.querySelectorAll("[data-ld]").forEach(c => c.addEventListener("click", () => { haptic(); c.classList.toggle("open"); }));
+  view.innerHTML = `<p class="hint" style="margin:0 2px 10px">${esc(t("load.legend"))}</p>` + cards;
+  view.querySelectorAll("[data-ld]").forEach(c => c.addEventListener("click", () => { haptic(); openPersonHistory(+c.dataset.ld); }));
 }
 
 // «Октябрь 2026» (no «г.», capital first letter)
@@ -1927,6 +1919,76 @@ function monthTitle(y, m){
   const nm = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString(LANG === "uz" ? "uz-UZ" : LANG === "en" ? "en-GB" : "ru-RU", {month:"long", timeZone:"UTC"});
   return nm.charAt(0).toUpperCase() + nm.slice(1) + " " + y;
 }
+/* ── one person's work: now + timeline with times (sheet from «Загрузка команды») ── */
+function agoText(iso){
+  if (!iso) return "";
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  const L = (r, u, e) => LANG === "ru" ? r : LANG === "uz" ? u : e;
+  if (m < 1) return L("только что", "hozirgina", "just now");
+  if (m < 60) return m + L(" мин", " daq", " min");
+  const h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (h < 24) return h + L(" ч", " soat", " h") + (m % 60 ? " " + (m % 60) + L(" мин", " daq", " min") : "");
+  return d + L(" д", " kun", " d") + (h % 24 ? " " + (h % 24) + L(" ч", " soat", " h") : "");
+}
+const hhmm = iso => new Date(iso).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit", timeZone:TZ});
+async function openPersonHistory(uid){
+  const body = document.getElementById("taskViewBody");
+  body.innerHTML = `<div class="loader">${esc(t("misc.loading"))}</div>`;
+  taskViewSheet.classList.add("open"); taskViewBackdrop.classList.add("open"); sheetBackOn(closeTaskView);
+  let d;
+  try { d = await api(`/api/team/${uid}/history?days=7`); }
+  catch(e){ body.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  const L = (r, u, e) => LANG === "ru" ? r : LANG === "uz" ? u : e;
+  const NOW = {
+    in_progress: ["▶️", L("В работе", "Ishda", "In work"), L("с {t} · уже {a}", "{t} dan · {a}", "since {t} · {a}")],
+    revision:    ["🔄", L("Переделывает по правкам", "Tuzatmoqda", "Doing revisions"), L("правки с {t} · {a}", "tuzatish {t} dan · {a}", "revisions since {t} · {a}")],
+    overdue:     ["🔴", L("Просрочено", "Kechikkan", "Overdue"), L("с {t} · {a}", "{t} dan · {a}", "since {t} · {a}")],
+    review:      ["👀", L("Ждёт проверки AM", "AM tekshiruvini kutmoqda", "Waiting for AM review"), L("сдал в {t} · ждёт {a}", "{t} da topshirdi · {a} kutmoqda", "handed in {t} · waiting {a}")],
+    client:      ["🕓", L("У клиента на утверждении", "Mijoz tasdiqlashida", "With the client"), L("с {t} · ждёт {a}", "{t} dan · {a} kutmoqda", "since {t} · waiting {a}")],
+    pending:     ["⏳", L("Не начато", "Boshlanmagan", "Not started"), L("назначено {t} · {a} назад", "{t} da berilgan · {a} oldin", "assigned {t} · {a} ago")],
+  };
+  const whenFull = iso => { const k = tkDay(iso); return (k === tkDay(Date.now()) ? "" : fmtDate(iso) + " ") + hhmm(iso); };
+  const nowHtml = d.now.length ? d.now.map(x => {
+    const [em, label, tpl] = NOW[x.status] || ["•", x.status, "{t}"];
+    const extra = [x.version ? t("task.version").replace("{n}", x.version) : "",
+                   x.eta_at && x.status === "revision" ? "⏰ " + t("task.eta").replace("{t}", whenFull(x.eta_at)) : "",
+                   x.unseen ? "👀 " + t("task.unseen") : "",
+                   x.deadline ? L("срок ", "muddat ", "due ") + whenFull(x.deadline) : ""].filter(Boolean).join(" · ");
+    return `<div class="ph-now st-${esc(x.status)}"><div class="ph-top"><span>${em} ${esc(label)}</span><b>${esc(agoText(x.since))}</b></div>
+      <div class="ph-title">${esc(x.title)}${x.project ? ` <small>· ${esc(x.project)}</small>` : ""}</div>
+      <div class="ph-sub">${esc(tpl.replace("{t}", x.since ? whenFull(x.since) : "—").replace("{a}", agoText(x.since)))}${extra ? " · " + esc(extra) : ""}</div></div>`;
+  }).join("") : `<p class="hint">${esc(L("Открытых задач нет", "Ochiq vazifalar yoʻq", "No open tasks"))}</p>`;
+  const EV = {
+    pending:     () => "📋 " + L("Назначена задача", "Vazifa berildi", "Task assigned"),
+    accepted:    () => "👍 " + L("Принял задачу", "Vazifani qabul qildi", "Accepted the task"),
+    in_progress: () => "▶️ " + L("Начал работу", "Ishni boshladi", "Started work"),
+    review:      e => "📤 " + L("Сдал на проверку", "Tekshiruvga topshirdi", "Handed in") + (e.version ? " · " + t("task.version").replace("{n}", e.version) : ""),
+    revision:    () => "🔄 " + L("Получил правки", "Tuzatishlar oldi", "Got revisions"),
+    client:      () => "🕓 " + L("Отправлено клиенту", "Mijozga yuborildi", "Sent to the client"),
+    done:        () => "✅ " + L("Принято", "Qabul qilindi", "Accepted"),
+    published:   () => "📢 " + L("Опубликовано", "Joylandi", "Published"),
+    overdue:     () => "🔴 " + L("Просрочено", "Kechikdi", "Overdue"),
+    cancelled:   () => "✖ " + L("Отменено", "Bekor qilindi", "Cancelled"),
+  };
+  let lastDay = "", tl = "";
+  for (const e of d.timeline){
+    const k = tkDay(e.at);
+    if (k !== lastDay){
+      lastDay = k;
+      const lbl = k === tkDay(Date.now()) ? L("Сегодня", "Bugun", "Today") : k === tkDay(Date.now() - 86400e3) ? L("Вчера", "Kecha", "Yesterday") : fmtDate(e.at);
+      tl += `<div class="ph-day">${esc(lbl)}</div>`;
+    }
+    const by = e.by && !e.by_self ? ` <small>· ${esc(e.by)}</small>` : "";
+    tl += `<div class="ph-ev"><span class="ph-time">${esc(hhmm(e.at))}</span><div><div>${esc((EV[e.status] || (() => e.status))(e))}${by}</div>
+      <div class="ph-task">${esc(e.task)}${e.project ? " · " + esc(e.project) : ""}</div>
+      ${e.comment ? `<div class="review-note">${esc(e.comment)}</div>` : ""}</div></div>`;
+  }
+  body.innerHTML = `<div class="tv-head"><h2>${esc(d.name || "—")}</h2><span class="pill" style="--c:${ROLE_COLORS[d.role] || "#8a8a8e"}; --ci:var(--text)">${esc(ROLE_LABELS[d.role] || d.role)}</span></div>
+    <div class="section-title">${esc(L("Сейчас", "Hozir", "Now"))}</div>${nowHtml}
+    <div class="section-title">${esc(L("История за 7 дней", "7 kunlik tarix", "Last 7 days"))}</div>
+    ${tl || `<p class="hint">${esc(L("За неделю событий нет", "Bir haftada hech narsa yoʻq", "Nothing this week"))}</p>`}`;
+}
+
 /* ── Статистика: a month of finished work ─────────────────── */
 let statsMonth = null;   // "YYYY-MM"
 async function renderStats(){
