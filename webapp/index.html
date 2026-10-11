@@ -391,9 +391,6 @@
   .imeta .ic-client{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0}
   .imeta .vote.mini{flex:none; padding:3px 9px; font-size:12px}
   /* team load: one row per person + 14-day strip */
-  .ld-days{display:grid; grid-template-columns:repeat(14,1fr); gap:3px; font-size:9px; color:var(--hint);
-    text-align:center; margin:0 0 6px; position:sticky; top:-14px; background:var(--bg); padding:6px 0; z-index:2}
-  .ld-days .we{color:var(--st-overdue-ink)}
   .sx-month{display:flex; padding:8px 10px; margin-bottom:12px}
   .cal-nav:disabled{opacity:.35}
   .card-proj{font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--autumn);
@@ -438,6 +435,10 @@
   .chk-field .rf-row input{flex:1; min-width:0}
   .chk-field .chk-add{flex:0 0 52px; padding:0}
   .chk-del{border:none; background:none; color:var(--hint); font-size:12px; cursor:pointer; padding:2px 6px}
+  .ld-week{display:flex; flex-wrap:wrap; gap:4px 6px; align-items:center; margin-top:8px; font-size:12px}
+  .ld-week span{background:var(--hover); border-radius:8px; padding:3px 8px}
+  .ld-week span.today{background:var(--autumn-soft)}
+  .ld-week span.hint{background:none; padding:0}
   .ld-proj{padding:4px 13px}
   .ld-prow{padding:9px 0}
   .ld-prow + .ld-prow{border-top:1px solid var(--border)}
@@ -457,13 +458,6 @@
   .ld-now{font-size:13px; margin-top:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .ld-now b{color:var(--link)}
   .ld-sub{font-size:11px; color:var(--hint); margin-top:3px}
-  .ld-strip{display:grid; grid-template-columns:repeat(14,1fr); gap:3px; margin-top:9px}
-  .ld-strip i{height:16px; border-radius:4px; background:var(--seg-bg); display:flex; align-items:center; justify-content:center; font-size:9px; font-style:normal; color:#fff}
-  .ld-strip i.l1{background:color-mix(in srgb, var(--accent) 35%, var(--seg-bg))}
-  .ld-strip i.l2{background:color-mix(in srgb, var(--accent) 65%, var(--seg-bg))}
-  .ld-strip i.l3{background:var(--accent)}
-  .ld-strip i.late{background:var(--st-overdue)}
-  .ld-strip i.today{outline:1.5px solid var(--text); outline-offset:1px}
   .ld-list{margin-top:9px; border-top:1px solid var(--border); padding-top:7px; display:none}
   .ld-card.open .ld-list{display:block}
   .ld-list div{font-size:13px; padding:4px 0; display:flex; gap:8px; justify-content:space-between}
@@ -1020,7 +1014,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Имя","field.role":"Роль","field.assigned_to":"ID исполнителя (уведомить)",
     "sec.tasks":"Задачи","sec.stale":"Зависшие — просрочка больше 7 дней","sec.myBlockers":"Мои блокеры","sec.myContent":"Мой контент",
     "empty.tasks":"Нет задач 🎉","empty.tasksAll":"Задач нет","empty.blockers":"Блокеров нет",
-    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","nav.load":"Загрузка команды","load.free":"свободен","load.busyTill":"занят до {d}","load.overdue":"просрочек: {n}","load.overloaded":"перегружен","load.now":"Сейчас","load.next":"дальше: {n}","load.queued":"в очереди: {n}","load.review":"на проверке: {n}","load.shoot":"съёмка","load.nothing":"задач нет","load.legend":"Точки — сроки задач по дням, 🎬 — съёмки. Нажмите на человека, чтобы увидеть его задачи.","swipe.open":"👁 Открыть","idea.reject":"✖ Отклонить","idea.rejected":"Отклонено","board.allProjects":"Все","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
+    "empty.blockersActive":"Активных блокеров нет 👌","empty.ideas":"Идей пока нет — нажми ＋, чтобы предложить первую","shoot.past":"прошла","nav.load":"Загрузка команды","load.free":"свободен","load.busyTill":"занят до {d}","load.overdue":"просрочек: {n}","load.overloaded":"перегружен","load.now":"Сейчас","load.next":"дальше: {n}","load.queued":"в очереди: {n}","load.review":"на проверке: {n}","load.shoot":"съёмка","load.nothing":"задач нет","load.legend":"📅 — сроки и съёмки на неделю вперёд. Нажмите на человека, чтобы увидеть все его задачи.","swipe.open":"👁 Открыть","idea.reject":"✖ Отклонить","idea.rejected":"Отклонено","board.allProjects":"Все","client.planMonth":"опубликовано {p} из {t} за месяц","client.noPlan":"план на месяц не задан","team.openTasks":"открытых задач: {n}","team.noStart":"не нажал Start у бота","team.noStartHint":"Уведомления к нему не доходят: Telegram не даёт боту написать первым. Попросите открыть бота и нажать Start.","idea.st.new":"новая","idea.st.under_review":"в работе","idea.st.approved":"в работе","idea.st.rejected":"отклонена","idea.st.implemented":"в контент-плане","idea.toContent":"→ В контент-план","idea.inContent":"✅ Уже в контент-плане","idea.toContentDone":"Черновик создан в контент-плане","idea.status":"Статус",
     "empty.content":"Контента пока нет","empty.contentProj":"У проекта нет контента",
     "empty.shoots":"Съёмок пока нет — добавь через «+»",
     "scope.mine":"Мои","scope.all":"Все","sub.team":"👥 Команда","sub.clients":"🏢 Клиенты",
@@ -1078,7 +1072,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Ism","field.role":"Rol","field.assigned_to":"Ijrochi ID (xabar berish)",
     "sec.tasks":"Vazifalar","sec.stale":"Osilib qolganlar — 7 kundan ortiq kechikkan","sec.myBlockers":"Mening toʻsiqlarim","sec.myContent":"Mening kontentim",
     "empty.tasks":"Vazifalar yoʻq 🎉","empty.tasksAll":"Vazifalar yoʻq","empty.blockers":"Toʻsiqlar yoʻq",
-    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","nav.load":"Jamoa bandligi","load.free":"boʻsh","load.busyTill":"{d} gacha band","load.overdue":"kechikkan: {n}","load.overloaded":"ortiqcha band","load.now":"Hozir","load.next":"keyin: {n}","load.queued":"navbatda: {n}","load.review":"tekshiruvda: {n}","load.shoot":"suratga olish","load.nothing":"vazifa yoʻq","load.legend":"Nuqtalar — kunlar boʻyicha muddatlar, 🎬 — suratga olishlar. Vazifalarni koʻrish uchun odamni bosing.","swipe.open":"👁 Ochish","idea.reject":"✖ Rad etish","idea.rejected":"Rad etildi","board.allProjects":"Barchasi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
+    "empty.blockersActive":"Faol toʻsiqlar yoʻq 👌","empty.ideas":"Hozircha gʻoyalar yoʻq — birinchisini taklif qilish uchun ＋ ni bosing","shoot.past":"oʻtdi","nav.load":"Jamoa bandligi","load.free":"boʻsh","load.busyTill":"{d} gacha band","load.overdue":"kechikkan: {n}","load.overloaded":"ortiqcha band","load.now":"Hozir","load.next":"keyin: {n}","load.queued":"navbatda: {n}","load.review":"tekshiruvda: {n}","load.shoot":"suratga olish","load.nothing":"vazifa yoʻq","load.legend":"📅 — bir hafta oldinga muddatlar va suratga olishlar. Barcha vazifalarni koʻrish uchun odamni bosing.","swipe.open":"👁 Ochish","idea.reject":"✖ Rad etish","idea.rejected":"Rad etildi","board.allProjects":"Barchasi","client.planMonth":"oy davomida {t} tadan {p} tasi joylandi","client.noPlan":"oylik reja belgilanmagan","team.openTasks":"ochiq vazifalar: {n}","team.noStart":"botda Start bosmagan","team.noStartHint":"Bildirishnomalar yetib bormaydi: Telegram botga birinchi yozishga ruxsat bermaydi. Botni ochib Start bosishini soʻrang.","idea.st.new":"yangi","idea.st.under_review":"ishda","idea.st.approved":"ishda","idea.st.rejected":"rad etilgan","idea.st.implemented":"kontent-rejada","idea.toContent":"→ Kontent-rejaga","idea.inContent":"✅ Kontent-rejada","idea.toContentDone":"Kontent-rejada qoralama yaratildi","idea.status":"Holat",
     "empty.content":"Hozircha kontent yoʻq","empty.contentProj":"Loyihada kontent yoʻq",
     "empty.shoots":"Hozircha suratga olishlar yoʻq — «+» orqali qoʻshing",
     "scope.mine":"Meniki","scope.all":"Barchasi","sub.team":"👥 Jamoa","sub.clients":"🏢 Mijozlar",
@@ -1136,7 +1130,7 @@ const I18N = {
     "field.telegram_id":"Telegram ID","field.full_name":"Name","field.role":"Role","field.assigned_to":"Assignee ID (notify)",
     "sec.tasks":"Tasks","sec.stale":"Stuck — overdue by more than 7 days","sec.myBlockers":"My blockers","sec.myContent":"My content",
     "empty.tasks":"No tasks 🎉","empty.tasksAll":"No tasks","empty.blockers":"No blockers",
-    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","nav.load":"Team load","load.free":"free","load.busyTill":"busy till {d}","load.overdue":"overdue: {n}","load.overloaded":"overloaded","load.now":"Now","load.next":"next: {n}","load.queued":"queued: {n}","load.review":"in review: {n}","load.shoot":"shoot","load.nothing":"no tasks","load.legend":"Dots — task deadlines per day, 🎬 — shoots. Tap a person to see their tasks.","swipe.open":"👁 Open","idea.reject":"✖ Reject","idea.rejected":"Rejected","board.allProjects":"All","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
+    "empty.blockersActive":"No active blockers 👌","empty.ideas":"No ideas yet — tap ＋ to suggest the first one","shoot.past":"past","nav.load":"Team load","load.free":"free","load.busyTill":"busy till {d}","load.overdue":"overdue: {n}","load.overloaded":"overloaded","load.now":"Now","load.next":"next: {n}","load.queued":"queued: {n}","load.review":"in review: {n}","load.shoot":"shoot","load.nothing":"no tasks","load.legend":"📅 — deadlines and shoots for the week ahead. Tap a person to see all their tasks.","swipe.open":"👁 Open","idea.reject":"✖ Reject","idea.rejected":"Rejected","board.allProjects":"All","client.planMonth":"{p} of {t} published this month","client.noPlan":"no monthly plan set","team.openTasks":"open tasks: {n}","team.noStart":"has not pressed Start in the bot","team.noStartHint":"Notifications cannot reach them: Telegram does not let a bot write first. Ask them to open the bot and press Start.","idea.st.new":"new","idea.st.under_review":"in work","idea.st.approved":"in work","idea.st.rejected":"rejected","idea.st.implemented":"in content plan","idea.toContent":"→ To content plan","idea.inContent":"✅ Already in content plan","idea.toContentDone":"Draft created in the content plan","idea.status":"Status",
     "empty.content":"No content yet","empty.contentProj":"No content for this project",
     "empty.shoots":"No shoots yet — add one with “+”",
     "scope.mine":"Mine","scope.all":"All","sub.team":"👥 Team","sub.clients":"🏢 Clients",
@@ -1876,18 +1870,25 @@ async function renderLoad(){
   // problems first, then busy, then free; inside a group — the most loaded first
   const weight = p => (p.overdue ? 2e4 : 0) + (p.open >= 6 ? 1e4 : 0) + (p.open + p.shoots.length ? 5e3 : 0) + p.open * 10 + p.queued;
   people.sort((a, b) => weight(b) - weight(a));
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const days = [...Array(14)].map((_, i) => new Date(today.getTime() + i * 86400e3));
-  const dayIdx = iso => Math.floor((new Date(iso).setHours(0, 0, 0, 0) - today.getTime()) / 86400e3);
-  const head = `<div class="ld-days">${days.map(d => `<span class="${[0, 6].includes(d.getDay()) ? "we" : ""}">${d.getDate()}</span>`).join("")}</div>`;
-  const cards = people.map(p => {
-    const cells = days.map(() => ({ n: 0, late: false, shoot: false }));
+  // the week ahead in words: «📅 Сегодня 2 срока · Завтра 1 · Чт 16 🎬 съёмка» (Tashkent days)
+  const todayKey = tkDay(Date.now());
+  const dayKeys = [...Array(7)].map((_, i) => tkDay(Date.now() + i * 86400e3));
+  const L = (r, u, e) => LANG === "ru" ? r : LANG === "uz" ? u : e;
+  const dayName = (key, i) => i === 0 ? L("Сегодня", "Bugun", "Today") : i === 1 ? L("Завтра", "Ertaga", "Tomorrow")
+    : (w => w.charAt(0).toUpperCase() + w.slice(1))(new Date(key + "T12:00:00+05:00").toLocaleDateString(LANG === "uz" ? "uz-UZ" : LANG === "en" ? "en-GB" : "ru-RU", {weekday:"short", day:"numeric", timeZone:TZ}).replace(",", ""));
+  const nDeadlines = n => LANG === "ru" ? `${n} ${n === 1 ? "срок" : n < 5 ? "срока" : "сроков"}` : LANG === "uz" ? `${n} ta muddat` : `${n} deadline${n > 1 ? "s" : ""}`;
+  const weekLine = p => {
+    const per = dayKeys.map(() => ({ n: 0, shoot: 0 }));
     p.tasks.forEach(tk => {
-      if (!tk.deadline || tk.status === "queued" || tk.status === "client") return;
-      const i = Math.max(0, dayIdx(tk.deadline));       // overdue lands on today
-      if (i < 14){ cells[i].n++; if (new Date(tk.deadline) < new Date()) cells[i].late = true; }
+      if (!tk.deadline || ["queued", "client", "review"].includes(tk.status)) return;
+      const k = tkDay(tk.deadline), i = k < todayKey ? -1 : dayKeys.indexOf(k);   // overdue: shown in the badge
+      if (i >= 0) per[i].n++;
     });
-    p.shoots.forEach(sh => { const i = dayIdx(sh.at); if (i >= 0 && i < 14) cells[i].shoot = true; });
+    p.shoots.forEach(sh => { const i = dayKeys.indexOf(tkDay(sh.at)); if (i >= 0) per[i].shoot++; });
+    const parts = per.map((d, i) => (d.n || d.shoot) ? `<span${i === 0 ? ' class="today"' : ""}><b>${esc(dayName(dayKeys[i], i))}</b> ${esc([d.n ? nDeadlines(d.n) : "", d.shoot ? "🎬 " + L("съёмка", "suratga olish", "shoot") : ""].filter(Boolean).join(" + "))}</span>` : "").filter(Boolean);
+    return `<div class="ld-week">📅 ${parts.length ? parts.join("") : `<span class="hint">${esc(L("Неделя свободна", "Hafta boʻsh", "Week is free"))}</span>`}</div>`;
+  };
+  const cards = people.map(p => {
     const state = p.overdue ? ["ld-hot", t("load.overdue").replace("{n}", p.overdue)]
       : p.open >= 6 ? ["ld-hot", t("load.overloaded")]
       : p.open + p.shoots.length ? ["ld-busy", t("load.busyTill").replace("{d}", p.busy_until ? fmtDate(p.busy_until) : "—")]
@@ -1905,7 +1906,7 @@ async function renderLoad(){
         <span class="ld-state ${state[0]}">${esc(state[1])}</span></div>
       <div class="ld-now">${now ? `<b>${esc(t("load.now"))}:</b> ${esc(now.title)}` : `<span class="hint">${esc(t("load.nothing"))}</span>`}</div>
       ${sub ? `<div class="ld-sub">${esc(sub)}</div>` : ""}
-      <div class="ld-strip">${cells.map((c, i) => `<i class="${c.late ? "late" : c.n >= 3 ? "l3" : c.n === 2 ? "l2" : c.n === 1 ? "l1" : ""}${i === 0 ? " today" : ""}">${c.shoot ? "🎬" : c.n > 1 ? c.n : ""}</i>`).join("")}</div>
+      ${weekLine(p)}
       <div class="ld-list">${p.tasks.map(tk => `<div><span>${esc(tk.title)}${tk.project ? `<small>📁 ${esc(tk.project)}${tk.days ? " · " + esc(t("load.days").replace("{n}", tk.days)) : ""}</small>` : ""}</span><span>${tk.revisions ? `<b class="ld-rev">🔄${tk.revisions}</b> ` : ""}${esc(STATUS_LABELS[tk.status] || tk.status)}${tk.deadline ? " · " + esc(fmtDate(tk.deadline)) : ""}</span></div>`).join("")
         || `<div><span class="hint">${esc(t("load.nothing"))}</span></div>`}</div>
     </div>`;
@@ -1917,7 +1918,7 @@ async function renderLoad(){
         <span class="ld-pmeta">${esc([t("load.peopleN").replace("{n}", pr.people.length), t("load.tasksN").replace("{n}", pr.tasks)].join(" · "))}${pr.revisions ? ` · <b class="ld-rev">🔄${pr.revisions}</b>` : ""}</span></div>
       <div class="ld-who">${pr.people.map(w => `<span>${w.kinds.map(k => _CJOB_EMOJI[k] || "📋").join("")} ${esc(short(w.name))}</span>`).join("")}</div>
     </div>`).join("") + `</div><div class="section-title">👥 ${esc(t("load.byPerson"))}</div>` : "";
-  view.innerHTML = projBlock + `<p class="hint" style="margin:0 2px 10px">${esc(t("load.legend"))}</p>` + head + cards;
+  view.innerHTML = projBlock + `<p class="hint" style="margin:0 2px 10px">${esc(t("load.legend"))}</p>` + cards;
   view.querySelectorAll("[data-ld]").forEach(c => c.addEventListener("click", () => { haptic(); c.classList.toggle("open"); }));
 }
 
